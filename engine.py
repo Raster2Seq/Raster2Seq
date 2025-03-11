@@ -40,7 +40,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     for batched_inputs in metric_logger.log_every(data_loader, print_freq, header):
         samples = [x["image"].to(device) for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
-        room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+        if hasattr(model, 'module'):
+            room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
+        else:
+            room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
 
         outputs = model(samples)
         loss_dict = criterion(outputs, room_targets)
@@ -89,8 +92,10 @@ def evaluate(model, criterion, dataset_name, data_loader, device):
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
-        room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
-
+        if hasattr(model, 'module'):
+            room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
+        else:
+            room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
 
         outputs = model(samples)
         loss_dict = criterion(outputs, room_targets)

@@ -9,7 +9,10 @@ from pathlib import Path
 import numpy as np
 import wandb
 import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 import util.misc as utils
 from datasets import build_dataset
 from engine import evaluate, train_one_epoch
@@ -35,7 +38,11 @@ def get_args_parser():
 
     # new
     parser.add_argument('--input_channels', default=1, type=int)
+    parser.add_argument('--start_from_checkpoint', default='', help='resume from checkpoint')
     parser.add_argument('--image_norm', action='store_true')
+
+    # parser.add_argument('--use_room_attn_at_last_dec_layer', default=False, action='store_true', help="use room-wise attention in last decoder layer")
+
 
     # backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
@@ -120,23 +127,28 @@ def main(args):
     print("git:\n  {}\n".format(utils.get_sha()))
 
     print(args)
-
-    # setup wandb for logging
-    utils.setup_wandb()
-    wandb.init(project="RoomFormer")
-    wandb.run.name = args.run_name
-
-    device = torch.device(args.device)
-
+    # Setup DDP:
+    dist.init_process_group("nccl")
+    rank = dist.get_rank()
+    device = rank % torch.cuda.device_count()
+    seed = args.seed * dist.get_world_size() + rank
     # fix the seed for reproducibility
-    seed = args.seed
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+    torch.cuda.set_device(device)
+    print(f"Starting rank={rank}, seed={seed}, world_size={dist.get_world_size()}.")
+
+    # setup wandb for logging
+    if rank == 0:
+        utils.setup_wandb()
+        wandb.init(project="RoomFormer")
+        wandb.run.name = args.run_name
 
     # build model
     model, criterion = build_model(args)
     model.to(device)
+    model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=True)
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('number of params:', n_parameters)
@@ -145,9 +157,11 @@ def main(args):
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
 
+    # sampler_train = torch.utils.data.RandomSampler(dataset_train)
+    # sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    sampler_train = torch.utils.data.RandomSampler(dataset_train)
-    sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+    sampler_train = DistributedSampler(dataset_train, num_replicas=dist.get_world_size(), rank=rank, shuffle=True, seed=args.seed)
+    sampler_val = DistributedSampler(dataset_val, num_replicas=dist.get_world_size(), rank=rank, shuffle=False, seed=args.seed)
 
     def trivial_batch_collator(batch):
         """
@@ -155,15 +169,23 @@ def main(args):
         """
         return batch
 
-    batch_sampler_train = torch.utils.data.BatchSampler(
-        sampler_train, args.batch_size, drop_last=True)
-
-    data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,
-                                   collate_fn=trivial_batch_collator, num_workers=args.num_workers,
-                                   pin_memory=True)
-    data_loader_val = DataLoader(dataset_val, args.batch_size, sampler=sampler_val,
-                                 drop_last=False, collate_fn=trivial_batch_collator, num_workers=args.num_workers,
-                                 pin_memory=True)
+    data_loader_train = DataLoader(dataset_train, 
+                                   args.batch_size, 
+                                   shuffle=False,
+                                   sampler=sampler_train,
+                                   num_workers=args.num_workers,
+                                   collate_fn=trivial_batch_collator, 
+                                   pin_memory=True,
+                                   drop_last=True)
+    data_loader_val = DataLoader(dataset_val, 
+                                 args.batch_size, 
+                                 shuffle=False,
+                                 sampler=sampler_val,
+                                 collate_fn=trivial_batch_collator, 
+                                 num_workers=args.num_workers,
+                                 pin_memory=True,
+                                 drop_last=False, 
+                                 )
 
     def match_name_keywords(n, name_keywords):
         out = False
@@ -233,32 +255,40 @@ def main(args):
             model, criterion, args.dataset_name, data_loader_val, device
         )
 
+    if args.start_from_checkpoint:
+        checkpoint = torch.load(args.start_from_checkpoint, map_location='cpu')
+        if checkpoint['model']['backbone.0.body.conv1.weight'].size(1) != args.input_channels:
+            checkpoint['model']['backbone.0.body.conv1.weight'] = checkpoint['model']['backbone.0.body.conv1.weight'].repeat(1, args.input_channels, 1, 1)
+        missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model'], strict=False)
+        unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]
+        if len(missing_keys) > 0:
+            print('Missing Keys: {}'.format(missing_keys))
+        if len(unexpected_keys) > 0:
+            print('Unexpected Keys: {}'.format(unexpected_keys))
+    
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
+        sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm)
         lr_scheduler.step()
-        if args.output_dir:
-            checkpoint_paths = [output_dir / 'checkpoint.pth']
-            # extra checkpoint before LR drop and every 20 epochs
-            if (epoch + 1) in args.lr_drop or (epoch + 1) % 20 == 0:
+        if (epoch + 1) in args.lr_drop or (epoch + 1) % 20 == 0:
+            if rank == 0:
+                checkpoint_paths = [output_dir / 'checkpoint.pth']
+                # extra checkpoint before LR drop and every 20 epochs
                 checkpoint_paths.append(output_dir / f'checkpoint{epoch:04}.pth')
-            for checkpoint_path in checkpoint_paths:
-                torch.save({
-                    'model': model.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'lr_scheduler': lr_scheduler.state_dict(),
-                    'epoch': epoch,
-                    'args': args,
-                }, checkpoint_path)
-
-        test_stats = evaluate(
-            model, criterion, args.dataset_name, data_loader_val, device
-        )
+                for checkpoint_path in checkpoint_paths:
+                    torch.save({
+                        'model': model.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'lr_scheduler': lr_scheduler.state_dict(),
+                        'epoch': epoch,
+                        'args': args,
+                    }, checkpoint_path)
+            dist.barrier()
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                     **{f'test_{k}': v for k, v in test_stats.items()},
                      'epoch': epoch,
                      'n_parameters': n_parameters}
         
@@ -273,39 +303,52 @@ def main(args):
                 "train/cardinality_error": train_stats['cardinality_error_unscaled']
                 }
 
-        val_log_dict = {
-                "val/loss": test_stats['loss'],
-                "val/loss_ce": test_stats['loss_ce'],
-                "val/loss_coords": test_stats['loss_coords'],
-                "val/loss_coords_unscaled": test_stats['loss_coords_unscaled'],
-                "val/cardinality_error": test_stats['cardinality_error_unscaled'],
-                "val_metrics/room_prec": test_stats['room_prec'],
-                "val_metrics/room_rec": test_stats['room_rec'],
-                "val_metrics/corner_prec": test_stats['corner_prec'],
-                "val_metrics/corner_rec": test_stats['corner_rec'],
-                "val_metrics/angles_prec": test_stats['angles_prec'],
-                "val_metrics/angles_rec": test_stats['angles_rec']
-                }
-
         if args.semantic_classes > 0:
             # need to log additional metrics for semantically-rich floorplans
             train_log_dict["train/loss_ce_room"] = train_stats['loss_ce_room']
-            val_log_dict["val/loss_ce_room"] = test_stats['loss_ce_room']
-            val_log_dict["val_metrics/room_sem_prec"] = test_stats['room_sem_prec']
-            val_log_dict["val_metrics/room_sem_rec"] = test_stats['room_sem_rec']
-            val_log_dict["val_metrics/window_door_prec"] = test_stats['window_door_prec']
-            val_log_dict["val_metrics/window_door_rec"] = test_stats['window_door_rec']
-
         else:
             # only apply the rasterization loss for non-semantic floorplans
             train_log_dict["train/loss_raster"] = train_stats['loss_raster']
-            val_log_dict["val/loss_raster"] =  test_stats['loss_raster']
 
-        if 'room_iou' in test_stats:
-            val_log_dict["val_metrics/room_iou"] = test_stats['room_iou']
-                
         wandb.log(train_log_dict)
-        wandb.log(val_log_dict)
+    
+        # eval every 20
+        if (epoch + 1) % 20 == 0:
+            test_stats = evaluate(
+                model, criterion, args.dataset_name, data_loader_val, device
+            )
+            log_stats.update(**{f'test_{k}': v for k, v in test_stats.items()})
+
+            val_log_dict = {
+                    "val/loss": test_stats['loss'],
+                    "val/loss_ce": test_stats['loss_ce'],
+                    "val/loss_coords": test_stats['loss_coords'],
+                    "val/loss_coords_unscaled": test_stats['loss_coords_unscaled'],
+                    "val/cardinality_error": test_stats['cardinality_error_unscaled'],
+                    "val_metrics/room_prec": test_stats['room_prec'],
+                    "val_metrics/room_rec": test_stats['room_rec'],
+                    "val_metrics/corner_prec": test_stats['corner_prec'],
+                    "val_metrics/corner_rec": test_stats['corner_rec'],
+                    "val_metrics/angles_prec": test_stats['angles_prec'],
+                    "val_metrics/angles_rec": test_stats['angles_rec']
+                    }
+
+            if args.semantic_classes > 0:
+                # need to log additional metrics for semantically-rich floorplans
+                val_log_dict["val/loss_ce_room"] = test_stats['loss_ce_room']
+                val_log_dict["val_metrics/room_sem_prec"] = test_stats['room_sem_prec']
+                val_log_dict["val_metrics/room_sem_rec"] = test_stats['room_sem_rec']
+                val_log_dict["val_metrics/window_door_prec"] = test_stats['window_door_prec']
+                val_log_dict["val_metrics/window_door_rec"] = test_stats['window_door_rec']
+
+            else:
+                # only apply the rasterization loss for non-semantic floorplans
+                val_log_dict["val/loss_raster"] =  test_stats['loss_raster']
+
+            if 'room_iou' in test_stats:
+                val_log_dict["val_metrics/room_iou"] = test_stats['room_iou']
+                    
+            wandb.log(val_log_dict)
 
         if args.output_dir:
             with (output_dir / "log.txt").open("a") as f:
@@ -315,11 +358,12 @@ def main(args):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
 
+    dist.destroy_process_group()
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('RoomFormer training script', parents=[get_args_parser()])
     args = parser.parse_args()
-
     now = datetime.datetime.now()
     # run_id = now.strftime("%Y-%m-%d-%H-%M-%S")
     args.run_name = args.job_name # run_id+'_'+args.job_name 

@@ -6,6 +6,7 @@ import torch.utils.data
 from pycocotools.coco import COCO
 from PIL import Image
 import cv2
+import torchvision
 
 from util.poly_ops import resort_corners
 from detectron2.data import transforms as T
@@ -19,16 +20,18 @@ from detectron2.structures import BoxMode
 
 
 class MultiPoly(Dataset):
-    def __init__(self, img_folder, ann_file, transforms, semantic_classes):
+    def __init__(self, img_folder, ann_file, transforms, semantic_classes, dataset_name='', image_norm=False):
         super(MultiPoly, self).__init__()
 
         self.root = img_folder
         self._transforms = transforms
         self.semantic_classes = semantic_classes
+        self.dataset_name = dataset_name
+
         self.coco = COCO(ann_file)
         self.ids = list(sorted(self.coco.imgs.keys()))
 
-        self.prepare = ConvertToCocoDict(self.root, self._transforms)
+        self.prepare = ConvertToCocoDict(self.root, self._transforms, image_norm)
 
     def get_image(self, path):
         return Image.open(os.path.join(self.root, path))
@@ -50,7 +53,7 @@ class MultiPoly(Dataset):
         target = coco.loadAnns(ann_ids)
 
         ### Note: here is a hack which assumes door/window have category_id 16, 17 in structured3D
-        if self.semantic_classes == -1:
+        if self.semantic_classes == -1 and self.dataset_name == 'stru3d':
             target = [t for t in target if t['category_id'] not in [16, 17]]
 
         path = coco.loadImgs(img_id)[0]['file_name']
@@ -61,16 +64,35 @@ class MultiPoly(Dataset):
 
 
 class ConvertToCocoDict(object):
-    def __init__(self, root, augmentations):
+    def __init__(self, root, augmentations, image_norm):
         self.root = root
         self.augmentations = augmentations
+        if image_norm:
+            self.image_normalize = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        else:
+            self.image_normalize = None
+
+    def _expand_image_dims(self, x):
+        if len(x.shape) == 2:
+            exp_img = np.expand_dims(x, 0)
+        else:
+            exp_img = x.transpose((2, 0, 1)) # (h,w,c) -> (c,h,w)
+        return exp_img
 
     def __call__(self, img_id, path, target):
 
         file_name = os.path.join(self.root, path)
 
         img = np.array(Image.open(file_name))
-        w, h = img.shape
+
+        #### NEW
+        if len(img.shape) >= 3:
+            if img.shape[-1] > 3: # drop alpha channel
+                img = img[:, :, :3]
+            w, h = img.shape[:-1]
+        else:
+            w, h = img.shape
+        #### NEW
 
         record = {}
         record["file_name"] = file_name
@@ -82,15 +104,14 @@ class ConvertToCocoDict(object):
 
         record['annotations'] = target
 
-
         if self.augmentations is None:
-            record['image'] = (1/255) * torch.as_tensor(np.ascontiguousarray(np.expand_dims(img, 0)))
+            record['image'] = (1/255) * torch.as_tensor(np.ascontiguousarray(self._expand_image_dims(img)))
             record['instances'] = annotations_to_instances(target, (h, w), mask_format="polygon")
         else:
             aug_input = T.AugInput(img)
             transforms = self.augmentations(aug_input)
             image = aug_input.image
-            record['image'] = (1/255) * torch.as_tensor(np.array(np.expand_dims(image, 0)))
+            record['image'] = (1/255) * torch.as_tensor(np.array(self._expand_image_dims(image)))
             
             annos = [
                 transform_instance_annotations(
@@ -104,6 +125,10 @@ class ConvertToCocoDict(object):
                 anno['segmentation'][0] = resort_corners(anno['segmentation'][0])
 
             record['instances'] = annotations_to_instances(annos, (h, w), mask_format="polygon")
+
+        #### NEW ####
+        if self.image_normalize is not None:
+            record['image'] = self.image_normalize(record['image'])
             
         return record
 
@@ -133,6 +158,12 @@ def build(image_set, args):
 
     img_folder, ann_file = PATHS[image_set]
     
-    dataset = MultiPoly(img_folder, ann_file, transforms=make_poly_transforms(image_set), semantic_classes=args.semantic_classes)
+    dataset = MultiPoly(img_folder, 
+                        ann_file, 
+                        transforms=make_poly_transforms(image_set), 
+                        semantic_classes=args.semantic_classes,
+                        dataset_name=args.dataset_name,
+                        image_norm=args.image_norm,
+                        )
     
     return dataset
