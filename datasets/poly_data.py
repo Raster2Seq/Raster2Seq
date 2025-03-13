@@ -53,8 +53,11 @@ class MultiPoly(Dataset):
         target = coco.loadAnns(ann_ids)
 
         ### Note: here is a hack which assumes door/window have category_id 16, 17 in structured3D
-        if self.semantic_classes == -1 and self.dataset_name == 'stru3d':
-            target = [t for t in target if t['category_id'] not in [16, 17]]
+        if self.semantic_classes == -1:
+            if self.dataset_name == 'stru3d':
+                target = [t for t in target if t['category_id'] not in [16, 17]]
+            elif self.dataset_name == 'rplan':
+                target = [t for t in target if t['category_id'] not in [9, 11]]
 
         path = coco.loadImgs(img_id)[0]['file_name']
 
@@ -157,10 +160,11 @@ def build(image_set, args):
     }
 
     img_folder, ann_file = PATHS[image_set]
+    image_transform = None if getattr(args, 'disable_image_transform', False) else make_poly_transforms(image_set)
     
     dataset = MultiPoly(img_folder, 
                         ann_file, 
-                        transforms=make_poly_transforms(image_set), 
+                        transforms=image_transform, 
                         semantic_classes=args.semantic_classes,
                         dataset_name=args.dataset_name,
                         image_norm=args.image_norm,

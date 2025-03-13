@@ -5,6 +5,7 @@ import random
 import os
 import time
 from pathlib import Path
+import copy
 
 import numpy as np
 import wandb
@@ -40,6 +41,8 @@ def get_args_parser():
     parser.add_argument('--input_channels', default=1, type=int)
     parser.add_argument('--start_from_checkpoint', default='', help='resume from checkpoint')
     parser.add_argument('--image_norm', action='store_true')
+    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--eval_every_epoch', type=int, default=20)
 
     # parser.add_argument('--use_room_attn_at_last_dec_layer', default=False, action='store_true', help="use room-wise attention in last decoder layer")
 
@@ -160,6 +163,11 @@ def main(args):
     # sampler_train = torch.utils.data.RandomSampler(dataset_train)
     # sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
+    # overfit one sample
+    if args.debug:
+        dataset_val = torch.utils.data.Subset(copy.deepcopy(dataset_val), [0])
+        dataset_train = copy.deepcopy(dataset_val)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
+
     sampler_train = DistributedSampler(dataset_train, num_replicas=dist.get_world_size(), rank=rank, shuffle=True, seed=args.seed)
     sampler_val = DistributedSampler(dataset_val, num_replicas=dist.get_world_size(), rank=rank, shuffle=False, seed=args.seed)
 
@@ -234,7 +242,6 @@ def main(args):
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
         if 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
-            import copy
             p_groups = copy.deepcopy(optimizer.param_groups)
             optimizer.load_state_dict(checkpoint['optimizer'])
             for pg, pg_old in zip(optimizer.param_groups, p_groups):
@@ -313,9 +320,10 @@ def main(args):
         wandb.log(train_log_dict)
     
         # eval every 20
-        if (epoch + 1) % 20 == 0:
+        if (epoch + 1) % args.eval_every_epoch == 0:
             test_stats = evaluate(
-                model, criterion, args.dataset_name, data_loader_val, device
+                model, criterion, args.dataset_name, data_loader_val, device, 
+                plot_density=False, output_dir=output_dir, epoch=epoch,
             )
             log_stats.update(**{f'test_{k}': v for k, v in test_stats.items()})
 
@@ -338,8 +346,9 @@ def main(args):
                 val_log_dict["val/loss_ce_room"] = test_stats['loss_ce_room']
                 val_log_dict["val_metrics/room_sem_prec"] = test_stats['room_sem_prec']
                 val_log_dict["val_metrics/room_sem_rec"] = test_stats['room_sem_rec']
-                val_log_dict["val_metrics/window_door_prec"] = test_stats['window_door_prec']
-                val_log_dict["val_metrics/window_door_rec"] = test_stats['window_door_rec']
+                if 'window_door_prec' in test_stats:
+                    val_log_dict["val_metrics/window_door_prec"] = test_stats['window_door_prec']
+                    val_log_dict["val_metrics/window_door_rec"] = test_stats['window_door_rec']
 
             else:
                 # only apply the rasterization loss for non-semantic floorplans
@@ -370,6 +379,8 @@ if __name__ == '__main__':
     args.output_dir = os.path.join(args.output_dir, args.run_name)
 
     args.lr_drop = [int(x) for x in args.lr_drop.split(',')]
+    if args.debug:
+        args.batch_size = 1
 
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)

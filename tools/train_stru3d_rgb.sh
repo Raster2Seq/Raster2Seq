@@ -28,10 +28,12 @@ python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT ma
             --num_queries=800 \
             --num_polys=20 \
             --semantic_classes=-1 \
-            --job_name=stru3d_bs10_rgb_ddp_imnorm_cost20_loss20 \
+            --job_name=s3d_rgb_ddp_1debug_t1 \
             --output_dir /share/kuleshov/htp26/roomformer/output/ \
             --input_channels=3 \
-            --set_cost_coords=20 \
-            --image_norm \
-            --coords_loss_coef=20 \
+            --debug \
+            --eval_every_epoch 1
+            # --image_norm \
+            # --coords_loss_coef=20 \
+            # --set_cost_coords=20 \
             # --resume=/share/kuleshov/htp26/roomformer/output/stru3d_bs10_org_ddp/checkpoint.pth

@@ -80,7 +80,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(model, criterion, dataset_name, data_loader, device):
+def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=False, output_dir=None, epoch=None):
     model.eval()
     criterion.eval()
 
@@ -191,6 +191,22 @@ def evaluate(model, criterion, dataset_name, data_loader, device):
                 metric_logger.update(room_sem_rec=quant_result_dict_scene['room_sem_rec'])
                 metric_logger.update(window_door_prec=quant_result_dict_scene['window_door_prec'])
                 metric_logger.update(window_door_rec=quant_result_dict_scene['window_door_rec'])
+
+        # plot last sample
+        if plot_density and len(room_polys) > 0:
+            density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
+            if density_map.shape[2] == 3:
+                density_map = density_map * 255
+            else:
+                density_map = np.repeat(density_map, 3, axis=2) * 255
+            pred_room_map = np.zeros([256, 256, 3])
+
+            for room_poly in room_polys:
+                pred_room_map = plot_room_map(room_poly, pred_room_map)
+
+            # plot predicted polygon overlaid on the density map
+            pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
+            cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map_{}.png'.format(scene_ids[i], epoch)), pred_room_map)
 
         loss_dict_scaled = {k: v * weight_dict[k]
                                     for k, v in loss_dict.items() if k in weight_dict}
@@ -358,8 +374,11 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), floorplan_map)
 
             if plot_density:
-                density_map = np.transpose((samples[i] * 255).cpu().numpy(), [1, 2, 0])
-                density_map = np.repeat(density_map, 3, axis=2)
+                density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
+                if density_map.shape[2] == 3:
+                    density_map = density_map * 255
+                else:
+                    density_map = np.repeat(density_map, 3, axis=2) * 255
                 pred_room_map = np.zeros([256, 256, 3])
 
                 for room_poly in room_polys:
@@ -378,7 +397,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
     for metric in metric_category:
         prec = quant_result_dict[metric+'_prec']
         rec = quant_result_dict[metric+'_rec']
-        f1 = 2*prec*rec/(prec+rec)
+        f1 = 2*prec*rec/(prec+rec+1e-5)
         quant_result_dict[metric+'_f1'] = f1
 
     print("*************************************************")

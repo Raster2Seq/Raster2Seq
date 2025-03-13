@@ -5,6 +5,7 @@ import random
 import os
 import time
 from pathlib import Path
+import copy
 
 import numpy as np
 import wandb
@@ -36,6 +37,7 @@ def get_args_parser():
     # new
     parser.add_argument('--input_channels', default=1, type=int)
     parser.add_argument('--image_norm', action='store_true')
+    parser.add_argument('--debug', action='store_true')
 
     # backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
@@ -145,6 +147,10 @@ def main(args):
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
 
+    # overfit one sample
+    if args.debug:
+        dataset_val = torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
+        dataset_train = copy.deepcopy(dataset_val)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
 
     sampler_train = torch.utils.data.RandomSampler(dataset_train)
     sampler_val = torch.utils.data.SequentialSampler(dataset_val)
@@ -212,7 +218,6 @@ def main(args):
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
         if 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
-            import copy
             p_groups = copy.deepcopy(optimizer.param_groups)
             optimizer.load_state_dict(checkpoint['optimizer'])
             for pg, pg_old in zip(optimizer.param_groups, p_groups):
@@ -326,6 +331,8 @@ if __name__ == '__main__':
     args.output_dir = os.path.join(args.output_dir, args.run_name)
 
     args.lr_drop = [int(x) for x in args.lr_drop.split(',')]
+    if args.debug:
+        args.batch_size = 1
 
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
