@@ -20,6 +20,8 @@ from s3d_floorplan_eval.DataRW.S3DRW import S3DRW
 from s3d_floorplan_eval.DataRW.wrong_annotatios import wrong_s3d_annotations_list
 
 from scenecad_eval.Evaluator import Evaluator_SceneCAD
+from rplan_eval.Evaluator import Evaluator_RPlan
+
 from util.poly_ops import pad_gt_polys
 from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan
 
@@ -111,7 +113,6 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
             prob = torch.nn.functional.softmax(outputs['pred_room_logits'], -1)
             _, pred_room_label = prob[..., :-1].max(-1)
 
-
         # process per scene
         for i in range(bs):
 
@@ -125,6 +126,11 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
             elif dataset_name == 'scenecad':
                 gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1,2).astype(np.int)]
                 evaluator = Evaluator_SceneCAD()
+            elif dataset_name == 'rplan':
+                gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
+                gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
+                evaluator = Evaluator_RPlan()
+
             
             print("Running Evaluation for scene %s" % scene_ids[i])
 
@@ -176,6 +182,16 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
 
+            elif dataset_name == 'rplan':
+                if not semantic_rich:
+                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
+                                                                room_types=None, gt_polys_types=gt_polys_types,
+                                                                    )
+                else:
+                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
+                                                                room_types=room_types, gt_polys_types=gt_polys_types,
+                                                                    )
+
             if 'room_iou' in quant_result_dict_scene:
                 metric_logger.update(room_iou=quant_result_dict_scene['room_iou'])
             
@@ -207,6 +223,8 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
             # plot predicted polygon overlaid on the density map
             pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
             cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map_{}.png'.format(scene_ids[i], epoch)), pred_room_map)
+
+            plot_density = False # only plot once
 
         loss_dict_scaled = {k: v * weight_dict[k]
                                     for k, v in loss_dict.items() if k in weight_dict}
@@ -291,6 +309,10 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
             elif dataset_name == 'scenecad':
                 gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1,2).astype(np.int)]
                 evaluator = Evaluator_SceneCAD()
+            elif dataset_name == 'rplan':
+                gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
+                gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
+                evaluator = Evaluator_RPlan()
 
             print("Running Evaluation for scene %s" % scene_ids[i])
 
@@ -341,6 +363,16 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
     
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
+            elif dataset_name == 'rplan':
+                if not semantic_rich:
+                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
+                                                                room_types=None, gt_polys_types=gt_polys_types,
+                                                                    )
+                else:
+                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
+                                                                room_types=room_types, gt_polys_types=gt_polys_types,
+                                                                    )
+
 
             if quant_result_dict is None:
                 quant_result_dict = quant_result_dict_scene
