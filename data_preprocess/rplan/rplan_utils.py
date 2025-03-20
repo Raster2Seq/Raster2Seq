@@ -13,7 +13,8 @@ import os
 import json
 import sys
 
-import drawSvg as drawsvg
+# import drawSvg as drawsvg
+import drawsvg
 import cairosvg
 
 sys.path.append('../data_preprocess')
@@ -203,6 +204,7 @@ def generate_coco_dict(annos, curr_instance_id, curr_img_id, ignore_types):
         polygon = bbox_to_polygon(*bbox)
         poly_shapely = Polygon(polygon)
         #TODO: alter y coordinates by 255 - y
+        polygon[:, 1] = 255 - polygon[:, 1]
         area = poly_shapely.area
         # print(area, poly_type)
 
@@ -266,7 +268,7 @@ def generate_coco_dict(annos, curr_instance_id, curr_img_id, ignore_types):
         coco_annotation_dict_list.append(coco_annotation_dict)
         curr_instance_id += 1
 
-    scene_image = Image.open(io.BytesIO(cairosvg.svg2png(draw_color.asSvg())))
+    scene_image = Image.open(io.BytesIO(cairosvg.svg2png(draw_color.as_svg())))
 
     return coco_annotation_dict_list, scene_image
 

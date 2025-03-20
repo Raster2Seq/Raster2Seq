@@ -129,8 +129,22 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
             elif dataset_name == 'rplan':
                 gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
                 gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
+                gt_window_doors = []
+                gt_window_doors_types = []
                 evaluator = Evaluator_RPlan()
-
+            elif dataset_name == 'cubicasa':
+                gt_polys, gt_polys_types = [], []
+                gt_window_doors = []
+                gt_window_doors_types = []
+                for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
+                    gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
+                    if gt_id in [16, 17]:
+                        gt_window_doors.append(gt_poly)
+                        gt_window_doors_types.append(gt_id)
+                    else:
+                        gt_polys.append(gt_poly)
+                        gt_polys_types.append(gt_id)
+                evaluator = Evaluator_RPlan()
             
             print("Running Evaluation for scene %s" % scene_ids[i])
 
@@ -144,6 +158,8 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 room_types = []
                 window_doors = []
                 window_doors_types = []
+                gt_window_doors = []
+                gt_window_doors_types = []
                 pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
 
             # process per room
@@ -182,7 +198,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
 
-            elif dataset_name == 'rplan':
+            elif dataset_name in ['rplan', 'cubicasa']:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
@@ -190,7 +206,8 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 else:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=room_types, gt_polys_types=gt_polys_types,
-                                                                    )
+                                                                window_door_lines=window_doors, gt_window_doors_list=gt_window_doors,
+                                                                window_door_lines_types=window_doors_types, gt_window_doors_type_list=gt_window_doors_types)
 
             if 'room_iou' in quant_result_dict_scene:
                 metric_logger.update(room_iou=quant_result_dict_scene['room_iou'])
@@ -217,11 +234,12 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 density_map = np.repeat(density_map, 3, axis=2) * 255
             pred_room_map = np.zeros([256, 256, 3])
 
-            for room_poly in room_polys:
-                pred_room_map = plot_room_map(room_poly, pred_room_map)
+            for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
+                pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)
 
-            # plot predicted polygon overlaid on the density map
-            pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
+            # Blend the overlay with the density map using alpha blending
+            alpha = 0.6  # Adjust for desired transparency
+            pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
             cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map_{}.png'.format(scene_ids[i], epoch)), pred_room_map)
 
             plot_density = False # only plot once
@@ -286,7 +304,6 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
                     plot_semantic_rich_floorplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
 
-
         outputs = model(samples)
         pred_logits = outputs['pred_logits']
         pred_corners = outputs['pred_coords']
@@ -313,6 +330,19 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
                 gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
                 evaluator = Evaluator_RPlan()
+            elif dataset_name == 'cubicasa':
+                gt_polys, gt_polys_types = [], []
+                gt_window_doors = []
+                gt_window_doors_types = []
+                for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
+                    gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
+                    if gt_id in [16, 17]:
+                        gt_window_doors.append(gt_poly)
+                        gt_window_doors_types.append(gt_id)
+                    else:
+                        gt_polys.append(gt_poly)
+                        gt_polys_types.append(gt_id)
+                evaluator = Evaluator_RPlan()
 
             print("Running Evaluation for scene %s" % scene_ids[i])
 
@@ -324,6 +354,8 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 room_types = []
                 window_doors = []
                 window_doors_types = []
+                gt_window_doors = []
+                gt_window_doors_types = []
                 pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
 
             # process per room
@@ -363,7 +395,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
     
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
-            elif dataset_name == 'rplan':
+            elif dataset_name in ['rplan', 'cubicasa']:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
@@ -371,7 +403,8 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 else:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=room_types, gt_polys_types=gt_polys_types,
-                                                                    )
+                                                                window_door_lines=window_doors, gt_window_doors_list=gt_window_doors,
+                                                                window_door_lines_types=window_doors_types, gt_window_doors_type_list=gt_window_doors_types)
 
 
             if quant_result_dict is None:

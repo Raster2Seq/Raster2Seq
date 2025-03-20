@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-python eval.py --dataset_name=stru3d \
-               --dataset_root=data/coco_s3d_bw \
+python eval.py --dataset_name=cubicasa \
+               --dataset_root=data/coco_cubicasa5k \
                --eval_set=test \
                --checkpoint=output/s3d_bw_ddp_queries40x30/checkpoint0499.pth \
                --output_dir=eval_stru3d_sem_rich \
@@ -9,4 +9,4 @@ python eval.py --dataset_name=stru3d \
                --num_polys=30 \
                --semantic_classes=19 \
                --input_channels 3 \
-            #    --debug
+               # --debug

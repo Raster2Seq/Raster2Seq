@@ -54,6 +54,8 @@ def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=F
                     # plot semantically-rich floorplan
                     gt_sem_rich = []
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
+                        # if gt_inst.gt_classes.cpu().numpy()[j] not in [1, 9, 11]:
+                        #     continue
                         corners = poly[0].reshape(-1, 2).astype(np.int32)
                         corners_flip_y = corners.copy()
                         corners_flip_y[:,1] = 255 - corners_flip_y[:,1]
@@ -61,7 +63,7 @@ def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=F
                         gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
 
                     gt_sem_rich_path = os.path.join(output_dir, '{}.png'.format(str(scene_ids[i]).zfill(5)))
-                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False) 
+                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False, is_bw=True) 
 
 
 def plot_polys(data_loader, device, output_dir):
@@ -84,12 +86,18 @@ def plot_polys(data_loader, device, output_dir):
             pred_room_map = np.zeros([256, 256, 3])
 
             room_polys = gt_instances[i].gt_masks.polygons
-            for poly in room_polys:
+            room_ids = gt_instances[i].gt_classes.detach().cpu().numpy()
+            for poly, poly_id in zip(room_polys, room_ids):
                 poly = poly[0].reshape(-1,2).astype(np.int32)
-                pred_room_map = plot_room_map(poly, pred_room_map)
+                pred_room_map = plot_room_map(poly, pred_room_map, poly_id)
 
-            # plot predicted polygon overlaid on the density map
-            pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
+            
+            # Blend the overlay with the density map using alpha blending
+            alpha = 0.6  # Adjust for desired transparency
+            pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
+
+            # # plot predicted polygon overlaid on the density map
+            # pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
             cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), pred_room_map)
         
 
@@ -180,7 +188,7 @@ def get_args_parser():
 
 def main(args):
 
-    device = torch.device(args.device)
+    device = 'cpu' # torch.device(args.device)
 
     # fix the seed for reproducibility
     seed = args.seed

@@ -10,9 +10,11 @@
 
 python plot_floor.py --dataset_name=stru3d \
                --dataset_root=/share/kuleshov/htp26/floorplan_datasets/stru3d_sem_rich/ \
-               --eval_set=train \
-               --output_dir=plot_poly_outputs \
+               --eval_set=val \
+               --output_dir=/share/kuleshov/htp26/coco_s3d_bw/val \
                --semantic_classes=19 \
                --input_channels 3 \
                --disable_image_transform \
-               --plot_polys
+               --plot_gt \
+            #    --debug
+            #    --plot_polys

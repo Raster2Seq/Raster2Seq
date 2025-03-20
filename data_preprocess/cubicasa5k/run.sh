@@ -1,0 +1,1 @@
+python test.py --data_root=/share/kuleshov/htp26/floorplan_datasets/cubicasa5k/ --output=/share/kuleshov/htp26/floorplan_datasets/coco_cubicasa5k

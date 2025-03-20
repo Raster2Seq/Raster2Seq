@@ -6,7 +6,7 @@
 #SBATCH --mem=32G                  # server memory requested (per node)
 #SBATCH -t 960:00:00                  # Time limit (hh:mm:ss)
 #SBATCH --partition=gpu,kuleshov         # Request partition
-#SBATCH --constraint="[a6000|a5000|3090|a100|6000ada]"
+#SBATCH --constraint="[a6000|a5000|a5500|3090|a100|6000ada]"
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1                # Type/number of GPUs needed
 #SBATCH --cpus-per-gpu=2              # Number of CPU cores per gpu
@@ -22,16 +22,16 @@
 
 MASTER_PORT=13517
 python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
-               --dataset_root=data/stru3d_sem_rich \
+               --dataset_root=data/coco_s3d_bw \
                --num_queries=1200 \
                --num_polys=30 \
                --semantic_classes=19 \
-               --job_name=s3d_sem_rgb_ddp_queries40x30_coord10 \
+               --job_name=s3d_bw_ddp_queries40x30 \
                --batch_size 10 \
                --input_channels=3 \
                --output_dir /share/kuleshov/htp26/roomformer/output/ \
-               --set_cost_coords=10 \
-               --coords_loss_coef=10
+            #    --set_cost_coords=10 \
+            #    --coords_loss_coef=10
 
                #    --start_from_checkpoint checkpoints/roomformer_stru3d_semantic_rich.pth
                # --lr 2e-5 \

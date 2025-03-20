@@ -136,16 +136,19 @@ class ConvertToCocoDict(object):
         return record
 
 def make_poly_transforms(image_set):
+    
+    trans_list = [T.Resize((256, 256))]
 
     if image_set == 'train':
-        return T.AugmentationList([
+        trans_list.extend([
             T.RandomFlip(prob=0.5, horizontal=True, vertical=False),
             T.RandomFlip(prob=0.5, horizontal=False, vertical=True),
             T.RandomRotation([0.0, 90.0, 180.0, 270.0], expand=False, center=None, sample_style="choice")
             ]) 
+        return T.AugmentationList(trans_list)
         
     if image_set == 'val' or image_set == 'test':
-        return None
+        return T.AugmentationList(trans_list)
 
     raise ValueError(f'unknown {image_set}')
 

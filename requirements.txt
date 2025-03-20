@@ -13,3 +13,10 @@ shapely==1.8.2
 tqdm==4.64.0
 pycocotools
 descartes
+webcolors
+drawsvg
+cairosvg
+plyfile
+scikit-image==0.19.0
+svgpathtools==1.2.4
+svgwrite==1.2.1

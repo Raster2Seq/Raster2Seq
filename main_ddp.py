@@ -43,6 +43,7 @@ def get_args_parser():
     parser.add_argument('--image_norm', action='store_true')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--eval_every_epoch', type=int, default=20)
+    parser.add_argument('--ckpt_every_epoch', type=int, default=20)
 
     # parser.add_argument('--use_room_attn_at_last_dec_layer', default=False, action='store_true', help="use room-wise attention in last decoder layer")
 
@@ -264,8 +265,8 @@ def main(args):
 
     if args.start_from_checkpoint:
         checkpoint = torch.load(args.start_from_checkpoint, map_location='cpu')
-        if checkpoint['model']['backbone.0.body.conv1.weight'].size(1) != args.input_channels:
-            checkpoint['model']['backbone.0.body.conv1.weight'] = checkpoint['model']['backbone.0.body.conv1.weight'].repeat(1, args.input_channels, 1, 1)
+        if checkpoint['model']['module.backbone.0.body.conv1.weight'].size(1) != args.input_channels:
+            checkpoint['model']['module.backbone.0.body.conv1.weight'] = checkpoint['model']['module.backbone.0.body.conv1.weight'].repeat(1, args.input_channels, 1, 1)
         missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model'], strict=False)
         unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]
         if len(missing_keys) > 0:
@@ -280,7 +281,7 @@ def main(args):
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm)
         lr_scheduler.step()
-        if (epoch + 1) in args.lr_drop or (epoch + 1) % 20 == 0:
+        if (epoch + 1) in args.lr_drop or (epoch + 1) % args.ckpt_every_epoch == 0:
             if rank == 0:
                 checkpoint_paths = [output_dir / 'checkpoint.pth']
                 # extra checkpoint before LR drop and every 20 epochs
@@ -323,7 +324,7 @@ def main(args):
         if (epoch + 1) % args.eval_every_epoch == 0:
             test_stats = evaluate(
                 model, criterion, args.dataset_name, data_loader_val, device, 
-                plot_density=False, output_dir=output_dir, epoch=epoch,
+                plot_density=args.debug, output_dir=output_dir, epoch=epoch,
             )
             log_stats.update(**{f'test_{k}': v for k, v in test_stats.items()})
 

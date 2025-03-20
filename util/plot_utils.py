@@ -3,6 +3,7 @@ Utilities for floorplan visualization.
 """
 import torch
 import math
+from matplotlib.cm import get_cmap
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arc
 import matplotlib.patches as mpatches
@@ -166,17 +167,46 @@ def plot_score_map(corner_map, scores):
     return score_map
 
 
-def plot_room_map(preds, room_map, im_size=256):
+def plot_room_map(preds, room_map, room_id=0, im_size=256):
     """Draw room polygons overlaid on the density map
     """
+    centroid_x = int(np.mean(preds[:, 0]))
+    centroid_y = int(np.mean(preds[:, 1]))
+
+    # Get text size to create a background box
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.3
+    thickness = 1
+    text = str(room_id)
+    (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+
     for i, corner in enumerate(preds):
         if i == len(preds)-1:
             cv2.line(room_map, (round(corner[0]), round(corner[1])), (round(preds[0][0]), round(preds[0][1])), (252, 252, 0), 2)
         else:
             cv2.line(room_map, (round(corner[0]), round(corner[1])), (round(preds[i+1][0]), round(preds[i+1][1])), (252, 252, 0), 2)
         cv2.circle(room_map, (round(corner[0]), round(corner[1])), 2, (0, 0, 255), 2)
-        cv2.putText(room_map, str(i), (round(corner[0]), round(corner[1])), cv2.FONT_HERSHEY_SIMPLEX, 
-                   0.4, (0, 255, 0), 1, cv2.LINE_AA)
+        # cv2.putText(room_map, str(i), (round(corner[0]), round(corner[1])), cv2.FONT_HERSHEY_SIMPLEX, 
+        #            0.4, (0, 255, 0), 1, cv2.LINE_AA)
+
+        # Draw white background box with transparency
+        overlay = room_map.copy()
+        cv2.rectangle(overlay, 
+                    (centroid_x - text_width//2 - 1, centroid_y - text_height//2 - 1),
+                    (centroid_x + text_width//2 + 1, centroid_y + text_height//2 + 1),
+                    (255, 255, 255), 
+                    -1)  # Filled rectangle
+        cv2.addWeighted(overlay, 0.7, room_map, 0.3, 0, room_map)  # 70% opacity
+
+        # Draw text
+        cv2.putText(room_map, 
+                    text, 
+                    (centroid_x - text_width//2, centroid_y + text_height//2), 
+                    font, 
+                    font_scale, 
+                    (0, 0, 0), 
+                    thickness)
         
     return room_map
 
@@ -347,7 +377,7 @@ def plot_semantic_rich_floorplan(polygons, file_name, prec=None, rec=None):
     fig.savefig(file_name, dpi=fig.dpi)
 
 
-def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None, plot_text=True):
+def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None, plot_text=True, is_bw=False, img_w=256, img_h=256):
     """plot semantically-rich floorplan (i.e. with additional room label, door, window)
     """
 
@@ -357,7 +387,7 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
 
     # Set figure size to exactly 256x256 pixels
     dpi = 100  # Standard screen DPI
-    figsize = (256/dpi, 256/dpi)  # Convert pixels to inches
+    figsize = (img_w/dpi, img_h/dpi)  # Convert pixels to inches
 
     # Create square figure with fixed size
     fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -365,8 +395,8 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
 
     # Set equal aspect ratio and the limits to exactly match the coordinate space
     ax.set_aspect('equal')
-    ax.set_xlim(0, 255)
-    ax.set_ylim(0, 255)
+    ax.set_xlim(0, img_w - 1) # 255
+    ax.set_ylim(0, img_h - 1) # 255
 
     polygons_windows = []
     polygons_doors = []
@@ -392,8 +422,9 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
             polygon = Polygon(poly)
             patch = PolygonPatch(polygon, facecolor='#FFFFFF', alpha=1.0, linewidth=0)
             ax.add_patch(patch)
-            patch = PolygonPatch(polygon, facecolor=semantics_cmap[poly_type], alpha=0.5, linewidth=1, capstyle='round', edgecolor='#000000FF')
-            ax.add_patch(patch)
+            if not is_bw:
+                patch = PolygonPatch(polygon, facecolor=semantics_cmap[poly_type], alpha=0.5, linewidth=1, capstyle='round', edgecolor='#000000FF')
+                ax.add_patch(patch)
             if plot_text:
                 ax.text(np.mean(poly[:, 0]), np.mean(poly[:, 1]), semantics_label[poly_type], size=6, horizontalalignment='center', verticalalignment='center')
 
@@ -452,4 +483,7 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
 
     print(f'>>> {file_name}')
     # fig.savefig(file_name[:-3]+'svg', dpi=fig.dpi, format='svg')
+    if is_bw:
+        plt.set_cmap(get_cmap('gray'))
+    
     fig.savefig(file_name, dpi=dpi, bbox_inches='tight', pad_inches=0)

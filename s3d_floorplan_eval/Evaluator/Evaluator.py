@@ -156,7 +156,13 @@ class Evaluator():
 
         return quant_result_dict
 
-    def get_quantitative(self, gt_polys, gt_polys_types, gt_window_doors, gt_window_doors_types, ignore_mask_region, pred_polys=None, pred_types=None, pred_window_doors=None, pred_window_doors_types=None, masks_list=None, img_size=(256, 256), dataset_type="s3d"):
+    def get_quantitative(self, gt_polys, gt_polys_types, 
+                         gt_window_doors, gt_window_doors_types, 
+                         ignore_mask_region, pred_polys=None, 
+                         pred_types=None, pred_window_doors=None, 
+                         pred_window_doors_types=None, 
+                         masks_list=None, img_size=(256, 256), 
+                         dataset_type="s3d"):
         def get_room_metric():
             pred_overlaps = [False] * len(pred_room_map_list)
 

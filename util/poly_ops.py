@@ -40,7 +40,7 @@ def get_all_order_corners(corners):
     return all_corners
 
 
-def pad_gt_polys(gt_instances, num_queries_per_poly, device):
+def pad_gt_polys(gt_instances, num_queries_per_poly, device, thr_length=100):
     """Pad the ground truth polygons so that they have a uniform length
     """
 
@@ -55,6 +55,10 @@ def pad_gt_polys(gt_instances, num_queries_per_poly, device):
         for i, poly in enumerate(gt_inst.gt_masks.polygons):
             corners = torch.from_numpy(poly[0]).to(device)
             corners = torch.clip(corners, 0, 255) / 255
+
+            if thr_length is not None and len(corners) > thr_length:
+                continue
+
             corner_lengths.append(len(corners))
 
             corners_pad = torch.zeros(num_queries_per_poly*2, device=device)
