@@ -27,7 +27,7 @@ def combine_json_files(input_pattern, output_file):
     skip_file_list = []
     
     # Find all matching JSON files
-    json_files = glob.glob(input_pattern)
+    json_files = sorted(glob.glob(input_pattern))
     print(f"Found {len(json_files)} JSON files to combine")
 
     
@@ -61,7 +61,7 @@ def combine_json_files(input_pattern, output_file):
                 #         ann["image_id"] = image["id"]
             
             image_ids_seen.add(image["id"])
-            image['file_name'] = image['file_name'].replace('.png', '.jpg')
+            # image['file_name'] = image['file_name'].replace('.png', '.jpg')
             combined_data["images"].append(image)
         
         # Process annotations

@@ -195,7 +195,7 @@ def plot_room_map(preds, room_map, room_id=0, im_size=256):
         cv2.rectangle(overlay, 
                     (centroid_x - text_width//2 - 1, centroid_y - text_height//2 - 1),
                     (centroid_x + text_width//2 + 1, centroid_y + text_height//2 + 1),
-                    (255, 255, 255), 
+                    (0, 0, 0), 
                     -1)  # Filled rectangle
         cv2.addWeighted(overlay, 0.7, room_map, 0.3, 0, room_map)  # 70% opacity
 
@@ -205,7 +205,7 @@ def plot_room_map(preds, room_map, room_id=0, im_size=256):
                     (centroid_x - text_width//2, centroid_y + text_height//2), 
                     font, 
                     font_scale, 
-                    (0, 0, 0), 
+                    (0, 255, 0),
                     thickness)
         
     return room_map
@@ -469,6 +469,8 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
     for (line, line_type) in polygons_windows:
         line = LineString(line)
         poly = line.buffer(1.5, cap_style=2)
+        if poly.is_empty:
+            continue
         patch = PolygonPatch(poly, facecolor='#FFFFFF', alpha=1.0, linewidth=1, linestyle='dashed')
         ax.add_patch(patch)
 

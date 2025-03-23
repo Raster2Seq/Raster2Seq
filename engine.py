@@ -23,7 +23,7 @@ from scenecad_eval.Evaluator import Evaluator_SceneCAD
 from rplan_eval.Evaluator import Evaluator_RPlan
 
 from util.poly_ops import pad_gt_polys
-from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan
+from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan, plot_semantic_rich_floorplan_tight
 
 options = MCSSOptions()
 opts = options.parse()
@@ -302,7 +302,8 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                         gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
 
                     gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
-                    plot_semantic_rich_floorplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
+                    # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
+                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False)
 
         outputs = model(samples)
         pred_logits = outputs['pred_logits']
@@ -431,7 +432,9 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                         pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
 
                     pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
-                    plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
+                    # plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
+                    plot_semantic_rich_floorplan_tight(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], 
+                                                       rec=quant_result_dict_scene['room_rec'], plot_text=True, is_bw=False)
                 else:
                     # plot regular room floorplan
                     room_polys = [np.array(r) for r in room_polys]
@@ -446,12 +449,14 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     density_map = np.repeat(density_map, 3, axis=2) * 255
                 pred_room_map = np.zeros([256, 256, 3])
 
-                for room_poly in room_polys:
-                    pred_room_map = plot_room_map(room_poly, pred_room_map)
+                for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
+                    pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)
 
-                # plot predicted polygon overlaid on the density map
-                pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
+                # Blend the overlay with the density map using alpha blending
+                alpha = 0.6  # Adjust for desired transparency
+                pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
                 cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), pred_room_map)
+
 
     for k in quant_result_dict.keys():
         quant_result_dict[k] /= float(scene_counter)

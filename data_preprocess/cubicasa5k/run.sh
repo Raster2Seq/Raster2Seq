@@ -1,1 +1,1 @@
-python test.py --data_root=/share/kuleshov/htp26/floorplan_datasets/cubicasa5k/ --output=/share/kuleshov/htp26/floorplan_datasets/coco_cubicasa5k
+python test.py --data_root=/home/htp26/fp_datasets/cubicasa5k/ --output=/home/htp26/fp_datasets/coco_cubicasa5k_org

@@ -1,3 +1,4 @@
+import copy
 import math
 import numpy as np
 from svg_utils import PolygonWall, get_polygon, calc_distance, get_room_number, get_icon, get_icon_number, get_points, get_direction, get_gaussian2D
@@ -354,6 +355,24 @@ icon_name_map = {"Window": "Window",
                   "GeneralAppliance": "ElectricalAppliance"}
 
 
+def complete_polygons(polygons, polygon_types):
+    new_polygons = []
+    new_types = []
+    for poly, poly_type in zip(polygons, polygon_types):
+        if len(poly) < 3:
+            print(f"Class {poly_type} has less than 3 points. Skipped!")
+            continue
+        poly_array = np.array(poly)
+        t = copy.copy(poly)
+        # append the beginning point
+        if len(poly_array) > 2 and (poly_array[0] != poly_array[-1]).any():
+            t.append(poly[0])
+        new_polygons.append(t)
+        new_types.append(poly_type)
+    
+    return new_polygons, new_types
+
+
 class House:
     def __init__(self, path, height, width, icon_list=icons_selected, room_list=rooms_selected):
         self.height = height
@@ -385,6 +404,8 @@ class House:
                                'walls': []}
 
         self.icon_areas = []
+        self.wall_coords = []
+        self.icon_coords = []
 
         for e in svg.getElementsByTagName('g'):
             try: 
@@ -396,6 +417,10 @@ class House:
                     self.wall_ids[wall.rr, wall.cc] = wall_id
                     self.wall_ends.append(wall.end_points)
 
+                    Y, X = self._clip_outside(wall.Y, wall.X)
+                    self.wall_coords.append([(x, y) for x, y in zip(X, Y)])
+                    self.room_types.append(room_list["Wall"])
+
                     wall_id += 1
 
                 if e.getAttribute("id") == "Railing":
@@ -405,6 +430,10 @@ class House:
                     self.walls[wall.rr, wall.cc] = room_list["Railing"]
                     self.wall_ids[wall.rr, wall.cc] = wall_id
                     self.wall_ends.append(wall.end_points)
+
+                    Y, X = self._clip_outside(wall.Y, wall.X)
+                    self.wall_coords.append([(x, y) for x, y in zip(X, Y)])
+                    self.room_types.append(room_list["Railing"])
 
                     wall_id += 1
 
@@ -455,6 +484,9 @@ class House:
                 self.icons[cc, rr] = 1
                 self.icon_types.append(1)
 
+                Y, X = self._clip_outside(Y, X)
+                self.icon_coords.append([(x, y) for x, y in zip(X, Y)])
+
             if e.getAttribute("id") == "Door":
                 # How to reperesent empty door space
                 X, Y = get_points(e)
@@ -498,6 +530,9 @@ class House:
                 self.icons[cc, rr] = 2
                 self.icon_types.append(2)
 
+                Y, X = self._clip_outside(Y, X)
+                self.icon_coords.append([(x, y) for x, y in zip(X, Y)])
+
             if "FixedFurniture " in e.getAttribute("class"):
                 num = get_icon_number(e, icon_list)
                 if num is not None:
@@ -529,14 +564,22 @@ class House:
                         self.icons[rr, cc] = num
                         self.icon_types.append(num)
 
+                        Y, X = self._clip_outside(Y, X)
+                        self.icon_coords.append([(x, y) for x, y in zip(X, Y)])
+
             if "Space " in e.getAttribute("class"):
                 num = get_room_number(e, room_list)
-                rr, cc = get_polygon(e)
+                # rr, cc = get_polygon(e)
+                X, Y = get_points(e)
+                rr, cc = polygon(Y, X)
                 if len(rr) != 0:
                     rr, cc = self._clip_outside(rr, cc)
                     if len(rr) != 0 and len(cc) != 0:
                         self.walls[rr, cc] = num
                         self.room_types.append(num)
+
+                        Y, X = self._clip_outside(Y, X)
+                        self.wall_coords.append([(x, y) for x, y in zip(X, Y)])
 
                         rr_mean = int(round(np.mean(rr)))
                         cc_mean = int(round(np.mean(cc)))
@@ -584,6 +627,18 @@ class House:
                 self.representation['walls'].append([end_points, ['wall', 1, 1]])
             else:
                 self.representation['walls'].append([end_points, ['wall', 2, 1]])
+        
+        # append begining point at last pos
+        print("Complete room coords")
+        self.wall_coords, self.room_types = complete_polygons(self.wall_coords, self.room_types)
+        print("Complete icon coords")
+        self.icon_coords, self.icon_types = complete_polygons(self.icon_coords, self.icon_types)
+
+    
+    def get_coords_and_labels(self):
+        assert len(self.wall_coords) == len(self.room_types)
+        assert len(self.icon_coords) == len(self.icon_types)
+        return self.wall_coords, self.room_types, self.icon_coords, self.icon_types
 
 
     def get_tensor(self):

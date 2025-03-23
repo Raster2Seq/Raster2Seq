@@ -6,7 +6,7 @@ python plot_floor.py --dataset_name=cubicasa \
                --output_dir=output_gt_cubi \
                --semantic_classes=19 \
                --input_channels 3 \
-               --debug \
-               --plot_density
+               --plot_gt_image \
+            #    --plot_density
                # --plot_gt \
                # --disable_image_transform \

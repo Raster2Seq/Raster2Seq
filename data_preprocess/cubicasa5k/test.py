@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+import copy
 import argparse
 
 from tqdm import tqdm
@@ -9,8 +10,15 @@ import shutil
 import json
 import numpy as np
 import cv2
+
 from shapely.geometry import Polygon
+import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+from matplotlib.colors import ListedColormap
+
+from descartes.patch import PolygonPatch
+
 from PIL import Image
 from skimage import measure
 from multiprocessing import Pool
@@ -25,32 +33,45 @@ from common_utils import resort_corners
 from stru3d.stru3d_utils import type2id
 
 
-# ROOM_NAMES = {
-#     0: "Background", 
-#     1: "Outdoor", 
-#     2: "Wall", 
-#     3: "Kitchen", 
-#     4: "Living Room",
-#     5: "Bed Room", 
-#     6: "Bath", 
-#     7: "Entry", 
-#     8: "Railing", 
-#     9: "Storage", 
-#     10: "Garage", 
-#     11: "Undefined"
-# }
+#### ORIGINAL ROOM NAMES & ICON_NAMES ####
+ROOM_NAMES = {
+    0: "Background", 
+    1: "Outdoor", 
+    2: "Wall", 
+    3: "Kitchen", 
+    4: "Living Room",
+    5: "Bed Room", 
+    6: "Bath", 
+    7: "Entry", 
+    8: "Railing", 
+    9: "Storage", 
+    10: "Garage", 
+    11: "Undefined"
+}
+
+ICON_NAMES = {0: 'No Icon', 
+              1: 'Window', 
+              2: 'Door', 
+              3: 'Closet', 
+              4: 'Electrical Applience', 
+              5: 'Toilet', 
+              6: 'Sink', 
+              7: 'Sauna Bench', 
+              8: 'Fire Place', 
+              9: 'Bathtub', 
+              10: 'Chimney'}
 
 
 CUBICASA_TO_S3D_MAPPING = {
-    0: None,  # "Background" has no direct match
+    0: None,  # "Background"
     1: type2id['balcony'],  # "Outdoor" -> balcony (4)
     2: None,  # "Wall" has no direct match
     3: type2id['kitchen'],  # Kitchen -> kitchen (1)
     4: type2id['living room'],  # Living Room -> living room (0)
     5: type2id['bedroom'],  # Bed Room -> bedroom (2)
     6: type2id['bathroom'],  # Bath -> bathroom (3)
-    7: type2id['corridor'],  # Entry -> corridor (5) as closest match
-    8: None,  # "Railing" has no direct match, it is a subset of balcony
+    7: 18,  # 'Entry' has no direct match
+    8: 19,  # "Railing" has no direct match
     9: type2id['store room'],  # Storage -> store room (9)
     10: type2id['garage'],  # Garage -> garage (14)
     11: type2id['undefined'],  # Undefined -> undefined (15)
@@ -58,10 +79,50 @@ CUBICASA_TO_S3D_MAPPING = {
     13: type2id['door'], # Door -> door (16) 
 }
 
+CLASS_MAPPING = {'living room': 0, 'kitchen': 1, 'bedroom': 2, 'bathroom': 3, 'balcony': 4, 'corridor': 5,
+            'dining room': 6, 'study': 7, 'studio': 8, 'store room': 9, 'garden': 10, 'laundry room': 11,
+            'office': 12, 'basement': 13, 'garage': 14, 'undefined': 15, 'door': 16, 'window': 17, 
+            'entry': 18, 'railing': 19}
+
+
+def close_contour(contour):
+    if not np.array_equal(contour[0], contour[-1]):
+        contour = np.vstack((contour, contour[0]))
+    return contour
+
+
+def binary_mask_to_polygon(binary_mask, tolerance=0):
+    """Converts a binary mask to COCO polygon representation
+    Ref: https://github.com/waspinator/pycococreator/blob/master/pycococreatortools/pycococreatortools.py
+
+    Args:
+        binary_mask: a 2D binary numpy array where '1's represent the object
+        tolerance: Maximum distance from original points of polygon to approximated
+            polygonal chain. If tolerance is 0, the original coordinate array is returned.
+
+    """
+    polygons = []
+    # pad mask to close contours of shapes which start and end at an edge
+    padded_binary_mask = np.pad(binary_mask, pad_width=1, mode='constant', constant_values=0)
+    contours = measure.find_contours(padded_binary_mask, 0.5)
+    contours = np.subtract(contours, 1)
+    for contour in contours:
+        contour = close_contour(contour)
+        contour = measure.approximate_polygon(contour, tolerance)
+        if len(contour) < 3:
+            continue
+        contour = np.flip(contour, axis=1)
+        segmentation = contour.ravel().tolist()
+        # after padding and subtracting 1 we may get -0.5 points in our segmentation 
+        segmentation = [0 if i < 0 else i for i in segmentation]
+        polygons.append(segmentation)
+
+    return polygons
+
 
 def extract_room_polygons_cv2(mask, skip_classes=[]):
     room_ids = np.unique(mask)
-    room_ids = room_ids[room_ids != 0]
+    # room_ids = room_ids[room_ids != 0]
     
     room_polygons = []
     
@@ -71,48 +132,52 @@ def extract_room_polygons_cv2(mask, skip_classes=[]):
             continue
         # Create binary mask for this room
         room_mask = (mask == room_id).astype(np.uint8)
-        
-        # Find contours using OpenCV
-        contours, _ = cv2.findContours(
-            room_mask, 
-            cv2.RETR_EXTERNAL, 
-            cv2.CHAIN_APPROX_SIMPLE
-        )
-        
-        if contours:
-            # Get the largest contour
-            largest_contour = max(contours, key=cv2.contourArea)
 
-            polygon = [tuple(point[0]) for point in largest_contour]
-            if len(polygon) < 3:
-                continue
-            poly = Polygon(polygon)
-            simplified_poly = poly.simplify(tolerance=0.5, preserve_topology=True)
-            simplified_poly = list(simplified_poly.exterior.coords)
-            room_polygons.append([simplified_poly, int(room_id)])
+        polygon = binary_mask_to_polygon(room_mask, tolerance=0)
+        room_polygons.append([np.array(polygon[0]).reshape(-1, 2), int(room_id)])
+        
+        # # Find contours using OpenCV
+        # contours, _ = cv2.findContours(
+        #     room_mask, 
+        #     cv2.RETR_EXTERNAL, 
+        #     cv2.CHAIN_APPROX_SIMPLE
+        # )
+        
+        # if contours:
+        #     # Get the largest contour
+        #     largest_contour = max(contours, key=cv2.contourArea)
 
-            # # Optional: Simplify polygon
-            # epsilon = 0.01 * cv2.arcLength(largest_contour, True)
-            # approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+        #     polygon = [tuple(point[0]) for point in largest_contour]
+        #     if len(polygon) < 3:
+        #         continue
+        #     # # Simpify polygon with shapely
+        #     # poly = Polygon(polygon)
+        #     # simplified_poly = poly.simplify(tolerance=0.1, preserve_topology=True)
+        #     # simplified_poly = list(simplified_poly.exterior.coords)
+        #     room_polygons.append([polygon, int(room_id)])
+
+        #     # # Optional: Simplify polygon
+        #     # epsilon = 0.01 * cv2.arcLength(largest_contour, True)
+        #     # approx = cv2.approxPolyDP(largest_contour, epsilon, True)
             
-            # # Convert to list of (x, y) tuples
-            # polygon = [tuple(point[0]) for point in polygon]
+        #     # # Convert to list of (x, y) tuples
+        #     # polygon = [tuple(point[0]) for point in polygon]
             
-            # room_polygons[int(room_id)] = polygon
+        #     # room_polygons[int(room_id)] = polygon
     
     return room_polygons
 
-def extract_icon_cv2(mask):
-    # room_ids = np.unique(mask)
-    room_ids = [1, 2] # window, door
+
+def extract_icon_cv2(mask, start_cls_id=11, skip_classes=[]):
+    room_ids = np.unique(mask)
     room_polygons = []
     new_mask = np.zeros(mask.shape)
     
+    # window, door
     for room_id in room_ids:
-        # window, door
-        # if int(room_id) not in [1, 2]:
-        #     continue
-        true_room_id = int(room_id)+11
+        if room_id in skip_classes:
+            continue
+        true_room_id = int(room_id) + start_cls_id
         # Create binary mask for this room
         room_mask = (mask == room_id).astype(np.uint8)
         new_mask = np.where(room_mask, true_room_id, 0)
@@ -140,8 +205,7 @@ def extract_icon_cv2(mask):
     return room_polygons, new_mask
 
 
-
-def visualize_room_polygons(mask, room_polygons, figsize=(10, 10), save_path='cubicasa_debug.jpg'):
+def visualize_room_polygons(mask, room_polygons, class_names, save_path='cubicasa_debug.png', bg_polygons=None):
     """
     Visualize the extracted room polygons.
     
@@ -150,33 +214,70 @@ def visualize_room_polygons(mask, room_polygons, figsize=(10, 10), save_path='cu
         room_polygons: Dictionary of room polygons as returned by extract_room_polygons
         figsize: Figure size for the plot
     """
-    # # Set figure size to exactly 256x256 pixels
-    # dpi = 100  # Standard screen DPI
-    # figsize = (256/dpi, 256/dpi)  # Convert pixels to inches
+    # Set figure size to exactly 256x256 pixels
+    dpi = 100  # Standard screen DPI
+    figsize = (mask.shape[1]/dpi, mask.shape[0]/dpi)  # Convert pixels to inches
 
-    plt.figure(figsize=figsize)
-    
-    # Show the original mask
-    plt.imshow(mask, cmap='nipy_spectral', interpolation='nearest', alpha=0.6)
+    # Get unique classes from the mask
+    unique_classes = np.unique(mask)
+
+    # Create a discrete colormap
+    cmap = plt.cm.get_cmap('gist_ncar', 256) # nipy_spectral
+    # cmap = ListedColormap([cmap(x) for x in np.linspace(0, 1, int(20))])
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_axes([0, 0, 1, 1])
+    plt.imshow(mask, cmap=cmap, interpolation='nearest', alpha=0.6, vmin=0, vmax=20)
     
     # Plot each room polygon
-    for room_id, polygon in room_polygons:
-        polygon_array = np.array(polygon)
-        plt.plot(polygon_array[:, 0], polygon_array[:, 1], 'k-', linewidth=2)
-        
-        # # Add room ID label at the centroid
-        # centroid_x = np.mean(polygon_array[:, 0])
-        # centroid_y = np.mean(polygon_array[:, 1])
-        # plt.text(centroid_x, centroid_y, str(room_id), 
-        #          fontsize=12, ha='center', va='center',
-        #          bbox=dict(facecolor='white', alpha=0.7))
+    for polygon, room_cls in room_polygons:
+        polygon_array = np.array(polygon).copy()
+        # # flip y
+        # polygon_array[:, 1] = mask.shape[0] - polygon_array[:, 1] - 1
+        ax.plot(polygon_array[:, 0], polygon_array[:, 1], 'k-', linewidth=2)
+
+        # Add room ID label at the centroid
+        centroid_x = np.mean(polygon_array[:, 0])
+        centroid_y = np.mean(polygon_array[:, 1])
+        ax.text(centroid_x, centroid_y, str(room_cls), 
+                 fontsize=12, ha='center', va='center',
+                 bbox=dict(facecolor='white', alpha=0.7))
     
-    plt.title('Room Polygons Extracted from Segmentation Mask')
+    if bg_polygons is not None:
+        # Plot each room polygon
+        for polygon, room_cls in bg_polygons:
+            polygon_array = np.array(polygon).copy()
+            # # flip y
+            # polygon_array[:, 1] = mask.shape[0] - polygon_array[:, 1] - 1
+            ax.plot(polygon_array[:, 0], polygon_array[:, 1], 'c-', linewidth=2)
+    
+    # Create custom legend elements
+    legend_elements = []
+    norm = np.linspace(0, 1, 21) # int(max(unique_classes))+1
+
+    for i, cls in enumerate(sorted(unique_classes)):
+        # if int(cls) == 0:
+        #     continue
+        # Get the exact same color that imshow uses
+        color = cmap(norm[int(cls)])
+        # color = cmap(int(cls))
+
+        cls_name = f"{int(cls)}_{class_names[int(cls)]}"
+        # You can replace f"Class {cls}" with your actual class names if available
+        legend_elements.append(Patch(facecolor=color, edgecolor='black',
+                                   label=f"{cls_name}", alpha=0.6))
+    
+    # Add the legend to the plot
+    ax.legend(handles=legend_elements, loc='best',
+              title="Classes", fontsize=20, markerscale=4, title_fontsize=28,
+              )
+
+    # plt.title('Room Polygons Extracted from Segmentation Mask')
     plt.axis('equal')
     plt.axis('off')
-    plt.tight_layout()
-    plt.savefig(save_path, bbox_inches='tight', pad_inches=0)
-    # plt.show()
+    fig.savefig(save_path, bbox_inches='tight', pad_inches=0)
+    plt.close()
+
 
 def config():
     a = argparse.ArgumentParser(description='Generate coco format data for Structured3D')
@@ -194,20 +295,33 @@ def detele_iccfile(image_path, output_path):
     img.info.pop('icc_profile', None)
     img.save(output_path)
 
-def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder):
+
+def remove_polygons_by_type(polygons, skip_types=[]):
+    new_room_polygons = []
+    for polygon, poly_type in polygons:
+        if poly_type in skip_types:
+            continue
+        new_room_polygons.append([polygon, poly_type])
+    return new_room_polygons
+
+
+def merge_rooms_and_icons(room_polygons, icon_polygons):
+    new_icon_polygons = []
+    for poly, poly_type in icon_polygons:
+        new_icon_polygons.append([poly, poly_type+11])
+    
+    return room_polygons + new_icon_polygons
+        
+
+def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, vis_fp=False):
     # image_set = dataset[scene_id]
 
     mask = image_set['label'].numpy()
-    room_polygons = extract_room_polygons_cv2(mask[0], skip_classes=[2])
-    icon_polygons, icon_mask = extract_icon_cv2(mask[1])
+    # room_polygons = extract_room_polygons_cv2(mask[0], skip_classes=[0]) # [2]
+    # icon_polygons, icon_mask = extract_icon_cv2(mask[1], start_cls_id=0, skip_classes=[]) # [0] + list(range(3,11))
+    room_polygons = [[poly, poly_type] for poly, poly_type in zip(image_set['room_polygon'], image_set['room_type'])]
+    icon_polygons = [[poly, poly_type] for poly, poly_type in zip(image_set['icon_polygon'], image_set['icon_type'])]
 
-    combined_mask = mask[0]
-    combined_mask = np.where(icon_mask != 0, icon_mask, combined_mask)
-    # combined_mask[icon_mask != 0] = icon_mask[icon_mask != 0]
-    room_polygons.extend(icon_polygons)
-
-    # visualize_room_polygons(combined_mask, room_polygons, save_path='cubicasa_combined_debug4.jpg')
-    # visualize_room_polygons(icon_mask, room_polygons, save_path='cubicasa_icon_debug3.jpg')
     
     image_height, image_width = mask.shape[1:]
     new_polygon_list = []
@@ -219,18 +333,66 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
     instance_id = 0
     img_id = int(scene_id) + start_scene_id
     img_dict = {}
-    img_dict["file_name"] = str(img_id).zfill(5) + '.jpg'
+    img_dict["file_name"] = str(img_id).zfill(5) + '.png'
     img_dict["id"] = img_id 
     img_dict["width"] = image_width
     img_dict["height"] = image_height
 
-    detele_iccfile(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.jpg'}")
+    if vis_fp:
+        os.makedirs(save_dir.rstrip('/') + '_aux', exist_ok=True)
+        visualize_room_polygons(mask[0], room_polygons, list(ROOM_NAMES.values()), 
+                                save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_room.png")
+        visualize_room_polygons(mask[1], icon_polygons, list(ICON_NAMES.values()), 
+                                bg_polygons=room_polygons, save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_icon.png")
+
+
+    #### FILTER NON-USE TYPES
+    # DROP BG, Wall
+    room_skip_types = [0, 2]
+    filtered_room_polygons = remove_polygons_by_type(room_polygons, skip_types=room_skip_types)
+    # visualize_room_polygons(mask[0], filtered_room_polygons, list(ROOM_NAMES.values()), 
+    #                         save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_room_filtered.png")
+
+    # Exclude all furnitures, excepts window, door
+    icon_skip_types = [0, *list(range(3, 11))]
+    filtered_icon_polygons = remove_polygons_by_type(icon_polygons, skip_types=icon_skip_types)
+    # visualize_room_polygons(mask[1], filtered_icon_polygons, list(ICON_NAMES.values()), 
+    #                         bg_polygons=room_polygons, save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_icon_filtered.png")
+
+    detele_iccfile(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}")
     # shutil.copy(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}")
 
-    for poly_ind, (polygon, poly_type) in enumerate(room_polygons):
+    #### COMBINED
+    combined_polygons = merge_rooms_and_icons(filtered_room_polygons, filtered_icon_polygons)
+
+    filtered_mask1 = mask[0].copy()
+    filtered_mask1[np.isin(mask[0], room_skip_types)] = 0
+    # for x in room_skip_types:
+    #     filtered_mask1[filtered_mask1 == x] = 0
+
+    filtered_mask2 = mask[1].copy()
+    filtered_mask2[np.isin(mask[1], icon_skip_types)] = 0
+    filtered_mask2[filtered_mask2 != 0] += 11
+    # for x in icon_skip_types:
+    #     filtered_mask2[filtered_mask2 == x] = 0
+    filtered_mask = np.where(filtered_mask2 != 0, filtered_mask2, filtered_mask1)
+
+    new_filtered_mask = filtered_mask.copy()
+    for src_type, dest_type in CUBICASA_TO_S3D_MAPPING.items():
+        if dest_type is None:
+            continue
+        new_filtered_mask[filtered_mask == src_type] = dest_type + 1
+    # filtered_mask = new_filtered_mask
+            
+    # visualize_room_polygons(combined_mask, combined_polygons, list(ROOM_NAMES.values()) + list(ICON_NAMES.values()), save_path=f"{save_dir}/{str(img_id).zfill(5)}_combined.png")
+
+    output_polygon_list = []
+    combined_polygon_list = []
+    for poly_ind, (polygon, poly_type) in enumerate(combined_polygons):
         poly_shapely = Polygon(polygon)
         area = poly_shapely.area
         
+        org_poly_type = poly_type
         poly_type = CUBICASA_TO_S3D_MAPPING[poly_type]
         if poly_type is None:
             continue
@@ -278,7 +440,6 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
             else:
                 polygon = np.row_stack([midp_2, midp_4])
 
-
         coco_seg_poly = []
         poly_sorted = resort_corners(polygon)
         # image = draw_polygon_on_image(image, poly_shapely, "test_poly.jpg")
@@ -313,6 +474,8 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
         coco_annotation_dict_list.append(coco_annotation_dict)
         instance_id += 1
 
+        combined_polygon_list.append([np.array(coco_seg_poly).reshape(-1, 2), org_poly_type])
+        output_polygon_list.append([np.array(coco_seg_poly).reshape(-1, 2), poly_type+1])
 
         # # modified for plotting
         # corners = polygon
@@ -325,10 +488,16 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
     save_dict['images'].append(img_dict)
     save_dict["annotations"] += coco_annotation_dict_list
 
-
     json_path = f"{annos_folder}/{str(img_id).zfill(5) + '.json'}"
     with open(json_path, 'w') as f:
         json.dump(save_dict, f)
+
+
+    if vis_fp:
+        visualize_room_polygons(filtered_mask, combined_polygon_list, list(ROOM_NAMES.values()) + ['window', 'door'], 
+                                save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_combined.png")
+        visualize_room_polygons(new_filtered_mask, output_polygon_list, ['null'] + list(CLASS_MAPPING.keys()), 
+                                save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_final.png")
 
     # save_path = f"{save_dir}/plot_debug.jpg"
     # plot_semantic_rich_floorplan_tight(new_polygon_list, save_path, prec=1, rec=1, plot_text=False, is_bw=True, 
@@ -400,7 +569,7 @@ if __name__ == '__main__':
 
     def wrapper(scene_id):
         image_set = dataset[scene_id]
-        process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder)
+        process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, vis_fp=scene_id < 100)
 
     def worker_init(dataset_obj):
         # Store dataset as global to avoid pickling issues
@@ -416,17 +585,12 @@ if __name__ == '__main__':
 
         annos_folder = annos_folders[split_id]
 
-        # # for scene_id, image_set in enumerate(tqdm(dataset)):
         # for scene_id in tqdm(range(0, len(dataset), 1)):
-        #     # process_floorplan(dataset, scene_id, start_scene_id, args, save_dir, annos_folder)
         #     wrapper(scene_id)
 
         num_processes = 16
         with Pool(num_processes, initializer=worker_init, initargs=(dataset,)) as p:
-            # args = [(dataset[i], i) for i in range(len(dataset))]
             indices = range(len(dataset))
             list(tqdm(p.imap(wrapper, indices), total=len(dataset)))
 
         start_scene_id += len(dataset)
-        # with open(json_path, 'w') as f:
-        #     json.dump(save_dict, f)

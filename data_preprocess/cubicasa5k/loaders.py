@@ -89,6 +89,7 @@ class FloorplanSVG(Dataset):
         # Combining them to one numpy tensor
         label = torch.tensor(house.get_segmentation_tensor().astype(np.float32))
         heatmaps = house.get_heatmap_dict()
+        room_polygons, room_types, icon_polygons, icon_types = house.get_coords_and_labels()
         coef_width = 1
         if self.original_size:
             fplan = cv2.imread(self.data_folder + self.folders[index] + self.org_image_file_name)
@@ -106,10 +107,23 @@ class FloorplanSVG(Dataset):
             for key, value in heatmaps.items():
                 heatmaps[key] = [(int(round(x*coef_width)), int(round(y*coef_height))) for x, y in value]
 
+            new_room_polygons = []
+            for poly in room_polygons:
+                new_room_polygons.append([(int(round(x*coef_width)), int(round(y*coef_height))) for x, y in poly])
+            room_polygons = new_room_polygons
+
+            new_icon_polygons = []
+            for poly in icon_polygons:
+                new_icon_polygons.append([(int(round(x*coef_width)), int(round(y*coef_height))) for x, y in poly])
+            icon_polygons = new_icon_polygons
+
         img = torch.tensor(fplan.astype(np.float32))
 
         sample = {'image': img, 'label': label, 'folder': self.folders[index],
-                  'heatmaps': heatmaps, 'scale': coef_width}
+                  'heatmaps': heatmaps, 'scale': coef_width, 
+                  'room_polygon': room_polygons, 'room_type': room_types,
+                  'icon_polygon': icon_polygons, 'icon_type': icon_types,
+                  }
 
         return sample
 

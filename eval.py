@@ -118,7 +118,7 @@ def main(args):
     dataset_eval = build_dataset(image_set=args.eval_set, args=args)
     # overfit one sample
     if args.debug:
-        dataset_eval = torch.utils.data.Subset(dataset_eval, [103])
+        dataset_eval = torch.utils.data.Subset(dataset_eval, [31])
 
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
 

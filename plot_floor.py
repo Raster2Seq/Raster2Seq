@@ -99,6 +99,29 @@ def plot_polys(data_loader, device, output_dir):
             # # plot predicted polygon overlaid on the density map
             # pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
             cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), pred_room_map)
+
+
+def plot_gt_image(data_loader, device, output_dir):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+
+    for batched_inputs in data_loader:
+
+        samples = [x["image"].to(device) for x in batched_inputs]
+        scene_ids = [x["image_id"] for x in batched_inputs]
+        gt_instances = [x["instances"].to(device) for x in batched_inputs]
+        
+
+        for i in range(len(samples)):
+            density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
+            if density_map.shape[2] == 3:
+                density_map = density_map * 255
+            else:
+                density_map = np.repeat(density_map, 3, axis=2) * 255
+
+            # # plot predicted polygon overlaid on the density map
+            # pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
+            cv2.imwrite(os.path.join(output_dir, '{}_gt_image.png'.format(scene_ids[i])), density_map)
         
 
 def get_args_parser():
@@ -180,6 +203,7 @@ def get_args_parser():
     # visualization options
     parser.add_argument('--plot_density', default=False, action='store_true', help="plot predicited room polygons overlaid on the density map")
     parser.add_argument('--plot_gt', default=False, action='store_true', help="plot ground truth floorplan")
+    parser.add_argument('--plot_gt_image', default=False, action='store_true', help="plot ground truth image")
 
 
     return parser
@@ -244,6 +268,9 @@ def main(args):
     
     if args.plot_density:
         plot_polys(data_loader_eval, device, save_dir)
+
+    if args.plot_gt_image:
+        plot_gt_image(data_loader_eval, device, save_dir)
 
 
 if __name__ == '__main__':

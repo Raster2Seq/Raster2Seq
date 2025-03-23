@@ -1,2 +1,7 @@
 __pycache__
 .pyc
+diff_rass
+models/ops
+
+data/
+data2/
