@@ -3,7 +3,6 @@ import os
 import glob
 from pathlib import Path
 
-
 def combine_json_files(input_pattern, output_file):
     """
     Combines multiple COCO-style JSON annotation files into a single file.
@@ -22,8 +21,7 @@ def combine_json_files(input_pattern, output_file):
     # Track image and annotation IDs to avoid duplicates
     image_ids_seen = set()
     annotation_ids_seen = set()
-    next_image_id = 1
-    next_annotation_id = 1
+    next_annotation_id = 0
     skip_file_list = []
     
     # Find all matching JSON files
@@ -37,9 +35,14 @@ def combine_json_files(input_pattern, output_file):
         
         with open(json_file, 'r') as f:
             data = json.load(f)
-        
+
         # Store categories from the first file
         if i == 0 and data.get("categories"):
+            # save_list = []
+            # for key, value in CC5K_CLASS_MAPPING.items():
+            #     type_dict = {"supercategory": "room", "id": value, "name": key}
+            #     save_list.append(type_dict)
+            # combined_data["categories"] = save_list
             combined_data["categories"] = data["categories"]
         
         # empty annos
@@ -49,28 +52,15 @@ def combine_json_files(input_pattern, output_file):
         
         # Process images
         for image in data.get("images", []):
-            # # Check if image ID already exists
-            # if image["id"] in image_ids_seen:
-                # old_id = image["id"]
-                # image["id"] = next_image_id
-                # next_image_id += 1
-                
-                # # Update annotations that reference this image
-                # for ann in data.get("annotations", []):
-                #     if ann["image_id"] == old_id:
-                #         ann["image_id"] = image["id"]
-            
-            image_ids_seen.add(image["id"])
+            # image['id'] = next_image_id
+            # next_image_id += 1
             # image['file_name'] = image['file_name'].replace('.png', '.jpg')
             combined_data["images"].append(image)
         
         # Process annotations
         for annotation in data.get("annotations", []):
-            # Check if annotation ID already exists
-            if annotation["id"] in annotation_ids_seen:
-                annotation["id"] = next_annotation_id
-                next_annotation_id += 1
-            
+            annotation["id"] = next_annotation_id
+            next_annotation_id += 1
             annotation_ids_seen.add(annotation["id"])
             combined_data["annotations"].append(annotation)
     

@@ -24,6 +24,7 @@ from rplan_eval.Evaluator import Evaluator_RPlan
 
 from util.poly_ops import pad_gt_polys
 from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan, plot_semantic_rich_floorplan_tight
+from datasets import get_dataset_class_labels
 
 options = MCSSOptions()
 opts = options.parse()
@@ -42,6 +43,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     for batched_inputs in metric_logger.log_every(data_loader, print_freq, header):
         samples = [x["image"].to(device) for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
+        print("Max #polys: ", max([len(gt_instances[i].gt_masks.polygons) for i in range(len(gt_instances))]))
+        # print("Max #corners: ", max([gt_instances[i].gt_masks.polygons for i in range(gt_instances)]))
+
         if hasattr(model, 'module'):
             room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
         else:
@@ -85,6 +89,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=False, output_dir=None, epoch=None):
     model.eval()
     criterion.eval()
+    door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -138,7 +143,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 gt_window_doors_types = []
                 for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
                     gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
-                    if gt_id in [16, 17]:
+                    if gt_id in door_window_index:
                         gt_window_doors.append(gt_poly)
                         gt_window_doors_types.append(gt_id)
                     else:
@@ -177,7 +182,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                                 room_polys.append(corners)
                     else:
                         # regular rooms
-                        if pred_room_label_per_scene[j] not in [16,17]:
+                        if pred_room_label_per_scene[j] not in door_window_index:
                             if len(corners)>=4 and Polygon(corners).area >= 100:
                                 room_polys.append(corners)
                                 room_types.append(pred_room_label_per_scene[j])
@@ -262,6 +267,8 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
 def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False):
     model.eval()
 
+    door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
+
     quant_result_dict = None
     scene_counter = 0
     
@@ -337,7 +344,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 gt_window_doors_types = []
                 for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
                     gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
-                    if gt_id in [16, 17]:
+                    if gt_id in door_window_index:
                         gt_window_doors.append(gt_poly)
                         gt_window_doors_types.append(gt_id)
                     else:
@@ -374,7 +381,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                                 room_polys.append(corners)
                     else:
                         # regular rooms
-                        if pred_room_label_per_scene[j] not in [16,17]:
+                        if pred_room_label_per_scene[j] not in door_window_index:
                             if len(corners)>=4 and Polygon(corners).area >= 100:
                                 room_polys.append(corners)
                                 room_types.append(pred_room_label_per_scene[j])

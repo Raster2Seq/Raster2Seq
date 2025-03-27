@@ -324,7 +324,7 @@ def main(args):
         if (epoch + 1) % args.eval_every_epoch == 0:
             test_stats = evaluate(
                 model, criterion, args.dataset_name, data_loader_val, device, 
-                plot_density=args.debug, output_dir=output_dir, epoch=epoch,
+                plot_density=True, output_dir=output_dir, epoch=epoch,
             )
             log_stats.update(**{f'test_{k}': v for k, v in test_stats.items()})
 

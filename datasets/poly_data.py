@@ -15,6 +15,8 @@ import numpy as np
 import os
 from copy import deepcopy
 
+from datasets.transforms import Resize, ResizeAndPad
+
 from detectron2.data.detection_utils import annotations_to_instances, transform_instance_annotations
 from detectron2.structures import BoxMode
 
@@ -135,9 +137,12 @@ class ConvertToCocoDict(object):
             
         return record
 
-def make_poly_transforms(image_set):
+
+def make_poly_transforms(dataset_name, image_set):
     
-    trans_list = [T.Resize((256, 256))]
+    trans_list = []
+    if dataset_name == 'cubicasa':
+        trans_list = [ResizeAndPad((256, 256), pad_value=255)]
 
     if image_set == 'train':
         trans_list.extend([
@@ -148,9 +153,10 @@ def make_poly_transforms(image_set):
         return T.AugmentationList(trans_list)
         
     if image_set == 'val' or image_set == 'test':
-        return T.AugmentationList(trans_list)
+        return None if len(trans_list) == 0 else T.AugmentationList(trans_list)
 
     raise ValueError(f'unknown {image_set}')
+
 
 def build(image_set, args):
     root = Path(args.dataset_root)
@@ -163,7 +169,7 @@ def build(image_set, args):
     }
 
     img_folder, ann_file = PATHS[image_set]
-    image_transform = None if getattr(args, 'disable_image_transform', False) else make_poly_transforms(image_set)
+    image_transform = None if getattr(args, 'disable_image_transform', False) else make_poly_transforms(args.dataset_name, image_set)
     
     dataset = MultiPoly(img_folder, 
                         ann_file, 

@@ -316,7 +316,13 @@ def plot_semantic_rich_floorplan(polygons, file_name, prec=None, rec=None):
             ax.add_patch(patch)
             patch = PolygonPatch(polygon, facecolor=semantics_cmap[poly_type], alpha=0.5, linewidth=1, capstyle='round', edgecolor='#000000FF')
             ax.add_patch(patch)
-            ax.text(np.mean(poly[:, 0]), np.mean(poly[:, 1]), semantics_label[poly_type], size=6, horizontalalignment='center', verticalalignment='center')
+            ax.text(np.mean(poly[:, 0]), np.mean(poly[:, 1]), 
+                    semantics_label[poly_type], 
+                    fontsize=6, 
+                    horizontalalignment='center', 
+                    verticalalignment='center',
+                    bbox=dict(facecolor='white', alpha=0.7)
+                    )
 
 
     # Compute door size statistics (median)
@@ -377,7 +383,7 @@ def plot_semantic_rich_floorplan(polygons, file_name, prec=None, rec=None):
     fig.savefig(file_name, dpi=fig.dpi)
 
 
-def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None, plot_text=True, is_bw=False, img_w=256, img_h=256):
+def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None, plot_text=True, is_bw=False, door_window_index=[16,17], img_w=256, img_h=256):
     """plot semantically-rich floorplan (i.e. with additional room label, door, window)
     """
 
@@ -406,17 +412,17 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
         if len(poly) > 2:
             polygon = Polygon(poly)
 
-            if poly_type != 16 and poly_type != 17:
+            if poly_type not in door_window_index:
                 plot_coords(ax, polygon.exterior, alpha=1.0, linewidth=10)
     
     # Iterate over all predicted polygons (rooms, doors, windows)
     for (poly, poly_type) in polygons:
         if poly_type == 'outqwall':  # unclear what is this?
             pass
-        elif poly_type == 16:  # Door
+        elif poly_type == door_window_index[0]:  # Door
             door_length = math.dist(poly[0], poly[1])
             polygons_doors.append([poly, poly_type, door_length])
-        elif poly_type == 17:  # Window
+        elif poly_type == door_window_index[1]:  # Window
             polygons_windows.append([poly, poly_type])
         else: # regular room
             polygon = Polygon(poly)
@@ -489,3 +495,127 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
         plt.set_cmap(get_cmap('gray'))
     
     fig.savefig(file_name, dpi=dpi, bbox_inches='tight', pad_inches=0)
+
+
+def plot_semantic_rich_floorplan_nicely(polygons, 
+                                      file_name, 
+                                      prec=None, 
+                                      rec=None, 
+                                      plot_text=True, 
+                                      is_bw=False, 
+                                      door_window_index=[16,17], 
+                                      img_w=256, 
+                                      img_h=256,
+                                      semantics_label_mapping=semantics_label,
+                                      ):
+    """plot semantically-rich floorplan (i.e. with additional room label, door, window)
+    """
+
+    # Set figure size to exactly 256x256 pixels
+    dpi = 100  # Standard screen DPI
+    figsize = (img_w/dpi, img_h/dpi)  # Convert pixels to inches
+
+    # Create square figure with fixed size
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1])
+
+    # Set equal aspect ratio and the limits to exactly match the coordinate space
+    # ax.set_aspect('equal')
+    # ax.set_xlim(0, img_w - 1) # 255
+    # ax.set_ylim(0, img_h - 1) # 255
+
+    polygons_windows = []
+    polygons_doors = []
+
+    # Iterate over rooms to draw black outline
+    for (poly, poly_type) in polygons:
+        if len(poly) > 2:
+            polygon = Polygon(poly)
+
+            if poly_type not in door_window_index:
+                plot_coords(ax, polygon.exterior, alpha=1.0, linewidth=2)
+    
+    # Iterate over all predicted polygons (rooms, doors, windows)
+    for (poly, poly_type) in polygons:
+        if poly_type == door_window_index[0]:  # Door
+            door_length = math.dist(poly[0], poly[1])
+            polygons_doors.append([poly, poly_type, door_length])
+        elif poly_type == door_window_index[1]:  # Window
+            polygons_windows.append([poly, poly_type])
+        else: # regular room
+            polygon = Polygon(poly)
+            patch = PolygonPatch(polygon, facecolor='#FFFFFF', alpha=1.0, linewidth=0)
+            ax.add_patch(patch)
+            if not is_bw:
+                patch = PolygonPatch(polygon, facecolor=semantics_cmap[poly_type], 
+                                     alpha=0.5, linewidth=1, 
+                                     capstyle='round', edgecolor='#000000FF')
+                ax.add_patch(patch)
+            if plot_text:
+                ax.text(np.mean(poly[:, 0]), np.mean(poly[:, 1]), 
+                        semantics_label_mapping[poly_type], 
+                        fontsize=6, 
+                        ha='center', 
+                        va='center',
+                        bbox=dict(facecolor='white', alpha=0.7)
+                        )
+
+    # Compute door size statistics (median)
+    door_median_size = np.median([door_length for (_, _, door_length) in polygons_doors])
+
+    # Draw doors
+    for (poly, poly_type, door_size) in polygons_doors:
+
+        door_size_y = np.abs(poly[0,1]-poly[1,1])
+        door_size_x = np.abs(poly[0,0]-poly[1,0])
+        if door_size_y > door_size_x:
+            if poly[1,1] > poly[0,1]:
+                e1 = poly[0]
+                e2 = poly[1]
+            else:
+                e1 = poly[1]
+                e2 = poly[0]
+
+            if door_size < door_median_size * 1.5:
+                filled_arc(e1, e2, 'clock', door_size, ax, 'white')
+            else:
+                filled_arc(e1, e2, 'clock', door_size/2, ax, 'white')
+                filled_arc(e2, e1, 'counterclock', door_size/2, ax, 'white')
+
+        else:
+            if poly[1,0] > poly[0,0]:
+                e1 = poly[1]
+                e2 = poly[0]
+            else:
+                e1 = poly[0]
+                e2 = poly[1]
+
+            if door_size < door_median_size * 1.5:
+                filled_arc(e1, e2, 'counterclock', door_size, ax, 'white')
+            else:
+                filled_arc(e1, e2, 'counterclock', door_size/2, ax, 'white')
+                filled_arc(e2, e1, 'clock', door_size/2, ax, 'white')
+
+
+    # Draw windows
+    for (line, line_type) in polygons_windows:
+        line = LineString(line)
+        poly = line.buffer(1.5, cap_style=2)
+        if poly.is_empty:
+            continue
+        patch = PolygonPatch(poly, facecolor='#FFFFFF', alpha=1.0, linewidth=1, linestyle='dashed')
+        ax.add_patch(patch)
+
+    if plot_text:
+        title = ''
+        if prec is not None:
+            title = 'prec: ' + str(round(prec * 100, 1)) + ', rec: ' + str(round(rec * 100, 1))
+        plt.title(file_name.split('/')[-1] + ' ' + title)
+
+    print(f'>>> {file_name}')
+    plt.axis('equal')
+    plt.axis('off')
+    # fig.savefig(file_name[:-3]+'svg', dpi=fig.dpi, format='svg')
+    if is_bw:
+        plt.set_cmap(get_cmap('gray'))
+    fig.savefig(file_name, bbox_inches='tight', pad_inches=0)

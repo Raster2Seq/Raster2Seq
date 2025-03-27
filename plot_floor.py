@@ -14,8 +14,10 @@ from datasets import build_dataset
 from models import build_model
 import cv2
 
+from datasets import get_dataset_class_labels
+
 from util.poly_ops import pad_gt_polys
-from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan, plot_semantic_rich_floorplan_tight
+from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan, plot_semantic_rich_floorplan_tight, plot_semantic_rich_floorplan_nicely
 
 def unnormalize_image(x):
     mean = np.array([0.485, 0.456, 0.406])
@@ -62,8 +64,12 @@ def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=F
                         corners = corners_flip_y
                         gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
 
-                    gt_sem_rich_path = os.path.join(output_dir, '{}.png'.format(str(scene_ids[i]).zfill(5)))
-                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False, is_bw=True) 
+                    gt_sem_rich_path = os.path.join(output_dir, '{}_floor.png'.format(str(scene_ids[i]).zfill(5)))
+                    plot_semantic_rich_floorplan_nicely(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False, is_bw=False,
+                                                       door_window_index=[10, 9], 
+                                                       img_w=samples[i].shape[2], 
+                                                       img_h=samples[i].shape[1],
+                                                       semantics_label_mapping=get_dataset_class_labels(args.dataset_name))
 
 
 def plot_polys(data_loader, device, output_dir):
@@ -83,7 +89,7 @@ def plot_polys(data_loader, device, output_dir):
                 density_map = density_map * 255
             else:
                 density_map = np.repeat(density_map, 3, axis=2) * 255
-            pred_room_map = np.zeros([256, 256, 3])
+            pred_room_map = np.zeros(density_map.shape).astype(np.uint8)
 
             room_polys = gt_instances[i].gt_masks.polygons
             room_ids = gt_instances[i].gt_classes.detach().cpu().numpy()
@@ -91,7 +97,6 @@ def plot_polys(data_loader, device, output_dir):
                 poly = poly[0].reshape(-1,2).astype(np.int32)
                 pred_room_map = plot_room_map(poly, pred_room_map, poly_id)
 
-            
             # Blend the overlay with the density map using alpha blending
             alpha = 0.6  # Adjust for desired transparency
             pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
@@ -122,7 +127,30 @@ def plot_gt_image(data_loader, device, output_dir):
             # # plot predicted polygon overlaid on the density map
             # pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
             cv2.imwrite(os.path.join(output_dir, '{}_gt_image.png'.format(scene_ids[i])), density_map)
+
+
+def loop_data(data_loader, device, output_dir):
+    max_num_points = -1
+    max_num_polys = -1
+    for batched_inputs in data_loader:
+
+        samples = [x["image"].to(device) for x in batched_inputs]
+        scene_ids = [x["image_id"] for x in batched_inputs]
+        gt_instances = [x["instances"].to(device) for x in batched_inputs]
         
+
+        for i in range(len(samples)):
+            room_polys = gt_instances[i].gt_masks.polygons
+            room_ids = gt_instances[i].gt_classes.detach().cpu().numpy()
+            for poly, poly_id in zip(room_polys, room_ids):
+                poly = poly[0].reshape(-1,2).astype(np.int32)
+                if len(poly) > max_num_points:
+                    max_num_points = len(poly)
+            if len(room_ids) > max_num_polys:
+                max_num_polys = len(room_ids)
+        
+    print(max_num_points, max_num_polys)
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser('RoomFormer', add_help=False)
@@ -231,7 +259,7 @@ def main(args):
     dataset_eval = build_dataset(image_set=args.eval_set, args=args)
     # for test
     if args.debug:
-        dataset_eval = torch.utils.data.Subset(dataset_eval, list(range(10, 10+args.batch_size, 1)))
+        dataset_eval = torch.utils.data.Subset(dataset_eval, list(range(0, args.batch_size, 1)))
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
 
     def trivial_batch_collator(batch):
@@ -271,6 +299,8 @@ def main(args):
 
     if args.plot_gt_image:
         plot_gt_image(data_loader_eval, device, save_dir)
+
+    loop_data(data_loader_eval, device, save_dir)
 
 
 if __name__ == '__main__':

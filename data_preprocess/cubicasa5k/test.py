@@ -62,7 +62,9 @@ ICON_NAMES = {0: 'No Icon',
               10: 'Chimney'}
 
 
-CUBICASA_TO_S3D_MAPPING = {
+
+
+CC5K_2_S3D_MAPPING = {
     0: None,  # "Background"
     1: type2id['balcony'],  # "Outdoor" -> balcony (4)
     2: None,  # "Wall" has no direct match
@@ -77,6 +79,69 @@ CUBICASA_TO_S3D_MAPPING = {
     11: type2id['undefined'],  # Undefined -> undefined (15)
     12: type2id['window'], # Window -> window (17)
     13: type2id['door'], # Door -> door (16) 
+}
+
+CC5K_MAPPING = {
+    0: None,
+    1: 0, # Outdoor
+    2: 1, # Wall
+    3: 2, # Kitchen
+    4: 3, # Living Room
+    5: 4, # Bed Room
+    6: 5, # Bath
+    7: 6, # Entry
+    8: 1, # Railing -> Wall
+    9: 7, # Storage
+    10: 8, # Garage
+    11: 9, # Undefined
+    12: 10, # Window
+    13: 11, # Door
+}
+
+CC5K_MAPPING_2 = {
+    0: None,
+    1: 0, # Outdoor
+    2: None, # Wall
+    3: 1, # Kitchen
+    4: 2, # Living Room
+    5: 3, # Bed Room
+    6: 4, # Bath
+    7: 5, # Entry
+    8: None, # Railing -> Wall
+    9: 6, # Storage
+    10: 7, # Garage
+    11: 8, # Undefined
+    12: 9, # Window
+    13: 10, # Door
+}
+
+CC5K_CLASS_MAPPING = {
+    "Outdoor": 0,
+    "Wall, Railing": 1,
+    "Kitchen": 2,
+    "Living Room": 3,
+    "Bed Room": 4,
+    "Bath": 5,
+    "Entry": 6,
+    "Storage": 7,
+    "Garage": 8,
+    "Undefined": 9,
+    "Window": 10,
+    "Door": 11,
+}
+
+CC5K_CLASS_MAPPING_2 = {
+    "Outdoor": 0,
+    "Kitchen": 1,
+    "Living Room": 2,
+    "Bed Room": 3,
+    "Bath": 4,
+    "Entry": 5,
+    "Storage": 6,
+    "Garage": 7,
+    "Undefined": 8,
+    "Window": 9,
+    "Door": 10,
 }
 
 CLASS_MAPPING = {'living room': 0, 'kitchen': 1, 'bedroom': 2, 'bathroom': 3, 'balcony': 4, 'corridor': 5,
@@ -287,12 +352,20 @@ def config():
     args = a.parse_args()
     return args
 
-def detele_iccfile(image_path, output_path):
+def save_image(image_path, output_path, mask=None):
     '''
     ref: https://github.com/ultralytics/ultralytics/issues/339
     '''
     img = Image.open(image_path).convert('RGB')
     img.info.pop('icc_profile', None)
+
+    if mask is not None:
+        img_array = np.array(img)
+        if len(mask.shape) == 2 and len(img_array.shape) == 3:
+            mask = mask[:, :, np.newaxis]
+        masked_img = np.where(mask == 0, 255, img_array)
+        img = Image.fromarray(masked_img.astype(np.uint8))
+
     img.save(output_path)
 
 
@@ -313,8 +386,16 @@ def merge_rooms_and_icons(room_polygons, icon_polygons):
     return room_polygons + new_icon_polygons
         
 
-def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, vis_fp=False):
+def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, use_org_cc5k_classs=False, vis_fp=False):
     # image_set = dataset[scene_id]
+    if use_org_cc5k_classs:
+        class_mapping_dict = CC5K_MAPPING_2 # old: CC5K_MAPPING
+        class_to_index_dict = CC5K_CLASS_MAPPING_2
+        door_window_index = [10, 9]
+    else:
+        class_mapping_dict = CC5K_2_S3D_MAPPING
+        class_to_index_dict = CLASS_MAPPING
+        door_window_index = [16, 17]
 
     mask = image_set['label'].numpy()
     # room_polygons = extract_room_polygons_cv2(mask[0], skip_classes=[0]) # [2]
@@ -328,7 +409,7 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
     coco_annotation_dict_list = []
 
     # for storing
-    save_dict = prepare_dict()
+    save_dict = prepare_dict(class_to_index_dict) # old: CC5K_CLASS_MAPPING
 
     instance_id = 0
     img_id = int(scene_id) + start_scene_id
@@ -347,8 +428,8 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
 
 
     #### FILTER NON-USE TYPES
-    # DROP BG, Wall
-    room_skip_types = [0, 2]
+    # DROP BG
+    room_skip_types = [0]
     filtered_room_polygons = remove_polygons_by_type(room_polygons, skip_types=room_skip_types)
     # visualize_room_polygons(mask[0], filtered_room_polygons, list(ROOM_NAMES.values()), 
     #                         save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_room_filtered.png")
@@ -359,32 +440,41 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
     # visualize_room_polygons(mask[1], filtered_icon_polygons, list(ICON_NAMES.values()), 
     #                         bg_polygons=room_polygons, save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_icon_filtered.png")
 
-    detele_iccfile(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}")
-    # shutil.copy(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}")
 
     #### COMBINED
     combined_polygons = merge_rooms_and_icons(filtered_room_polygons, filtered_icon_polygons)
 
     filtered_mask1 = mask[0].copy()
     filtered_mask1[np.isin(mask[0], room_skip_types)] = 0
-    # for x in room_skip_types:
-    #     filtered_mask1[filtered_mask1 == x] = 0
 
     filtered_mask2 = mask[1].copy()
     filtered_mask2[np.isin(mask[1], icon_skip_types)] = 0
     filtered_mask2[filtered_mask2 != 0] += 11
-    # for x in icon_skip_types:
-    #     filtered_mask2[filtered_mask2 == x] = 0
+
     filtered_mask = np.where(filtered_mask2 != 0, filtered_mask2, filtered_mask1)
 
     new_filtered_mask = filtered_mask.copy()
-    for src_type, dest_type in CUBICASA_TO_S3D_MAPPING.items():
+    for src_type, dest_type in class_mapping_dict.items():
         if dest_type is None:
             continue
         new_filtered_mask[filtered_mask == src_type] = dest_type + 1
     # filtered_mask = new_filtered_mask
+
+    binary_mask = np.zeros_like(filtered_mask)
+    binary_mask = np.where((mask[0] + mask[1]) != 0, 1, 0).astype(np.uint8)
+    # Fill in 0-pixels surrounded by 1-pixels
+    kernel = np.ones((3, 3), np.uint8)  # Define a kernel for dilation
+    dilated_mask = cv2.dilate(binary_mask, kernel, iterations=1)  # Dilate the binary mask
+    filled_mask = np.where(dilated_mask == 1, 1, binary_mask)  # Combine with the original mask
+    if vis_fp:
+        cv2.imwrite(f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5) + '_mask.png'}", filled_mask.astype(np.uint8)*255)
             
     # visualize_room_polygons(combined_mask, combined_polygons, list(ROOM_NAMES.values()) + list(ICON_NAMES.values()), save_path=f"{save_dir}/{str(img_id).zfill(5)}_combined.png")
+
+    save_image(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}", mask=filled_mask)
+    if vis_fp:
+        save_image(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5) + '_org.png'}", mask=None)
+    # shutil.copy(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}")
 
     output_polygon_list = []
     combined_polygon_list = []
@@ -393,23 +483,23 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
         area = poly_shapely.area
         
         org_poly_type = poly_type
-        poly_type = CUBICASA_TO_S3D_MAPPING[poly_type]
+        poly_type = class_mapping_dict[poly_type]
         if poly_type is None:
             continue
 
         # assert area > 10
         # if area < 100:
         # 'door', 'window'
-        if poly_type not in [16, 17] and area < 100:
+        if poly_type not in door_window_index and area < 100:
             continue
-        if poly_type in [16, 17] and area < 1:
+        if poly_type in door_window_index and area < 1:
             continue
         
         rectangle_shapely = poly_shapely.envelope
         polygon = np.array(polygon)
 
         ### here we convert door/window annotation into a single line
-        if poly_type in [16, 17]:
+        if poly_type in door_window_index:
             # convert to rect
             if polygon.shape[0] > 4:
                 min_x = np.min(polygon[:, 0])
@@ -496,7 +586,7 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
     if vis_fp:
         visualize_room_polygons(filtered_mask, combined_polygon_list, list(ROOM_NAMES.values()) + ['window', 'door'], 
                                 save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_combined.png")
-        visualize_room_polygons(new_filtered_mask, output_polygon_list, ['null'] + list(CLASS_MAPPING.keys()), 
+        visualize_room_polygons(new_filtered_mask, output_polygon_list, ['null'] + list(class_to_index_dict.keys()), 
                                 save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_final.png")
 
     # save_path = f"{save_dir}/plot_debug.jpg"
@@ -506,9 +596,9 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
     # return save_dict
 
 
-def prepare_dict():
+def prepare_dict(categories_dict):
     save_dict = {"images":[],"annotations":[],"categories":[]}
-    for key, value in type2id.items():
+    for key, value in categories_dict.items():
         type_dict = {"supercategory": "room", "id": value, "name": key}
         save_dict["categories"].append(type_dict)
     return save_dict
@@ -569,7 +659,7 @@ if __name__ == '__main__':
 
     def wrapper(scene_id):
         image_set = dataset[scene_id]
-        process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, vis_fp=scene_id < 100)
+        process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, use_org_cc5k_classs=True, vis_fp=scene_id < 100)
 
     def worker_init(dataset_obj):
         # Store dataset as global to avoid pickling issues
