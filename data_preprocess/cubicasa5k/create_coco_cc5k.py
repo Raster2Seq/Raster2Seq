@@ -150,6 +150,33 @@ CLASS_MAPPING = {'living room': 0, 'kitchen': 1, 'bedroom': 2, 'bathroom': 3, 'b
             'entry': 18, 'railing': 19}
 
 
+def fill_holes_in_mask(binary_mask):
+    """
+    Fill 0-pixels in a binary mask that are completely surrounded by 1-pixels.
+
+    Args:
+        binary_mask (numpy.ndarray): Binary mask with 0 and 1 values.
+
+    Returns:
+        numpy.ndarray: Binary mask with holes filled.
+    """
+    # Ensure the mask is binary (0 and 1)
+    binary_mask = (binary_mask > 0).astype(np.uint8)
+
+    # Apply dilation
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    binary_mask = cv2.dilate(binary_mask, kernel, iterations=1)
+
+    # Find contours in the mask
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Fill the contours
+    filled_mask = binary_mask.copy()
+    cv2.fillPoly(filled_mask, contours, 1)
+
+    return filled_mask
+
+
 def close_contour(contour):
     if not np.array_equal(contour[0], contour[-1]):
         contour = np.vstack((contour, contour[0]))
@@ -384,6 +411,22 @@ def merge_rooms_and_icons(room_polygons, icon_polygons):
         new_icon_polygons.append([poly, poly_type+11])
     
     return room_polygons + new_icon_polygons
+
+
+def create_coco_bounding_box(bb_x, bb_y, image_width, image_height, bound_pad=2):
+    bb_x = np.unique(bb_x)
+    bb_y = np.unique(bb_y)
+    bb_x_min = np.maximum(np.min(bb_x) - bound_pad, 0)
+    bb_y_min = np.maximum(np.min(bb_y) - bound_pad, 0)
+
+    bb_x_max = np.minimum(np.max(bb_x) + bound_pad, image_width - 1)
+    bb_y_max = np.minimum(np.max(bb_y) + bound_pad, image_height - 1)
+
+    bb_width = (bb_x_max - bb_x_min)
+    bb_height = (bb_y_max - bb_y_min)
+
+    coco_bb = [bb_x_min, bb_y_min, bb_width, bb_height]
+    return coco_bb
         
 
 def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, use_org_cc5k_classs=False, vis_fp=False):
@@ -462,19 +505,19 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
 
     binary_mask = np.zeros_like(filtered_mask)
     binary_mask = np.where((mask[0] + mask[1]) != 0, 1, 0).astype(np.uint8)
-    # Fill in 0-pixels surrounded by 1-pixels
-    kernel = np.ones((3, 3), np.uint8)  # Define a kernel for dilation
-    dilated_mask = cv2.dilate(binary_mask, kernel, iterations=1)  # Dilate the binary mask
-    filled_mask = np.where(dilated_mask == 1, 1, binary_mask)  # Combine with the original mask
-    if vis_fp:
-        cv2.imwrite(f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5) + '_mask.png'}", filled_mask.astype(np.uint8)*255)
+    # # Fill in 0-pixels surrounded by 1-pixels
+    # kernel = np.ones((3, 3), np.uint8)  # Define a kernel for dilation
+    # dilated_mask = cv2.dilate(binary_mask, kernel, iterations=1)  # Dilate the binary mask
+    # filled_mask = np.where(dilated_mask == 1, 1, binary_mask)  # Combine with the original mask
+
+    filled_mask = fill_holes_in_mask(binary_mask)
+    cv2.imwrite(f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5) + '_mask.png'}", filled_mask.astype(np.uint8)*255)
             
     # visualize_room_polygons(combined_mask, combined_polygons, list(ROOM_NAMES.values()) + list(ICON_NAMES.values()), save_path=f"{save_dir}/{str(img_id).zfill(5)}_combined.png")
 
     save_image(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}", mask=filled_mask)
     if vis_fp:
         save_image(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5) + '_org.png'}", mask=None)
-    # shutil.copy(f"{args.data_root}/{image_set['folder']}/F1_scaled.png", f"{save_dir}/{str(img_id).zfill(5) + '.png'}")
 
     output_polygon_list = []
     combined_polygon_list = []
@@ -538,20 +581,8 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
             coco_seg_poly += list(p)
 
         # Slightly wider bounding box
-        bound_pad = 2
         bb_x, bb_y = rectangle_shapely.exterior.xy
-        bb_x = np.unique(bb_x)
-        bb_y = np.unique(bb_y)
-        bb_x_min = np.maximum(np.min(bb_x) - bound_pad, 0)
-        bb_y_min = np.maximum(np.min(bb_y) - bound_pad, 0)
-
-        bb_x_max = np.minimum(np.max(bb_x) + bound_pad, image_width - 1)
-        bb_y_max = np.minimum(np.max(bb_y) + bound_pad, image_height - 1)
-
-        bb_width = (bb_x_max - bb_x_min)
-        bb_height = (bb_y_max - bb_y_min)
-
-        coco_bb = [bb_x_min, bb_y_min, bb_width, bb_height]
+        coco_bb = create_coco_bounding_box(bb_x, bb_y, image_width, image_height, bound_pad=2)
 
         coco_annotation_dict = {
                 "segmentation": [coco_seg_poly],

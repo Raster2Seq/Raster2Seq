@@ -6,6 +6,9 @@ import os
 import time
 from pathlib import Path
 
+from collections import defaultdict
+
+import plotly.graph_objects as go
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
@@ -129,9 +132,69 @@ def plot_gt_image(data_loader, device, output_dir):
             cv2.imwrite(os.path.join(output_dir, '{}_gt_image.png'.format(scene_ids[i])), density_map)
 
 
-def loop_data(data_loader, device, output_dir):
+def plot_histogram(count_dict, title, output_path):
+    # Plot the histogram using Plotly
+    keys = list(count_dict.keys())
+    values = list(count_dict.values())
+
+    # Determine the maximum value for the y-axis
+    max_y = max(values)
+    # Adjust y-axis ticks dynamically for large ranges
+    tick_interval = max(1, max_y // 10)  # Divide the range into 10 intervals
+    tickvals_y = list(range(0, max_y + tick_interval, tick_interval))
+
+    # Determine tick values for x-axis dynamically
+    tickvals_x = keys  # Use the keys (number of points in polygons) as tick values
+
+    fig = go.Figure(data=[
+        go.Bar(x=keys, y=values, 
+               text=values, textposition='outside', marker=dict(color='blue'), 
+               width=0.5)
+    ])
+
+    fig.update_layout(
+        title={
+            'text': f'Histogram of {title}',
+            'font': {'size': 24},  # Increase title font size
+            'x': 0.5,  # Center the title
+        },
+        xaxis_title={
+            'text': f'Number of {title}',
+            'font': {'size': 18}  # Increase x-axis label font size
+        },
+        yaxis_title={
+            'text': 'Frequency',
+            'font': {'size': 18}  # Increase y-axis label font size
+        },
+        xaxis=dict(
+            tickmode='array',  # Use custom tick values
+            tickvals=tickvals_x,  # Set custom tick values
+            ticktext=[str(val) for val in tickvals_x],  # Set custom tick labels
+            tickfont=dict(size=14),  # Increase x-axis tick font size
+            tickangle=45,
+        ),
+        yaxis=dict(
+            tickvals=tickvals_y,  # Set custom tick values
+            ticktext=[str(val) for val in tickvals_y],  # Set custom tick labels
+            tickfont=dict(size=14),  # Increase y-axis tick font size
+        ),
+        template='plotly_white',
+        bargap=0.5,  # Add gap between bars (0.5 = 50% of bar width)
+        # Increase figure width for a long x-axis
+        width=max(800, 50 * len(keys)),  # Dynamic width based on number of bars
+    )
+    # Save the figure as an image
+    fig.write_image(output_path, scale=3)
+    print(f"Figure saved to {output_path}")
+
+    # fig.show()
+
+
+def loop_data(data_loader, eval_set, device, output_dir):
     max_num_points = -1
     max_num_polys = -1
+    count_pts_dict = defaultdict(lambda: 0)
+    count_room_dict = defaultdict(lambda: 0)
     for batched_inputs in data_loader:
 
         samples = [x["image"].to(device) for x in batched_inputs]
@@ -142,14 +205,19 @@ def loop_data(data_loader, device, output_dir):
         for i in range(len(samples)):
             room_polys = gt_instances[i].gt_masks.polygons
             room_ids = gt_instances[i].gt_classes.detach().cpu().numpy()
+            count_room_dict[len(room_ids)] += 1
             for poly, poly_id in zip(room_polys, room_ids):
                 poly = poly[0].reshape(-1,2).astype(np.int32)
+                count_pts_dict[len(poly)] += 1
                 if len(poly) > max_num_points:
                     max_num_points = len(poly)
             if len(room_ids) > max_num_polys:
                 max_num_polys = len(room_ids)
         
-    print(max_num_points, max_num_polys)
+    print(f"Max pts: {max_num_points}, Max polys: {max_num_polys}")
+
+    plot_histogram(count_pts_dict, "Points in Polygons", os.path.join(output_dir, f"{eval_set}_polygon_histogram.png"))
+    plot_histogram(count_room_dict, "Rooms in Floorplan", os.path.join(output_dir, f"{eval_set}_room_histogram.png"))
 
 
 def get_args_parser():
@@ -300,7 +368,7 @@ def main(args):
     if args.plot_gt_image:
         plot_gt_image(data_loader_eval, device, save_dir)
 
-    loop_data(data_loader_eval, device, save_dir)
+    loop_data(data_loader_eval, args.eval_set, device, save_dir)
 
 
 if __name__ == '__main__':

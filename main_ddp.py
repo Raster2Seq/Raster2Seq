@@ -281,7 +281,7 @@ def main(args):
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm)
         lr_scheduler.step()
-        if (epoch + 1) in args.lr_drop or (epoch + 1) % args.ckpt_every_epoch == 0:
+        if (epoch + 1) in args.lr_drop or (epoch + 1) % args.ckpt_every_epoch == 0 or (epoch + 1) == args.epochs:
             if rank == 0:
                 checkpoint_paths = [output_dir / 'checkpoint.pth']
                 # extra checkpoint before LR drop and every 20 epochs
@@ -300,8 +300,9 @@ def main(args):
                      'epoch': epoch,
                      'n_parameters': n_parameters}
         
-        wandb.log({"epoch": epoch})
-        wandb.log({"lr_rate": train_stats['lr']})
+        if rank == 0:
+            wandb.log({"epoch": epoch})
+            wandb.log({"lr_rate": train_stats['lr']})
 
         train_log_dict = {
                 "train/loss": train_stats['loss'],
@@ -318,7 +319,8 @@ def main(args):
             # only apply the rasterization loss for non-semantic floorplans
             train_log_dict["train/loss_raster"] = train_stats['loss_raster']
 
-        wandb.log(train_log_dict)
+        if rank == 0:
+            wandb.log(train_log_dict)
     
         # eval every 20
         if (epoch + 1) % args.eval_every_epoch == 0:
@@ -358,7 +360,8 @@ def main(args):
             if 'room_iou' in test_stats:
                 val_log_dict["val_metrics/room_iou"] = test_stats['room_iou']
                     
-            wandb.log(val_log_dict)
+            if rank == 0:
+                wandb.log(val_log_dict)
 
         if args.output_dir:
             with (output_dir / "log.txt").open("a") as f:
