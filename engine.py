@@ -31,7 +31,7 @@ opts = options.parse()
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0):
+                    device: torch.device, epoch: int, max_norm: float = 0, poly2seq: bool = False):
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -40,18 +40,22 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 10
 
-    for batched_inputs in metric_logger.log_every(data_loader, print_freq, header):
+    for batched_inputs, batched_extras in metric_logger.log_every(data_loader, print_freq, header):
         samples = [x["image"].to(device) for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
-        print("Max #polys: ", max([len(gt_instances[i].gt_masks.polygons) for i in range(len(gt_instances))]))
+        # print("length: ", batched_extras['mask'].sum(1).tolist())
+        # print("Max #polys: ", max([len(gt_instances[i].gt_masks.polygons) for i in range(len(gt_instances))]))
         # print("Max #corners: ", max([gt_instances[i].gt_masks.polygons for i in range(gt_instances)]))
-
-        if hasattr(model, 'module'):
-            room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
+        if not poly2seq:
+            if hasattr(model, 'module'):
+                room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
+            else:
+                room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            outputs = model(samples)
         else:
-            room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            room_targets = batched_extras
+            outputs = model(samples, batched_extras)
 
-        outputs = model(samples)
         loss_dict = criterion(outputs, room_targets)
         weight_dict = criterion.weight_dict
         losses = sum(loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict)
@@ -86,7 +90,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=False, output_dir=None, epoch=None):
+def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=False, output_dir=None, epoch=None, poly2seq: bool = False):
     model.eval()
     criterion.eval()
     door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
@@ -94,25 +98,30 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
 
-    for batched_inputs in metric_logger.log_every(data_loader, 10, header):
-
+    for batched_inputs, batched_extras in metric_logger.log_every(data_loader, 10, header):
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
-        if hasattr(model, 'module'):
-            room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
+        if not poly2seq:
+            if hasattr(model, 'module'):
+                room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
+            else:
+                room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            outputs = model(samples)
         else:
-            room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            room_targets = batched_extras
+            outputs = model(samples, batched_extras)
 
-        outputs = model(samples)
         loss_dict = criterion(outputs, room_targets)
         weight_dict = criterion.weight_dict
-
 
         bs = outputs['pred_logits'].shape[0]
         pred_logits = outputs['pred_logits']
         pred_corners = outputs['pred_coords']
-        fg_mask = torch.sigmoid(pred_logits) > 0.5 # select valid corners
+        if poly2seq:
+            pass
+        else:
+            fg_mask = torch.sigmoid(pred_logits) > 0.5 # select valid corners
 
         if 'pred_room_logits' in outputs:
             prob = torch.nn.functional.softmax(outputs['pred_room_logits'], -1)
@@ -166,7 +175,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 gt_window_doors = []
                 gt_window_doors_types = []
                 pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
-
+            
             # process per room
             for j in range(fg_mask_per_scene.shape[0]):
                 fg_mask_per_room = fg_mask_per_scene[j]
@@ -264,10 +273,226 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
     return stats
 
 @torch.no_grad()
+def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_density=False, output_dir=None, epoch=None, poly2seq: bool = False):
+    model.eval()
+    criterion.eval()
+    door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
+
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    header = 'Test:'
+
+    for batched_inputs, batched_extras in metric_logger.log_every(data_loader, 10, header):
+        samples = [x["image"].to(device) for x in batched_inputs]
+        scene_ids = [x["image_id"]for x in batched_inputs]
+        gt_instances = [x["instances"].to(device) for x in batched_inputs]
+        if not poly2seq:
+            if hasattr(model, 'module'):
+                room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
+            else:
+                room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            outputs = model(samples)
+        else:
+            room_targets = batched_extras
+            outputs = model(samples, batched_extras)
+
+        loss_dict = criterion(outputs, room_targets)
+        weight_dict = criterion.weight_dict
+
+        image_size = samples[0].size(2)
+        if poly2seq:
+            outputs = model.module.forward_inference(samples)
+            pred_corners = outputs['gen_out']
+            bs = outputs['pred_logits'].shape[0]
+        else:
+            bs = outputs['pred_logits'].shape[0]
+            pred_logits = outputs['pred_logits']
+            pred_corners = outputs['pred_coords']
+            fg_mask = torch.sigmoid(pred_logits) > 0.5 # select valid corners
+
+        if 'pred_room_logits' in outputs:
+            prob = torch.nn.functional.softmax(outputs['pred_room_logits'], -1)
+            _, pred_room_label = prob[..., :-1].max(-1)
+
+        # process per scene
+        for i in range(bs):
+
+            if dataset_name == 'stru3d':
+                if int(scene_ids[i]) in wrong_s3d_annotations_list:
+                    continue
+                curr_opts = copy.deepcopy(opts)
+                curr_opts.scene_id = "scene_0" + str(scene_ids[i])
+                curr_data_rw = S3DRW(curr_opts, mode = "online_eval")
+                evaluator = Evaluator(curr_data_rw, curr_opts)
+            elif dataset_name == 'scenecad':
+                gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1,2).astype(np.int)]
+                evaluator = Evaluator_SceneCAD()
+            elif dataset_name == 'rplan':
+                gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
+                gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
+                gt_window_doors = []
+                gt_window_doors_types = []
+                evaluator = Evaluator_RPlan()
+            elif dataset_name == 'cubicasa':
+                gt_polys, gt_polys_types = [], []
+                gt_window_doors = []
+                gt_window_doors_types = []
+                for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
+                    gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
+                    if gt_id in door_window_index:
+                        gt_window_doors.append(gt_poly)
+                        gt_window_doors_types.append(gt_id)
+                    else:
+                        gt_polys.append(gt_poly)
+                        gt_polys_types.append(gt_id)
+                evaluator = Evaluator_RPlan()
+            
+            print("Running Evaluation for scene %s" % scene_ids[i])
+
+            # fg_mask_per_scene = fg_mask[i]
+            pred_corners_per_scene = pred_corners[i]
+
+            room_polys = []
+            
+            semantic_rich = 'pred_room_logits' in outputs
+            if semantic_rich:
+                room_types = []
+                window_doors = []
+                window_doors_types = []
+                gt_window_doors = []
+                gt_window_doors_types = []
+                pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
+
+            all_room_polys = []
+            tmp = []
+            for j in range(len(pred_corners_per_scene)):
+                if isinstance(pred_corners_per_scene[j], int):
+                    if pred_corners_per_scene[j] == 2 and tmp: # sep
+                        all_room_polys.append(tmp)
+                        tmp = []
+                    continue
+                tmp.append(pred_corners_per_scene[j])
+            
+            if len(tmp):
+                all_room_polys.append(tmp)
+
+            window_doors = []
+            for poly in all_room_polys:
+                if len(poly) < 2:
+                    continue
+                corners = np.array(poly, dtype=np.float) * (image_size - 1)
+                corners = np.around(corners).astype(np.int32)
+                if len(poly) == 2:
+                    window_doors.append(corners)
+                else:
+                    room_polys.append(corners)
+            
+            if not semantic_rich:
+                if len(window_doors):
+                    room_polys.extend(window_doors)
+                pred_room_label_per_scene = len(room_polys) * [-1]
+
+            # # process per room
+            # for j in range(fg_mask_per_scene.shape[0]):
+            #     fg_mask_per_room = fg_mask_per_scene[j]
+            #     pred_corners_per_room = pred_corners_per_scene[j]
+            #     valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
+            #     if len(valid_corners_per_room)>0:
+            #         corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
+            #         corners = np.around(corners).astype(np.int32)
+
+            #         if not semantic_rich:
+            #             # only regular rooms
+            #             if len(corners)>=4 and Polygon(corners).area >= 100:
+            #                     room_polys.append(corners)
+            #         else:
+            #             # regular rooms
+            #             if pred_room_label_per_scene[j] not in door_window_index:
+            #                 if len(corners)>=4 and Polygon(corners).area >= 100:
+            #                     room_polys.append(corners)
+            #                     room_types.append(pred_room_label_per_scene[j])
+            #             # window / door
+            #             elif len(corners)==2:
+            #                 window_doors.append(corners)
+            #                 window_doors_types.append(pred_room_label_per_scene[j])
+                    
+            if dataset_name == 'stru3d':
+                if not semantic_rich:
+                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys)
+                else:
+                    quant_result_dict_scene = evaluator.evaluate_scene(
+                                                            room_polys=room_polys, 
+                                                            room_types=room_types, 
+                                                            window_door_lines=window_doors, 
+                                                            window_door_lines_types=window_doors_types)
+            elif dataset_name == 'scenecad':
+                quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
+
+            elif dataset_name in ['rplan', 'cubicasa']:
+                if not semantic_rich:
+                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
+                                                                room_types=None, gt_polys_types=gt_polys_types,
+                                                                    )
+                else:
+                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
+                                                                room_types=room_types, gt_polys_types=gt_polys_types,
+                                                                window_door_lines=window_doors, gt_window_doors_list=gt_window_doors,
+                                                                window_door_lines_types=window_doors_types, gt_window_doors_type_list=gt_window_doors_types)
+
+            if 'room_iou' in quant_result_dict_scene:
+                metric_logger.update(room_iou=quant_result_dict_scene['room_iou'])
+            
+            metric_logger.update(room_prec=quant_result_dict_scene['room_prec'])
+            metric_logger.update(room_rec=quant_result_dict_scene['room_rec'])
+            metric_logger.update(corner_prec=quant_result_dict_scene['corner_prec'])
+            metric_logger.update(corner_rec=quant_result_dict_scene['corner_rec'])
+            metric_logger.update(angles_prec=quant_result_dict_scene['angles_prec'])
+            metric_logger.update(angles_rec=quant_result_dict_scene['angles_rec'])
+
+            if semantic_rich:
+                metric_logger.update(room_sem_prec=quant_result_dict_scene['room_sem_prec'])
+                metric_logger.update(room_sem_rec=quant_result_dict_scene['room_sem_rec'])
+                metric_logger.update(window_door_prec=quant_result_dict_scene['window_door_prec'])
+                metric_logger.update(window_door_rec=quant_result_dict_scene['window_door_rec'])
+
+        # plot last sample
+        if plot_density and len(room_polys) > 0:
+            density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
+            if density_map.shape[2] == 3:
+                density_map = density_map * 255
+            else:
+                density_map = np.repeat(density_map, 3, axis=2) * 255
+            pred_room_map = np.zeros([256, 256, 3])
+
+            for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
+                pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)
+
+            # Blend the overlay with the density map using alpha blending
+            alpha = 0.6  # Adjust for desired transparency
+            pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
+            cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map_{}.png'.format(scene_ids[i], epoch)), pred_room_map)
+
+            plot_density = False # only plot once
+
+        loss_dict_scaled = {k: v * weight_dict[k]
+                                    for k, v in loss_dict.items() if k in weight_dict}
+        loss_dict_unscaled = {f'{k}_unscaled': v
+                                      for k, v in loss_dict.items()}
+        metric_logger.update(loss=sum(loss_dict_scaled.values()),
+                             **loss_dict_scaled,
+                             **loss_dict_unscaled)
+
+    print("Averaged stats:", metric_logger)
+
+    stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
+    return stats
+
+@torch.no_grad()
 def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False):
     model.eval()
 
     door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
+    
 
     quant_result_dict = None
     scene_counter = 0
@@ -275,7 +500,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
-    for batched_inputs in data_loader:
+    for batched_inputs, batched_extras in data_loader:
 
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
@@ -310,7 +535,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
 
                     gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
                     # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
-                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False)
+                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False, door_window_index=door_window_index)
 
         outputs = model(samples)
         pred_logits = outputs['pred_logits']
@@ -441,7 +666,9 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
                     # plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
                     plot_semantic_rich_floorplan_tight(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], 
-                                                       rec=quant_result_dict_scene['room_rec'], plot_text=True, is_bw=False)
+                                                       rec=quant_result_dict_scene['room_rec'], plot_text=True, is_bw=False,
+                                                       door_window_index=door_window_index
+                                                       )
                 else:
                     # plot regular room floorplan
                     room_polys = [np.array(r) for r in room_polys]

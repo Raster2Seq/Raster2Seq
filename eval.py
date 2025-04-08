@@ -25,6 +25,11 @@ def get_args_parser():
     parser.add_argument('--input_channels', default=1, type=int)
     parser.add_argument('--image_norm', action='store_true')
 
+    # poly2seq
+    parser.add_argument('--poly2seq', action='store_true')
+    parser.add_argument('--seq_len', type=int, default=1024)
+    parser.add_argument('--num_bins', type=int, default=64)
+
     # backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
                         help="Name of the convolutional backbone to use")
@@ -126,7 +131,7 @@ def main(args):
         """
         A batch collator that does nothing.
         """
-        return batch
+        return batch, None
 
     data_loader_eval = DataLoader(dataset_eval, args.batch_size, sampler=sampler_eval,
                                  drop_last=False, collate_fn=trivial_batch_collator, num_workers=args.num_workers,

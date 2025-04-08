@@ -32,7 +32,7 @@ def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=F
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
-    for batched_inputs in data_loader:
+    for batched_inputs, _ in data_loader:
 
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
@@ -79,7 +79,7 @@ def plot_polys(data_loader, device, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
-    for batched_inputs in data_loader:
+    for batched_inputs, _ in data_loader:
 
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
@@ -113,7 +113,7 @@ def plot_gt_image(data_loader, device, output_dir):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
-    for batched_inputs in data_loader:
+    for batched_inputs, _ in data_loader:
 
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
@@ -170,7 +170,7 @@ def plot_histogram(count_dict, title, output_path):
             tickmode='array',  # Use custom tick values
             tickvals=tickvals_x,  # Set custom tick values
             ticktext=[str(val) for val in tickvals_x],  # Set custom tick labels
-            tickfont=dict(size=14),  # Increase x-axis tick font size
+            tickfont=dict(size=10),  # Increase x-axis tick font size
             tickangle=45,
         ),
         yaxis=dict(
@@ -181,7 +181,7 @@ def plot_histogram(count_dict, title, output_path):
         template='plotly_white',
         bargap=0.5,  # Add gap between bars (0.5 = 50% of bar width)
         # Increase figure width for a long x-axis
-        width=max(800, 50 * len(keys)),  # Dynamic width based on number of bars
+        width=max(600, 30 * len(keys)),  # Dynamic width based on number of bars
     )
     # Save the figure as an image
     fig.write_image(output_path, scale=3)
@@ -195,7 +195,8 @@ def loop_data(data_loader, eval_set, device, output_dir):
     max_num_polys = -1
     count_pts_dict = defaultdict(lambda: 0)
     count_room_dict = defaultdict(lambda: 0)
-    for batched_inputs in data_loader:
+    count_length_dict = defaultdict(lambda: 0)
+    for batched_inputs, batched_extras in data_loader:
 
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
@@ -203,6 +204,9 @@ def loop_data(data_loader, eval_set, device, output_dir):
         
 
         for i in range(len(samples)):
+            if batched_extras is not None:
+                t = batched_extras['mask'][i].sum().item()
+                count_length_dict[t] += 1
             room_polys = gt_instances[i].gt_masks.polygons
             room_ids = gt_instances[i].gt_classes.detach().cpu().numpy()
             count_room_dict[len(room_ids)] += 1
@@ -218,6 +222,7 @@ def loop_data(data_loader, eval_set, device, output_dir):
 
     plot_histogram(count_pts_dict, "Points in Polygons", os.path.join(output_dir, f"{eval_set}_polygon_histogram.png"))
     plot_histogram(count_room_dict, "Rooms in Floorplan", os.path.join(output_dir, f"{eval_set}_room_histogram.png"))
+    plot_histogram(count_length_dict, "Sequence Length", os.path.join(output_dir, f"{eval_set}_seqlen_histogram.png"))
 
 
 def get_args_parser():
@@ -226,6 +231,11 @@ def get_args_parser():
 
     # new
     parser.add_argument('--debug', action='store_true')
+
+    # poly2seq
+    parser.add_argument('--poly2seq', action='store_true')
+    parser.add_argument('--seq_len', type=int, default=1024)
+    parser.add_argument('--num_bins', type=int, default=64)
 
     # backbone
     parser.add_argument('--input_channels', default=1, type=int)
@@ -334,7 +344,50 @@ def main(args):
         """
         A batch collator that does nothing.
         """
-        return batch
+        if 'target_seq' in batch[0]:
+            # Concatenate tensors for each key in the batch
+            delta_x1 = torch.stack([item['delta_x1'] for item in batch], dim=0)
+            delta_x2 = torch.stack([item['delta_x2'] for item in batch], dim=0)
+            delta_y1 = torch.stack([item['delta_y1'] for item in batch], dim=0)
+            delta_y2 = torch.stack([item['delta_y2'] for item in batch], dim=0)
+            seq11 = torch.stack([item['seq11'] for item in batch], dim=0)
+            seq21 = torch.stack([item['seq21'] for item in batch], dim=0)
+            seq12 = torch.stack([item['seq12'] for item in batch], dim=0)
+            seq22 = torch.stack([item['seq22'] for item in batch], dim=0)
+            target_seq = torch.stack([item['target_seq'] for item in batch], dim=0)
+            token_labels = torch.stack([item['token_labels'] for item in batch], dim=0)
+            mask = torch.stack([item['mask'] for item in batch], dim=0)
+
+            # Delete the keys from the batch
+            for item in batch:
+                del item['delta_x1']
+                del item['delta_x2']
+                del item['delta_y1']
+                del item['delta_y2']
+                del item['seq11']
+                del item['seq21']
+                del item['seq12']
+                del item['seq22']
+                del item['target_seq']
+                del item['token_labels']
+                del item['mask']
+
+            # Return the concatenated batch
+            return batch, {
+                'delta_x1': delta_x1,
+                'delta_x2': delta_x2,
+                'delta_y1': delta_y1,
+                'delta_y2': delta_y2,
+                'seq11': seq11,
+                'seq21': seq21,
+                'seq12': seq12,
+                'seq22': seq22,
+                'target_seq': target_seq,
+                'token_labels': token_labels,
+                'mask': mask,
+            }
+            
+        return batch, None
 
     data_loader_eval = DataLoader(dataset_eval, args.batch_size, sampler=sampler_eval,
                                  drop_last=False, collate_fn=trivial_batch_collator, num_workers=args.num_workers,
@@ -354,6 +407,8 @@ def main(args):
     #     print('Unexpected Keys: {}'.format(unexpected_keys))
 
     save_dir = output_dir # os.path.join(os.path.dirname(args.checkpoint), output_dir)
+    os.makedirs(save_dir, exist_ok=True)
+
     if args.plot_gt:
         plot_gt_floor(
                     data_loader_eval, 

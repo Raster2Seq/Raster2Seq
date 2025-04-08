@@ -99,16 +99,20 @@ class MSDeformAttn(nn.Module):
         attention_weights = self.attention_weights(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
         attention_weights = F.softmax(attention_weights, -1).view(N, Len_q, self.n_heads, self.n_levels, self.n_points)
         # N, Len_q, n_heads, n_levels, n_points, 2
-        if reference_points.shape[-1] == 2:
-            offset_normalizer = torch.stack([input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1)
-            sampling_locations = reference_points[:, :, None, :, None, :] \
-                                 + sampling_offsets / offset_normalizer[None, None, None, :, None, :]
-        elif reference_points.shape[-1] == 4:
-            sampling_locations = reference_points[:, :, None, :, None, :2] \
-                                 + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
+        if reference_points is not None:
+            if reference_points.shape[-1] == 2:
+                offset_normalizer = torch.stack([input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1)
+                sampling_locations = reference_points[:, :, None, :, None, :] \
+                                    + sampling_offsets / offset_normalizer[None, None, None, :, None, :]
+            elif reference_points.shape[-1] == 4:
+                sampling_locations = reference_points[:, :, None, :, None, :2] \
+                                    + sampling_offsets / self.n_points * reference_points[:, :, None, :, None, 2:] * 0.5
+            else:
+                raise ValueError(
+                    'Last dim of reference_points must be 2 or 4, but get {} instead.'.format(reference_points.shape[-1]))
         else:
-            raise ValueError(
-                'Last dim of reference_points must be 2 or 4, but get {} instead.'.format(reference_points.shape[-1]))
+            offset_normalizer = torch.stack([input_spatial_shapes[..., 1], input_spatial_shapes[..., 0]], -1)
+            sampling_locations = sampling_offsets / offset_normalizer[None, None, None, :, None, :]
         output = MSDeformAttnFunction.apply(
             value, input_spatial_shapes, input_level_start_index, sampling_locations, attention_weights, self.im2col_step)
         output = self.output_proj(output)

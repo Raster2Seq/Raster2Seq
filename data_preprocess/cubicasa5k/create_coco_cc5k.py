@@ -544,21 +544,28 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
         ### here we convert door/window annotation into a single line
         if poly_type in door_window_index:
             # convert to rect
-            if polygon.shape[0] > 4:
-                min_x = np.min(polygon[:, 0])
-                max_x = np.max(polygon[:, 0])
-                min_y = np.min(polygon[:, 1])
-                max_y = np.max(polygon[:, 1])
+            # if polygon.shape[0] > 4:
+            #     min_x = np.min(polygon[:, 0])
+            #     max_x = np.max(polygon[:, 0])
+            #     min_y = np.min(polygon[:, 1])
+            #     max_y = np.max(polygon[:, 1])
 
-                # The bounding rectangle
-                bounding_rect = np.array([
-                    [min_x, min_y],  # top-left
-                    [min_x, max_y],  # bottom-left
-                    [max_x, max_y],  # bottom-right
-                    [max_x, min_y],  # top-right
-                    # [min_x, min_y]   # back to start (closed shape)
-                ])
-                polygon = bounding_rect
+            #     # The bounding rectangle
+            #     bounding_rect = np.array([
+            #         [min_x, min_y],  # top-left
+            #         [min_x, max_y],  # bottom-left
+            #         [max_x, max_y],  # bottom-right
+            #         [max_x, min_y],  # top-right
+            #         # [min_x, min_y]   # back to start (closed shape)
+            #     ])
+            #     polygon = bounding_rect
+            if polygon.shape[0] > 4: 
+                if len(polygon) == 5 and (polygon[0] == polygon[-1]).all():
+                    polygon = polygon[:-1] # drop last point since it is same as first
+                else:
+                    breakpoint()
+                    bounding_rect = np.array(poly_shapely.minimum_rotated_rectangle.exterior.coords)
+                    polygon = bounding_rect[:4]
 
             assert polygon.shape[0] == 4
             midp_1 = (polygon[0] + polygon[1])/2
@@ -706,7 +713,7 @@ if __name__ == '__main__':
 
         annos_folder = annos_folders[split_id]
 
-        # for scene_id in tqdm(range(0, len(dataset), 1)):
+        # for scene_id in tqdm([5,8,9,10,15]): # tqdm(range(0, len(dataset), 1)):
         #     wrapper(scene_id)
 
         num_processes = 16

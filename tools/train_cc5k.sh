@@ -14,19 +14,23 @@
 #SBATCH --requeue                     # Requeue upon pre-emption
 
  
-MASTER_PORT=13141
-WANDB_MODE=offline python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=cubicasa \
-               --dataset_root=data/coco_cubicasa5k_nowalls_v2/ \
+MASTER_PORT=13143
+WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=cubicasa \
+               --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
                --num_queries=2800 \
                --num_polys=50 \
                --semantic_classes=12 \
-               --job_name=cubi_queries56x50_sem_debug_t1 \
+               --job_name=cubi_v4-1refined_queries56x50_sem_ignore8_t2 \
                --batch_size 6 \
                --input_channels=3 \
                --output_dir /share/elor/htp26/roomformer/output \
                --eval_every_epoch=20 \
                --ckpt_every_epoch=20 \
-               --epochs 500 \
-               --debug 
+               --epochs 800 \
+               --ignore_index 8
+            #    --poly2seq \
+            #    --seq_len 1024 \
+            #    --num_bins 64 \
+            #    --debug \
                # --start_from_checkpoint output/s3d_sem_rgb_ddp_queries40x30/checkpoint0499.pth
                # --resume output/cubi_queries60x30_sem_debug_t3/checkpoint.pth

@@ -10,10 +10,13 @@ import numpy as np
 import json
 
 from shapely.geometry import Polygon
+from tqdm import tqdm
+from multiprocessing import Pool
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from common_utils import resort_corners
-from test import create_coco_bounding_box
+from create_coco_cc5k import create_coco_bounding_box
+
 
 from util.plot_utils import plot_semantic_rich_floorplan_nicely, plot_semantic_rich_floorplan_opencv
 
@@ -242,6 +245,7 @@ def extract_region_and_annotation(source_image, source_annot_path, region_polygo
         
     return start_image_id
 
+
 def config():
     a = argparse.ArgumentParser(description='Generate coco format data for Structured3D')
     a.add_argument('--data_root', default='Structured3D_panorama', type=str, help='path to raw Structured3D_panorama folder')
@@ -249,6 +253,8 @@ def config():
     
     args = a.parse_args()
     return args
+
+
 
 
 # Example usage
@@ -285,6 +291,24 @@ if __name__ == "__main__":
     annos_folders = [annos_train_folder, annos_val_folder, annos_test_folder]
     splits = ['train', 'val', 'test']
 
+    def wrapper(index):
+        image_path, annot_path, mask_path = packed_input_files[index]
+        cur_image_id = int(os.path.basename(image_path).split('.')[0])
+        binary_mask = cv2.imread(mask_path)[:,:,-1] 
+        source_image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        # Extract polygons
+        region_polygons = extract_polygons_from_mask(binary_mask, output_mask_path=f'{save_aux_path}/{str(cur_image_id).zfill(5)}_polylines.png')
+
+        return extract_region_and_annotation(source_image, annot_path, region_polygons, 
+                                    start_image_id + index*10,
+                                    save_path, save_anno_path, save_aux_path,
+                                    vis_aux=True)
+
+    def worker_init(input_files_object):
+        # Store dataset as global to avoid pickling issues
+        global packed_input_files
+        packed_input_files = input_files_object
+
     for i, split in enumerate(splits):
         image_files = sorted(glob.glob(f"{args.data_root}/{split}/*.png"))
         image_id_list = [os.path.basename(image_path).split('.')[0] for image_path in image_files]
@@ -295,45 +319,57 @@ if __name__ == "__main__":
         save_aux_path = save_path.rstrip('/') + '_aux'
         os.makedirs(save_aux_path, exist_ok=True)
 
-        for j, (image_path, anno_path, mask_path) in enumerate(zip(image_files, anno_files, mask_files)):
-            cur_image_id = int(os.path.basename(image_path).split('.')[0])
-            binary_mask = cv2.imread(mask_path)[:,:,-1] 
-            source_image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+        # for j, (image_path, anno_path, mask_path) in enumerate(zip(image_files, anno_files, mask_files)):
+        #     cur_image_id = int(os.path.basename(image_path).split('.')[0])
+        #     binary_mask = cv2.imread(mask_path)[:,:,-1] 
+        #     source_image = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
-            # Extract polygons
-            polygons = extract_polygons_from_mask(binary_mask, output_mask_path=f'{save_aux_path}/{str(cur_image_id).zfill(5)}_polylines.png')
-            # skip if only one polygon (floorplan)
-            if len(polygons) == 1:
-                print(f"Skipping {image_path} with only one polygon")
-                with open(anno_path, 'r') as f:
-                    data = json.load(f)
-                # update image id
-                data['images'][0]['id'] = start_image_id
-                data["file_name"] = f'{str(start_image_id).zfill(5)}_{str(cur_image_id).zfill(5)}.png'
-                for anno in data['annotations']:
-                    anno['image_id'] = start_image_id
+        #     # Extract polygons
+        #     polygons = extract_polygons_from_mask(binary_mask, output_mask_path=f'{save_aux_path}/{str(cur_image_id).zfill(5)}_polylines.png')
+        #     # # skip if only one polygon (floorplan)
+        #     # if len(polygons) == 1:
+        #     #     print(f"Skipping {image_path} with only one polygon")
+        #     #     with open(anno_path, 'r') as f:
+        #     #         data = json.load(f)
+        #     #     # update image id
+        #     #     data['images'][0]['id'] = start_image_id
+        #     #     data['images'][0]["file_name"] = f'{str(start_image_id).zfill(5)}_{str(cur_image_id).zfill(5)}.png'
+        #     #     for anno in data['annotations']:
+        #     #         anno['image_id'] = start_image_id
 
-                with open(f"{save_anno_path}/{str(start_image_id).zfill(5)}_{str(cur_image_id).zfill(5)}.json", 'w') as f:
-                    json.dump(data, f, indent=2)
-                shutil.copy(image_path, f"{save_path}/{str(start_image_id).zfill(5)}_{str(cur_image_id).zfill(5)}.png")
+        #     #     with open(f"{save_anno_path}/{str(start_image_id).zfill(5)}_{str(cur_image_id).zfill(5)}.json", 'w') as f:
+        #     #         json.dump(data, f, indent=2)
+        #     #     shutil.copy(image_path, f"{save_path}/{str(start_image_id).zfill(5)}_{str(cur_image_id).zfill(5)}.png")
 
-                gt_sem_rich_path = os.path.join(save_aux_path, '{}_{}_floor.png'.format(str(start_image_id).zfill(5), str(cur_image_id).zfill(5)))
-                output_coco_polygons = [(x['segmentation'][0], x['category_id']) for x in data['annotations']]
-                plot_floor(output_coco_polygons, data['categories'], data['images'][0]['width'], data['images'][0]['height'], gt_sem_rich_path, door_window_index=[10, 9])
+        #     #     gt_sem_rich_path = os.path.join(save_aux_path, '{}_{}_floor.png'.format(str(start_image_id).zfill(5), str(cur_image_id).zfill(5)))
+        #     #     output_coco_polygons = [(x['segmentation'][0], x['category_id']) for x in data['annotations']]
+        #     #     plot_floor(output_coco_polygons, data['categories'], data['images'][0]['width'], data['images'][0]['height'], gt_sem_rich_path, door_window_index=[10, 9])
 
-                start_image_id += 1
-                continue
+        #     #     start_image_id += 1
+        #     #     continue
 
-            # # Print the extracted polygons
-            # print("Extracted polygons:")
-            # for i, polygon in enumerate(polygons):
-            #     print(f"Polygon {i + 1}: {polygon}")
+        #     # # Print the extracted polygons
+        #     # print("Extracted polygons:")
+        #     # for i, polygon in enumerate(polygons):
+        #     #     print(f"Polygon {i + 1}: {polygon}")
 
-            start_image_id = extract_region_and_annotation(source_image,
-                                        anno_path,
-                                        polygons,
-                                        start_image_id,
-                                        output_image_dir=save_path, 
-                                        output_annot_dir=save_anno_path,
-                                        output_aux_dir=save_aux_path,
-                                        vis_aux=True)
+        #     start_image_id = extract_region_and_annotation(source_image,
+        #                                 anno_path,
+        #                                 polygons,
+        #                                 start_image_id,
+        #                                 output_image_dir=save_path, 
+        #                                 output_annot_dir=save_anno_path,
+        #                                 output_aux_dir=save_aux_path,
+        #                                 vis_aux=True)
+
+        packed_input_files = list(zip(image_files, anno_files, mask_files))
+        # for j in range(5):
+        #     wrapper(j)
+        # exit(0)
+
+        num_processes = 16
+        with Pool(num_processes, initializer=worker_init, initargs=(packed_input_files,)) as p:
+            indices = [j for j in range(len(packed_input_files))]
+            list(tqdm(p.imap(wrapper, indices), total=len(indices)))
+        
+        start_image_id += len(packed_input_files)*10

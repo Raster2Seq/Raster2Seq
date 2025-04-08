@@ -426,6 +426,8 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
         elif poly_type == door_window_index[1]:  # Window
             polygons_windows.append([poly, poly_type])
         else: # regular room
+            if len(poly) < 3:
+                breakpoint()
             polygon = Polygon(poly)
             patch = PolygonPatch(polygon, facecolor='#FFFFFF', alpha=1.0, linewidth=0)
             ax.add_patch(patch)

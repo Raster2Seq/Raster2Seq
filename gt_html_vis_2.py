@@ -1,24 +1,28 @@
 import os
+import json
 from glob import glob
 from html4vision import Col, imagetable
 
-org_root_path = "data/coco_cubicasa5k_nowalls_v3"
-root_path = "data/coco_cubicasa5k_nowalls_v3_refined"
+org_root_path = "data/coco_cubicasa5k_nowalls_v4"
+root_path = "data/coco_cubicasa5k_nowalls_v4-1_refined"
 split = 'train'
 max_samples = 100
 
 # Create elements from directory of images
-gt_images = sorted(glob(f'{root_path}/{split}/*.png'))[:max_samples]
+gt_jsons = sorted(glob(f'{root_path}/annotations_json/{split}/*.json'))[:max_samples]
+with open(f"{root_path}/annotations/{split}_image_id_mapping.json", 'r') as f:
+    image_id_mapping = json.load(f)
 
 # Create IDs from filenames
-ids = [os.path.basename(f).split('.')[0] for f in gt_images]
-org_ids = [os.path.basename(f).split('.')[0].split('_')[1] for f in gt_images]
+ids = [os.path.basename(f).split('.')[0] for f in gt_jsons]
+org_ids = [os.path.basename(f).split('.')[0].split('_')[1] for f in gt_jsons]
+new_ids = [os.path.basename(f).split('.')[0].split('_')[0] for f in gt_jsons]
 
 col1 = [f'{org_root_path}/{split}/{img_id}.png' for img_id in org_ids]
 col2 = [f'{root_path}/{split}_aux/{img_id}_polylines.png' for img_id in org_ids]
 col3 = [f'{root_path}/{split}_aux/{img_id}_org_floor.png' for img_id in org_ids] 
 col4 = [f'{root_path}/{split}_aux/{img_id}_floor.png' for img_id in ids] 
-col5 = [f'{root_path}/{split}/{img_id}.png' for img_id in ids]
+col5 = [f'{root_path}/{split}/{str(image_id_mapping[str(int(img_id))]).zfill(5)}.png' for img_id in new_ids]
 
 # table description
 cols = [

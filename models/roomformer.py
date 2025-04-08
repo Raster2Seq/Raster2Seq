@@ -190,7 +190,7 @@ class SetCriterion(nn.Module):
         1) we compute hungarian assignment between ground truth polygons and the outputs of the model
         2) we supervise each pair of matched ground-truth / prediction (supervise class and coords)
     """
-    def __init__(self, num_classes, semantic_classes, matcher, weight_dict, losses):
+    def __init__(self, num_classes, semantic_classes, matcher, weight_dict, losses, ignore_index=-1):
         """ Create the criterion.
         Parameters:
             num_classes: number of classes for corner validity (binary)
@@ -206,6 +206,7 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.losses = losses
         self.raster_loss = MaskRasterizationLoss(None)
+        self.ignore_index = ignore_index
 
 
     def loss_labels(self, outputs, targets, indices):
@@ -234,7 +235,7 @@ class SetCriterion(nn.Module):
             room_target_classes = torch.full(room_src_logits.shape[:2], self.semantic_classes-1,
                                         dtype=torch.int64, device=room_src_logits.device)
             room_target_classes[idx] = room_target_classes_o
-            loss_ce_room = F.cross_entropy(room_src_logits.transpose(1, 2), room_target_classes)
+            loss_ce_room = F.cross_entropy(room_src_logits.transpose(1, 2), room_target_classes, ignore_index=self.ignore_index)
             losses = {'loss_ce': loss_ce, 'loss_ce_room': loss_ce_room}
 
         return losses
@@ -372,7 +373,7 @@ def build(args, train=True):
         aux_loss=args.aux_loss,
         with_poly_refine=args.with_poly_refine,
         masked_attn=args.masked_attn,
-        semantic_classes=args.semantic_classes
+        semantic_classes=args.semantic_classes,
     )
 
     if not train:
@@ -401,7 +402,8 @@ def build(args, train=True):
 
     losses = ['labels', 'polys', 'cardinality']
     # num_classes, matcher, weight_dict, losses
-    criterion = SetCriterion(num_classes, args.semantic_classes, matcher, weight_dict, losses)
+    criterion = SetCriterion(num_classes, args.semantic_classes, matcher, weight_dict, losses,
+                             ignore_index=args.ignore_index)
     criterion.to(device)
 
     return model, criterion
