@@ -12,7 +12,7 @@ import torch
 from torch.utils.data import DataLoader
 import util.misc as utils
 from datasets import build_dataset
-from engine import evaluate_floor
+from engine import evaluate_floor, evaluate_floor_v2
 from models import build_model
 
 
@@ -24,11 +24,21 @@ def get_args_parser():
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--input_channels', default=1, type=int)
     parser.add_argument('--image_norm', action='store_true')
+    parser.add_argument('--eval_every_epoch', type=int, default=20)
+    parser.add_argument('--ckpt_every_epoch', type=int, default=20)
+    parser.add_argument('--label_smoothing', type=float, default=0.)
+    parser.add_argument('--ignore_index', type=int, default=-1)
+    parser.add_argument('--image_size', type=int, default=256)
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
     parser.add_argument('--seq_len', type=int, default=1024)
     parser.add_argument('--num_bins', type=int, default=64)
+    parser.add_argument('--pre_decoder_pos_embed', action='store_true')
+    parser.add_argument('--learnable_dec_pe', action='store_true')
+    parser.add_argument('--dec_qkv_proj', action='store_true')
+    parser.add_argument('--dec_attn_concat_src', action='store_true')
+    parser.add_argument('--dec_layer_type', type=str, default='v1')
 
     # backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
@@ -75,6 +85,8 @@ def get_args_parser():
                         help="Number of classes for semantically-rich floorplan:  \
                         1. default -1 means non-semantic floorplan \
                         2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty")
+    parser.add_argument('--disable_poly_refine', action='store_true',
+                        help="iteratively refine reference points (i.e. positional part of polygon queries)")
 
     # aux
     parser.add_argument('--no_aux_loss', dest='aux_loss', action='store_true',
@@ -112,18 +124,18 @@ def main(args):
     np.random.seed(seed)
     random.seed(seed)
 
-    # build model
-    model = build_model(args, train=False)
-    model.to(device)
-
-    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print('number of params:', n_parameters)
-
     # build dataset and dataloader
     dataset_eval = build_dataset(image_set=args.eval_set, args=args)
+
+    tokenizer = None
+    if args.poly2seq:
+        args.vocab_size = dataset_eval.get_vocab_size()
+        tokenizer = dataset_eval.get_tokenizer()
+
     # overfit one sample
     if args.debug:
         dataset_eval = torch.utils.data.Subset(dataset_eval, [31])
+    
 
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
 
@@ -136,6 +148,14 @@ def main(args):
     data_loader_eval = DataLoader(dataset_eval, args.batch_size, sampler=sampler_eval,
                                  drop_last=False, collate_fn=trivial_batch_collator, num_workers=args.num_workers,
                                  pin_memory=True)
+
+    # build model
+    model = build_model(args, train=False, tokenizer=tokenizer)
+    model.to(device)
+
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print('number of params:', n_parameters)
+
 
     for n, p in model.named_parameters():
         print(n)
@@ -156,14 +176,24 @@ def main(args):
         print('Unexpected Keys: {}'.format(unexpected_keys))
 
     save_dir = os.path.join(os.path.dirname(args.checkpoint), output_dir)
-    evaluate_floor(
-                   model, args.dataset_name, data_loader_eval, 
-                   device, save_dir, 
-                   plot_pred=args.plot_pred, 
-                   plot_density=args.plot_density, 
-                   plot_gt=args.plot_gt,
-                   semantic_rich=args.semantic_classes>0
-                   )
+    if not args.poly2seq:
+        evaluate_floor(
+                    model, args.dataset_name, data_loader_eval, 
+                    device, save_dir, 
+                    plot_pred=args.plot_pred, 
+                    plot_density=args.plot_density, 
+                    plot_gt=args.plot_gt,
+                    semantic_rich=args.semantic_classes>0
+                    )
+    else:
+        evaluate_floor_v2(
+                    model, args.dataset_name, data_loader_eval, 
+                    device, save_dir, 
+                    plot_pred=args.plot_pred, 
+                    plot_density=args.plot_density, 
+                    plot_gt=args.plot_gt,
+                    semantic_rich=args.semantic_classes>0
+                    )
 
 
 if __name__ == '__main__':

@@ -14,10 +14,8 @@ import os
 import shapely
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 
-corner_metric_thresh = 10 # 20
+corner_metric_thresh = 10 # 10,20
 angle_metric_thresh = 5
-
-
 
 # colormap_255 = [[i, i, i] for i in range(40)]
 
@@ -124,7 +122,7 @@ class Evaluator_RPlan():
         
         ignore_mask_region = None
 
-        # img_size = (joint_room_map.shape[0], joint_room_map.shape[1])
+        #TODO: input img_size
         img_size = (256, 256)
         quant_result_dict = self.get_quantitative(gt_polys_list, 
                                                 gt_polys_types, 

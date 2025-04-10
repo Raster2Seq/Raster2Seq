@@ -53,7 +53,7 @@ class DeformableTransformer(nn.Module):
                  activation="relu", poly_refine=True, return_intermediate_dec=False, aux_loss=False,
                  num_feature_levels=4, dec_n_points=4, enc_n_points=4, query_pos_type="none", 
                  vocab_size=None, seq_len=1024, pre_decoder_pos_embed=False, learnable_dec_pe=False,
-                 dec_attn_concat_src=False, dec_qkv_proj=True):
+                 dec_attn_concat_src=False, dec_qkv_proj=True, dec_layer_type='v1'):
         super().__init__()
 
         self.d_model = d_model
@@ -64,10 +64,16 @@ class DeformableTransformer(nn.Module):
                                                           num_feature_levels, nhead, enc_n_points)
         self.encoder = DeformableTransformerEncoder(encoder_layer, num_encoder_layers)
 
-        decoder_layer = TransformerDecoderLayer(d_model, dim_feedforward,
-                                                          dropout, activation,
-                                                          num_feature_levels, nhead, dec_n_points,
-                                                          use_qkv_proj=(dec_qkv_proj and not dec_attn_concat_src))
+        if dec_layer_type == 'v1':
+            decoder_layer = TransformerDecoderLayer(d_model, dim_feedforward,
+                                                            dropout, activation,
+                                                            num_feature_levels, nhead, dec_n_points,
+                                                            use_qkv_proj=(dec_qkv_proj and not dec_attn_concat_src))
+        elif dec_layer_type == 'v2':
+            decoder_layer = TransformerDecoderLayerV2(d_model, dim_feedforward,
+                                                            dropout, activation,
+                                                            num_feature_levels, nhead, dec_n_points,
+                                                            use_qkv_proj=(dec_qkv_proj and not dec_attn_concat_src))
         self.decoder = TransformerDecoder(decoder_layer, 
                                           num_decoder_layers, 
                                           poly_refine, 
@@ -304,6 +310,68 @@ class TransformerDecoderLayer(nn.Module):
         return tgt
 
 
+class TransformerDecoderLayerV2(nn.Module):
+    def __init__(self, d_model=256, d_ffn=1024,
+                 dropout=0.1, activation="relu",
+                 n_levels=4, n_heads=8, n_points=4, **kwargs):
+        super().__init__()
+        self.d_model = d_model
+
+        # self.q_norm = nn.LayerNorm(d_model)
+        # self.k_norm = nn.LayerNorm(d_model)
+
+        # attention
+        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        # cross attention
+        self.cross_attn = MSDeformAttn(d_model, n_levels, n_heads, n_points)
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+
+        # ffn
+        self.linear1 = nn.Linear(d_model, d_ffn)
+        self.activation = _get_activation_fn(activation)
+        self.dropout3 = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(d_ffn, d_model)
+        self.dropout4 = nn.Dropout(dropout)
+        self.norm3 = nn.LayerNorm(d_model)
+
+    @staticmethod
+    def with_pos_embed(tensor, pos):
+        return tensor if pos is None else tensor + pos[:, :tensor.size(1)]
+
+    def forward_ffn(self, tgt):
+        tgt2 = self.linear2(self.dropout3(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout4(tgt2)
+        tgt = self.norm3(tgt)
+        return tgt
+
+    def forward(self, tgt, query_pos, reference_points, src, src_spatial_shapes, level_start_index, src_padding_mask=None, 
+                tgt_masks=None, attn_concat_src=False):
+        # cross attention
+        tgt2 = self.cross_attn(self.with_pos_embed(tgt, query_pos),
+                               reference_points,
+                               src, src_spatial_shapes, level_start_index, src_padding_mask)
+        tgt = tgt + self.dropout1(tgt2)
+        tgt = self.norm1(tgt)
+
+        # self attention
+        q = self.with_pos_embed(tgt, query_pos)
+        k = tgt
+        v = tgt
+
+        tgt2 = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), v.transpose(0, 1), attn_mask=tgt_masks)[0].transpose(0, 1)
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+
+        # ffn
+        tgt = self.forward_ffn(tgt)
+
+        return tgt
+
+
 class TransformerDecoder(nn.Module):
     def __init__(self, decoder_layer, 
                  num_layers, 
@@ -482,6 +550,7 @@ def build_deforamble_transformer(args):
         learnable_dec_pe=args.learnable_dec_pe,
         dec_attn_concat_src=args.dec_attn_concat_src,
         dec_qkv_proj=args.dec_qkv_proj,
+        dec_layer_type=args.dec_layer_type,
         )
 
 

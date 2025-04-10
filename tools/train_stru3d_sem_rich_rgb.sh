@@ -20,14 +20,14 @@
 #                --semantic_classes=19 \
 #                --job_name=train_stru3d_sem_rich
 
-MASTER_PORT=13526
-WANDB_MODE=offline python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
+MASTER_PORT=13535
+WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
                --num_queries=1200 \
                --num_polys=30 \
                --semantic_classes=-1 \
-               --job_name=s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo10_cls1_nopolyrefine_debug \
-               --batch_size 20 \
+               --job_name=s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo10_cls1_nopolyrefine_predecPE_deccatsrc_v2 \
+               --batch_size 32 \
                --input_channels=3 \
                --output_dir /share/elor/htp26/roomformer/output/ \
                --poly2seq \
@@ -43,9 +43,10 @@ WANDB_MODE=offline python -m torch.distributed.run --nproc_per_node=1 --master_p
                --cls_loss_coef 1 \
                --coords_loss_coef 10 \
                --disable_poly_refine \
-               --dec_attn_concat_src \
                --pre_decoder_pos_embed \
+               --dec_attn_concat_src \
                # --dec_qkv_proj \
-               # --resume /home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_smoothed0.1_bs32_v2/checkpoint.pth
+               # --resume /home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo10_cls1_nopolyrefine_predecPE_v1/checkpoint.pth \
+               # --dec_layer_type='v2' \
             #    --set_cost_coords=10 \
             #    --coords_loss_coef=10

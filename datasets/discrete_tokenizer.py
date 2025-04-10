@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 class DiscreteTokenizer(object):
@@ -35,4 +36,4 @@ class DiscreteTokenizer(object):
     def _padding(self, seq, pad_value, dtype):
         if self.seq_len > len(seq):
             seq.extend([pad_value] * (self.seq_len - len(seq)))
-        return torch.tensor(seq, dtype=dtype)
+        return torch.tensor(np.array(seq), dtype=dtype)

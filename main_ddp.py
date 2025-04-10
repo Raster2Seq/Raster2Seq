@@ -56,6 +56,7 @@ def get_args_parser():
     parser.add_argument('--learnable_dec_pe', action='store_true')
     parser.add_argument('--dec_qkv_proj', action='store_true')
     parser.add_argument('--dec_attn_concat_src', action='store_true')
+    parser.add_argument('--dec_layer_type', type=str, default='v1')
 
     # parser.add_argument('--use_room_attn_at_last_dec_layer', default=False, action='store_true', help="use room-wise attention in last decoder layer")
 
@@ -318,7 +319,8 @@ def main(args):
             optimizer.load_state_dict(checkpoint['optimizer'])
             for pg, pg_old in zip(optimizer.param_groups, p_groups):
                 pg['lr'] = pg_old['lr']
-                pg['initial_lr'] = pg_old['initial_lr']
+                if 'initial_lr' in pg_old:
+                    pg['initial_lr'] = pg_old['initial_lr']
             # print(optimizer.param_groups)
             if lr_scheduler is not None and checkpoint['lr_scheduler'] is not None:
                 lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])

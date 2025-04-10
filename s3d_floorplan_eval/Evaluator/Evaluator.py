@@ -8,10 +8,13 @@ import os
 import shapely
 from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
 
+try:
+    np.bool = np.bool_
+except:
+    np.bool = np.bool # for numpy 1.20
+
 corner_metric_thresh = 10
 angle_metric_thresh = 5
-
-
 
 # colormap_255 = [[i, i, i] for i in range(40)]
 

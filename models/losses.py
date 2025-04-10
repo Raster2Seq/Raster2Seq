@@ -7,7 +7,10 @@ from detectron2.structures.instances import Instances
 from detectron2.utils.events import get_event_storage
 
 from util.poly_ops import get_all_order_corners
-from diff_ras.polygon import SoftPolygon
+try:
+    from diff_ras.polygon import SoftPolygon
+except ImportError:
+    SoftPolygon = None
 from util.bf_utils import get_union_box, rasterize_instances, POLY_LOSS_REGISTRY
 
 def custom_L1_loss(src_polys, target_polys, target_len):
