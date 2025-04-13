@@ -31,7 +31,7 @@ opts = options.parse()
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0, poly2seq: bool = False):
+                    device: torch.device, epoch: int, max_norm: float = 0, poly2seq: bool = False, ema_model=None):
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -39,6 +39,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     metric_logger.add_meter('grad_norm', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 10
+    model_obj = model if not hasattr(model, 'module') else model.module
 
     for batched_inputs, batched_extras in metric_logger.log_every(data_loader, print_freq, header):
         samples = [x["image"].to(device) for x in batched_inputs]
@@ -47,12 +48,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         # print("Max #polys: ", max([len(gt_instances[i].gt_masks.polygons) for i in range(len(gt_instances))]))
         # print("Max #corners: ", max([gt_instances[i].gt_masks.polygons for i in range(gt_instances)]))
         if not poly2seq:
-            if hasattr(model, 'module'):
-                room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
-            else:
-                room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, device)
             outputs = model(samples)
         else:
+            for key in batched_extras.keys():
+                batched_extras[key] = batched_extras[key].to(device)
             room_targets = batched_extras
             outputs = model(samples, batched_extras)
 
@@ -80,6 +80,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         else:
             grad_total_norm = utils.get_total_grad_norm(model.parameters(), max_norm)
         optimizer.step()
+        if ema_model is not None:
+            utils.update_ema(ema_model, model.module, 0.999)
 
         metric_logger.update(loss=loss_value, **loss_dict_scaled, **loss_dict_unscaled)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
@@ -97,16 +99,14 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
+    model_obj = model if not hasattr(model, 'module') else model.module
 
     for batched_inputs, batched_extras in metric_logger.log_every(data_loader, 10, header):
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
         if not poly2seq:
-            if hasattr(model, 'module'):
-                room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
-            else:
-                room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, device)
             outputs = model(samples)
         else:
             room_targets = batched_extras
@@ -278,18 +278,18 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
+    model_obj = model if not hasattr(model, 'module') else model.module
 
     for batched_inputs, batched_extras in metric_logger.log_every(data_loader, 10, header):
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
         if not poly2seq:
-            if hasattr(model, 'module'):
-                room_targets = pad_gt_polys(gt_instances, model.module.num_queries_per_poly, device)
-            else:
-                room_targets = pad_gt_polys(gt_instances, model.num_queries_per_poly, device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, device)
             outputs = model(samples)
         else:
+            for key in batched_extras.keys():
+                batched_extras[key] = batched_extras[key].to(device)
             room_targets = batched_extras
             outputs = model(samples, batched_extras)
 
@@ -298,7 +298,7 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
 
         image_size = samples[0].size(2)
         if poly2seq:
-            outputs = model.module.forward_inference(samples)
+            outputs = model_obj.forward_inference(samples)
             pred_corners = outputs['gen_out']
             bs = outputs['pred_logits'].shape[0]
         else:
@@ -484,11 +484,11 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
     return stats
 
 @torch.no_grad()
-def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False):
+def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False,
+                   save_pred=False):
     model.eval()
 
     door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
-    
 
     quant_result_dict = None
     scene_counter = 0
@@ -502,16 +502,18 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
         scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
 
+        image_size = samples[0].size(2)
+
         # draw GT map
         if plot_gt:
             for i, gt_inst in enumerate(gt_instances):
                 if not semantic_rich:
                     # plot regular room floorplan
                     gt_polys = []
-                    density_map = np.transpose((samples[i] * 255).cpu().numpy(), [1, 2, 0])
+                    density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
                     density_map = np.repeat(density_map, 3, axis=2)
 
-                    gt_corner_map = np.zeros([256, 256, 3])
+                    gt_corner_map = np.zeros([image_size, image_size, 3])
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
                         corners = poly[0].reshape(-1, 2)
                         gt_polys.append(corners)
@@ -525,7 +527,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
                         corners = poly[0].reshape(-1, 2).astype(np.int)
                         corners_flip_y = corners.copy()
-                        corners_flip_y[:,1] = 255 - corners_flip_y[:,1]
+                        corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
                         corners = corners_flip_y
                         gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
 
@@ -591,7 +593,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 pred_corners_per_room = pred_corners_per_scene[j]
                 valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
                 if len(valid_corners_per_room)>0:
-                    corners = (valid_corners_per_room * 255).cpu().numpy()
+                    corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
                     corners = np.around(corners).astype(np.int32)
 
                     if not semantic_rich:
@@ -649,12 +651,12 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     for j in range(len(room_polys)):
                         temp_poly = room_polys[j]
                         temp_poly_flip_y = temp_poly.copy()
-                        temp_poly_flip_y[:,1] = 255 - temp_poly_flip_y[:,1]
+                        temp_poly_flip_y[:,1] = image_size - 1 - temp_poly_flip_y[:,1]
                         pred_sem_rich.append([temp_poly_flip_y, room_types[j]])
                     for j in range(len(window_doors)):
                         temp_line = window_doors[j]
                         temp_line_flip_y = temp_line.copy()
-                        temp_line_flip_y[:,1] = 255 - temp_line_flip_y[:,1]
+                        temp_line_flip_y[:,1] = image_size - 1 - temp_line_flip_y[:,1]
                         pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
 
                     pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
@@ -669,13 +671,32 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000)
                     cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), floorplan_map)
 
+            if save_pred:
+                # Save room_polys as JSON
+                json_path = os.path.join(output_dir, 'jsons', '{}_pred.json'.format(str(scene_ids[i]).zfill(5)))
+                os.makedirs(os.path.dirname(json_path), exist_ok=True)
+                polys_list = [poly.astype(float).tolist() for poly in room_polys]
+                if semantic_rich:
+                    polys_list += [window_door.astype(float).tolist() for window_door in window_doors]
+                    types_list = room_types + window_doors_types
+                else:
+                    types_list = [-1] * len(polys_list)
+                
+                output_json = [{'image_id': str(scene_ids[i]).zfill(5), 
+                                'segmentation': polys_list[instance_id],
+                                'category_id': int(types_list[instance_id]),
+                                'id': instance_id,
+                                } for instance_id in range(len(polys_list))]
+                with open(json_path, 'w') as json_file:
+                    json.dump(output_json, json_file)
+
             if plot_density:
                 density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
                 if density_map.shape[2] == 3:
-                    density_map = density_map * 255
+                    density_map = density_map * (image_size - 1)
                 else:
-                    density_map = np.repeat(density_map, 3, axis=2) * 255
-                pred_room_map = np.zeros([256, 256, 3])
+                    density_map = np.repeat(density_map, 3, axis=2) * (image_size - 1)
+                pred_room_map = np.zeros([image_size, image_size, 3])
 
                 for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
                     pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)
@@ -707,7 +728,8 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
 
 
 @torch.no_grad()
-def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False):
+def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False,
+                      save_pred=False):
     model.eval()
 
     door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
@@ -724,6 +746,9 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
         scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
 
+        for key in batched_extras.keys():
+            batched_extras[key] = batched_extras[key].to(device)
+
         image_size = samples[0].size(2)
         # draw GT map
         if plot_gt:
@@ -731,10 +756,10 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                 if not semantic_rich:
                     # plot regular room floorplan
                     gt_polys = []
-                    density_map = np.transpose((samples[i] * 255).cpu().numpy(), [1, 2, 0])
+                    density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
                     density_map = np.repeat(density_map, 3, axis=2)
 
-                    gt_corner_map = np.zeros([256, 256, 3])
+                    gt_corner_map = np.zeros([image_size, image_size, 3])
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
                         corners = poly[0].reshape(-1, 2)
                         gt_polys.append(corners)
@@ -748,7 +773,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
                         corners = poly[0].reshape(-1, 2).astype(np.int)
                         corners_flip_y = corners.copy()
-                        corners_flip_y[:,1] = 255 - corners_flip_y[:,1]
+                        corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
                         corners = corners_flip_y
                         gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
 
@@ -836,30 +861,6 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     room_polys.extend(window_doors)
                 pred_room_label_per_scene = len(room_polys) * [-1]
 
-            # # process per room
-            # for j in range(fg_mask_per_scene.shape[0]):
-            #     fg_mask_per_room = fg_mask_per_scene[j]
-            #     pred_corners_per_room = pred_corners_per_scene[j]
-            #     valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
-            #     if len(valid_corners_per_room)>0:
-            #         corners = (valid_corners_per_room * 255).cpu().numpy()
-            #         corners = np.around(corners).astype(np.int32)
-
-            #         if not semantic_rich:
-            #             # only regular rooms
-            #             if len(corners)>=4 and Polygon(corners).area >= 100:
-            #                     room_polys.append(corners)
-            #         else:
-            #             # regular rooms
-            #             if pred_room_label_per_scene[j] not in door_window_index:
-            #                 if len(corners)>=4 and Polygon(corners).area >= 100:
-            #                     room_polys.append(corners)
-            #                     room_types.append(pred_room_label_per_scene[j])
-            #             # window / door
-            #             elif len(corners)==2:
-            #                 window_doors.append(corners)
-            #                 window_doors_types.append(pred_room_label_per_scene[j])
-
 
             if dataset_name == 'stru3d':
                 if not semantic_rich:
@@ -901,12 +902,12 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     for j in range(len(room_polys)):
                         temp_poly = room_polys[j]
                         temp_poly_flip_y = temp_poly.copy()
-                        temp_poly_flip_y[:,1] = 255 - temp_poly_flip_y[:,1]
+                        temp_poly_flip_y[:,1] = image_size - 1 - temp_poly_flip_y[:,1]
                         pred_sem_rich.append([temp_poly_flip_y, room_types[j]])
                     for j in range(len(window_doors)):
                         temp_line = window_doors[j]
                         temp_line_flip_y = temp_line.copy()
-                        temp_line_flip_y[:,1] = 255 - temp_line_flip_y[:,1]
+                        temp_line_flip_y[:,1] = image_size - 1 - temp_line_flip_y[:,1]
                         pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
 
                     pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
@@ -921,13 +922,32 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000)
                     cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), floorplan_map)
 
+            if save_pred:
+                # Save room_polys as JSON
+                json_path = os.path.join(output_dir, 'jsons', '{}_pred.json'.format(str(scene_ids[i]).zfill(5)))
+                os.makedirs(os.path.dirname(json_path), exist_ok=True)
+                polys_list = [poly.astype(float).tolist() for poly in room_polys]
+                if semantic_rich:
+                    polys_list += [window_door.astype(float).tolist() for window_door in window_doors]
+                    types_list = room_types + window_doors_types
+                else:
+                    types_list = [-1] * len(polys_list)
+                
+                output_json = [{'image_id': str(scene_ids[i]).zfill(5), 
+                                'segmentation': polys_list[instance_id],
+                                'category_id': int(types_list[instance_id]),
+                                'id': instance_id,
+                                } for instance_id in range(len(polys_list))]
+                with open(json_path, 'w') as json_file:
+                    json.dump(output_json, json_file)
+
             if plot_density:
                 density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
                 if density_map.shape[2] == 3:
-                    density_map = density_map * 255
+                    density_map = density_map * (image_size - 1)
                 else:
-                    density_map = np.repeat(density_map, 3, axis=2) * 255
-                pred_room_map = np.zeros([256, 256, 3])
+                    density_map = np.repeat(density_map, 3, axis=2) * (image_size - 1)
+                pred_room_map = np.zeros([image_size, image_size, 3])
 
                 for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
                     pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)

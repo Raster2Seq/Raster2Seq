@@ -109,7 +109,7 @@ def get_args_parser():
     parser.add_argument('--plot_pred', default=True, type=bool, help="plot predicted floorplan")
     parser.add_argument('--plot_density', default=True, type=bool, help="plot predicited room polygons overlaid on the density map")
     parser.add_argument('--plot_gt', default=True, type=bool, help="plot ground truth floorplan")
-
+    parser.add_argument('--save_pred', action='store_true', help="save_pred")
 
     return parser
 
@@ -183,16 +183,18 @@ def main(args):
                     plot_pred=args.plot_pred, 
                     plot_density=args.plot_density, 
                     plot_gt=args.plot_gt,
-                    semantic_rich=args.semantic_classes>0
+                    semantic_rich=args.semantic_classes>0,
+                    save_pred=args.save_pred,
                     )
     else:
         evaluate_floor_v2(
                     model, args.dataset_name, data_loader_eval, 
-                    device, save_dir, 
+                    device, save_dir,
                     plot_pred=args.plot_pred, 
                     plot_density=args.plot_density, 
                     plot_gt=args.plot_gt,
-                    semantic_rich=args.semantic_classes>0
+                    semantic_rich=args.semantic_classes>0,
+                    save_pred=args.save_pred,
                     )
 
 

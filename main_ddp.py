@@ -47,6 +47,7 @@ def get_args_parser():
     parser.add_argument('--label_smoothing', type=float, default=0.)
     parser.add_argument('--ignore_index', type=int, default=-1)
     parser.add_argument('--image_size', type=int, default=256)
+    parser.add_argument('--ema4eval', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -255,7 +256,8 @@ def main(args):
 
     # build model
     model, criterion = build_model(args, tokenizer=tokenizer)
-    model.to(device)
+    ema = copy.deepcopy(model).to(device)
+    utils.requires_grad(ema, False)
     model = DDP(model.to(device), device_ids=[rank], find_unused_parameters=True)
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -335,6 +337,7 @@ def main(args):
             if lr_scheduler is not None:
                 lr_scheduler.step(lr_scheduler.last_epoch)
             args.start_epoch = checkpoint['epoch'] + 1
+
         # check the resumed model
         if not args.poly2seq:
             test_stats = evaluate(
@@ -356,12 +359,16 @@ def main(args):
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
     
+    # Prepare models for training:
+    utils.update_ema(ema, model.module, decay=0)  # Ensure EMA is initialized with synced weights
+    ema.eval()
+
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(
-            model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm, args.poly2seq)
+            model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm, args.poly2seq, ema_model=ema)
         if lr_scheduler is not None:
             lr_scheduler.step()
         if (epoch + 1) in args.lr_drop or (epoch + 1) % args.ckpt_every_epoch == 0 or (epoch + 1) == args.epochs:
@@ -371,7 +378,8 @@ def main(args):
                 checkpoint_paths.append(output_dir / f'checkpoint{epoch:04}.pth')
                 for checkpoint_path in checkpoint_paths:
                     torch.save({
-                        'model': model.state_dict(),
+                        'model': model.module.state_dict(),
+                        'ema': ema.state_dict(),
                         'optimizer': optimizer.state_dict(),
                         'lr_scheduler': None if lr_scheduler is None else lr_scheduler.state_dict(),
                         'epoch': epoch,
@@ -408,14 +416,15 @@ def main(args):
     
         # eval every 20
         if (epoch + 1) % args.eval_every_epoch == 0:
+            eval_model = model if not args.ema4eval else ema
             if not args.poly2seq:
                 test_stats = evaluate(
-                    model, criterion, args.dataset_name, data_loader_val, device, 
+                    eval_model, criterion, args.dataset_name, data_loader_val, device, 
                     plot_density=True, output_dir=output_dir, epoch=epoch, poly2seq=args.poly2seq,
                 )
             else:
                 test_stats = evaluate_v2(
-                    model, criterion, args.dataset_name, data_loader_val, device, 
+                    eval_model, criterion, args.dataset_name, data_loader_val, device, 
                     plot_density=True, output_dir=output_dir, epoch=epoch, poly2seq=args.poly2seq,
                 )
             log_stats.update(**{f'test_{k}': v for k, v in test_stats.items()})

@@ -14,6 +14,7 @@ from torch.nn.init import xavier_uniform_, constant_, uniform_, normal_
 
 from util.misc import inverse_sigmoid
 from .deformable_transformer import DeformableTransformerEncoderLayer, DeformableTransformerEncoder, MSDeformAttn
+from .bixattn import BiXAttnBlock, CAOneSidedBlock
 
 def Embedding(num_embeddings, embedding_dim, padding_idx=None, zero_init=False):
     m = nn.Embedding(num_embeddings, embedding_dim, padding_idx=padding_idx)
@@ -74,6 +75,17 @@ class DeformableTransformer(nn.Module):
                                                             dropout, activation,
                                                             num_feature_levels, nhead, dec_n_points,
                                                             use_qkv_proj=(dec_qkv_proj and not dec_attn_concat_src))
+        elif dec_layer_type == 'v3':
+            decoder_layer = [TransformerDecoderLayerV3(d_model, dim_feedforward,
+                                                            dropout, activation,
+                                                            num_feature_levels, nhead, dec_n_points,
+                                                            use_qkv_proj=(dec_qkv_proj and not dec_attn_concat_src)) for _ in range(num_decoder_layers - 1)]
+            decoder_layer.append(TransformerDecoderLayerV3(d_model, dim_feedforward,
+                                                            dropout, activation,
+                                                            num_feature_levels, nhead, dec_n_points,
+                                                            use_qkv_proj=(dec_qkv_proj and not dec_attn_concat_src), 
+                                                            is_last_layer=True))
+                    
         self.decoder = TransformerDecoder(decoder_layer, 
                                           num_decoder_layers, 
                                           poly_refine, 
@@ -307,7 +319,7 @@ class TransformerDecoderLayer(nn.Module):
         # ffn
         tgt = self.forward_ffn(tgt)
 
-        return tgt
+        return tgt, None
 
 
 class TransformerDecoderLayerV2(nn.Module):
@@ -369,7 +381,77 @@ class TransformerDecoderLayerV2(nn.Module):
         # ffn
         tgt = self.forward_ffn(tgt)
 
+        return tgt, None
+
+
+class TransformerDecoderLayerV3(nn.Module):
+    def __init__(self, d_model=256, d_ffn=1024,
+                 dropout=0.1, activation="relu",
+                 n_levels=4, n_heads=8, n_points=4, is_last_layer=False, **kwargs):
+        super().__init__()
+        self.d_model = d_model
+
+        # attention
+        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        if not is_last_layer:
+            self.cross_attn = BiXAttnBlock(d_model, d_model, d_model, n_heads, rv_bias=False, drop=dropout, attn_drop=0.,
+                init_values=None, drop_path=dropout, act_layer=nn.ReLU, norm_layer=nn.LayerNorm,
+                lat_mlp_ratio=4., pat_mlp_ratio=4.)
+        else:
+            self.cross_attn = CAOneSidedBlock(d_model, d_model, d_model, n_heads, rv_bias=False, drop=dropout, attn_drop=0.,
+                init_values=None, drop_path=dropout, act_layer=nn.ReLU, norm_layer=nn.LayerNorm,
+                lat_mlp_ratio=4.)
+
+        # attention
+        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(d_model)
+
+        # ffn
+        self.linear1 = nn.Linear(d_model, d_ffn)
+        self.activation = _get_activation_fn(activation)
+        self.dropout3 = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(d_ffn, d_model)
+        self.dropout4 = nn.Dropout(dropout)
+        self.norm3 = nn.LayerNorm(d_model)
+
+    @staticmethod
+    def with_pos_embed(tensor, pos):
+        return tensor if pos is None else tensor + pos[:, :tensor.size(1)]
+
+    def forward_ffn(self, tgt):
+        tgt2 = self.linear2(self.dropout3(self.activation(self.linear1(tgt))))
+        tgt = tgt + self.dropout4(tgt2)
+        tgt = self.norm3(tgt)
         return tgt
+
+    def forward(self, tgt, query_pos, reference_points, src, src_spatial_shapes, level_start_index, src_padding_mask=None, 
+                tgt_masks=None, attn_concat_src=False):
+        # tgt2 = self.cross_attn(self.with_pos_embed(tgt, query_pos),
+        #                        reference_points,
+        #                        src, src_spatial_shapes, level_start_index, src_padding_mask)
+        # tgt = tgt + self.dropout1(tgt2)
+        # tgt = self.norm1(tgt)
+
+        # self attention
+        q = self.with_pos_embed(tgt, query_pos)
+        k = tgt
+        v = tgt
+
+        tgt2 = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), v.transpose(0, 1), attn_mask=tgt_masks)[0].transpose(0, 1)
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
+
+        # bidirectional cross attention
+        tgt, src = self.cross_attn(self.with_pos_embed(tgt, query_pos), src)
+
+        # ffn
+        tgt = self.forward_ffn(tgt)
+
+        return tgt, src
 
 
 class TransformerDecoder(nn.Module):
@@ -465,10 +547,12 @@ class TransformerDecoder(nn.Module):
 
             #TODO: update reference_points_input over time?
             reference_points_input = None
-            output = layer(output, query_pos, 
+            output, src_tmp = layer(output, query_pos, 
                            reference_points_input, src, 
                            src_spatial_shapes, src_level_start_index, src_padding_mask, 
                            tgt_masks, attn_concat_src=attn_concat_src)
+            if src_tmp is not None:
+                src = src_tmp
     
             # iterative polygon refinement
             # if self.poly_refine:
@@ -514,6 +598,8 @@ class TransformerDecoder(nn.Module):
 
 
 def _get_clones(module, N):
+    if isinstance(module, list):
+        return nn.ModuleList(module)
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
