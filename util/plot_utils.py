@@ -96,10 +96,10 @@ def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256):
     """
     colors = colors_12
 
-    regions = [(region * scale / 256).round().astype(np.int) for region in regions]
+    regions = [(region * scale / 256).round().astype(np.int32) for region in regions]
 
     # define the color map
-    room_colors = [colors[i] for i in range(len(regions))]
+    room_colors = [colors[i % len(colors)] for i in range(len(regions))]
 
     colorMap = [tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in room_colors]
     colorMap = np.asarray(colorMap)
@@ -122,7 +122,7 @@ def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256):
     if len(regions) > 1:
         avg_corner = [region.mean(axis=0) for region in regions]
         ind = np.argsort(np.square(np.array(avg_corner)).sum(axis=1), axis=0)
-        regions = np.array(regions)[ind]
+        regions = [regions[_idx] for _idx in ind] # np.array(regions)[ind]
 
     for idx, polygon in enumerate(regions):
         cv2.fillPoly(room_map, [polygon], color=idx + 1)
@@ -427,7 +427,7 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
             polygons_windows.append([poly, poly_type])
         else: # regular room
             if len(poly) < 3:
-                breakpoint()
+                continue
             polygon = Polygon(poly)
             patch = PolygonPatch(polygon, facecolor='#FFFFFF', alpha=1.0, linewidth=0)
             ax.add_patch(patch)

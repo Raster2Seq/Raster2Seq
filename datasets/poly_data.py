@@ -33,7 +33,8 @@ class TokenType(Enum):
 
 
 class MultiPoly(Dataset):
-    def __init__(self, img_folder, ann_file, transforms, semantic_classes, dataset_name='', image_norm=False, poly2seq=False, **kwargs):
+    def __init__(self, img_folder, ann_file, transforms, semantic_classes, dataset_name='', image_norm=False, poly2seq=False, 
+                 **kwargs):
         super(MultiPoly, self).__init__()
 
         self.root = img_folder
@@ -46,7 +47,8 @@ class MultiPoly(Dataset):
 
         self.poly2seq = poly2seq
         self.prepare = ConvertToCocoDict(self.root, self._transforms, image_norm, poly2seq, 
-                                         add_cls_token=(semantic_classes!=-1), **kwargs)
+                                         semantic_classes=semantic_classes, 
+                                         **kwargs)
 
     def get_image(self, path):
         return Image.open(os.path.join(self.root, path))
@@ -92,7 +94,7 @@ class MultiPoly(Dataset):
 
 
 class ConvertToCocoDict(object):
-    def __init__(self, root, augmentations, image_norm, poly2seq=False, add_cls_token=False, **kwargs):
+    def __init__(self, root, augmentations, image_norm, poly2seq=False, semantic_classes=-1, add_cls_token=False, per_token_class=False, **kwargs):
         self.root = root
         self.augmentations = augmentations
         if image_norm:
@@ -100,10 +102,12 @@ class ConvertToCocoDict(object):
         else:
             self.image_normalize = None
         
+        self.semantic_classes = semantic_classes
         self.poly2seq = poly2seq
         if poly2seq:
-            self.tokenizer = DiscreteTokenizer(**kwargs)
+            self.tokenizer = DiscreteTokenizer(add_cls=add_cls_token, **kwargs)
             self.add_cls_token = add_cls_token
+        self.per_token_class = per_token_class
 
     def _expand_image_dims(self, x):
         if len(x.shape) == 2:
@@ -169,12 +173,12 @@ class ConvertToCocoDict(object):
         if self.poly2seq:
             polygons = [np.clip(np.array(inst).reshape(-1, 2) / (w - 1), 0, 1) for inst in record['instances'].gt_masks.polygons]
             polygons_label = [inst.item() for inst in record['instances'].gt_classes]
-            record.update(self._get_bilinear_interpolation_coeffs(polygons, polygons_label, self.add_cls_token))
+            record.update(self._get_bilinear_interpolation_coeffs(polygons, polygons_label, self.add_cls_token, self.per_token_class))
             
         return record
 
         
-    def _get_bilinear_interpolation_coeffs(self, polygons, polygons_label, add_cls_token=False):
+    def _get_bilinear_interpolation_coeffs(self, polygons, polygons_label, add_cls_token=False, per_token_class=False):
         num_bins = self.tokenizer.num_bins
         quant_poly = [poly * (num_bins - 1) for poly in polygons]
         index11 = [[math.floor(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly in quant_poly]
@@ -190,7 +194,12 @@ class ConvertToCocoDict(object):
         # in real values insteads
         target_seq = []                      
         token_labels = [] # 0 for <coord>, 1 for <sep>, 2 for <eos>, 3 for <cls>
+        num_extra = 1 if not add_cls_token else 2 # cls and sep
+        count_polys = 0
         for poly in polygons:
+            cur_len = len(token_labels)
+            if cur_len + len(poly) + num_extra > self.tokenizer.seq_len:
+                break
             token_labels.extend([TokenType.coord.value] * len(poly))
             if add_cls_token:
                 token_labels.append(TokenType.cls.value) # cls token
@@ -199,38 +208,50 @@ class ConvertToCocoDict(object):
             if add_cls_token:
                 target_seq.append([0, 0]) # padding for cls token
             target_seq.append([0, 0]) # padding for sep/end token
+            count_polys += 1
         # remove last separator token
         token_labels[-1] = TokenType.eos.value
 
         mask = torch.ones(self.tokenizer.seq_len, dtype=torch.bool)
-        mask[len(token_labels):] = 0
+        if len(token_labels) < self.tokenizer.seq_len:
+            mask[len(token_labels):] = 0
         target_seq = self.tokenizer._padding(target_seq, [0, 0], dtype=torch.float32)
         token_labels = self.tokenizer._padding(token_labels, -1, dtype=torch.long)
 
         delta_x1 = [0] # [0] for bos token
-        for polygon in quant_poly:
-            # delta_x1.extend([0])  # for cls token
+        for polygon in quant_poly[:count_polys]:
             delta = [poly_point[0] - math.floor(poly_point[0]) for poly_point in polygon]
             delta_x1.extend(delta)
+            if add_cls_token:
+                delta_x1.extend([0])  # for cls token
             delta_x1.extend([0])  # for separator token
         delta_x1 = delta_x1[:-1]  # there is no separator token in the end
         delta_x1 = self.tokenizer._padding(delta_x1, 0, dtype=torch.float32)
         delta_x2 = 1 - delta_x1
 
         delta_y1 = [0] # [0] for bos token
-        for polygon in quant_poly:
-            # delta_y1.extend([0])  # for cls token
+        for polygon in quant_poly[:count_polys]:
             delta = [poly_point[1] - math.floor(poly_point[1]) for poly_point in polygon]
             delta_y1.extend(delta)
+            if add_cls_token:
+                delta_y1.extend([0])  # for cls token
             delta_y1.extend([0])  # for separator token
         delta_y1 = delta_y1[:-1]  # there is no separator token in the end
         delta_y1 = self.tokenizer._padding(delta_y1, 0, dtype=torch.float32)
         delta_y2 = 1 - delta_y1
 
-        target_polygon_labels = polygons_label
+        if not per_token_class:
+            target_polygon_labels = polygons_label[:count_polys]
+        else:
+            target_polygon_labels = []
+            for poly, poly_label in zip(quant_poly[:count_polys], polygons_label[:count_polys]):
+                target_polygon_labels.extend([poly_label] * len(poly))
+                target_polygon_labels.append(self.semantic_classes-1)  # undefined class for <sep> and <eos> token
+
         max_label_length = self.tokenizer.seq_len
         if len(polygons_label) < max_label_length:
-            target_polygon_labels.extend([-1]* (max_label_length - len(target_polygon_labels)))
+            target_polygon_labels.extend([-1] * (max_label_length - len(target_polygon_labels)))
+
         target_polygon_labels = torch.tensor(target_polygon_labels, dtype=torch.long)
 
         return {'delta_x1': delta_x1, 
@@ -288,7 +309,9 @@ def build(image_set, args):
                         image_norm=args.image_norm,
                         poly2seq=args.poly2seq,
                         num_bins=args.num_bins,
-                        seq_len=args.seq_len
+                        seq_len=args.seq_len,
+                        add_cls_token=args.add_cls_token,
+                        per_token_class=args.per_token_sem_loss,
                         )
     
     return dataset

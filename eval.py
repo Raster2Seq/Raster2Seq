@@ -6,13 +6,14 @@ import os
 import time
 from pathlib import Path
 import copy
+from tqdm import trange
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import util.misc as utils
 from datasets import build_dataset
-from engine import evaluate_floor, evaluate_floor_v2
+from engine import evaluate_floor, evaluate_floor_v2, generate
 from models import build_model
 
 
@@ -29,6 +30,9 @@ def get_args_parser():
     parser.add_argument('--label_smoothing', type=float, default=0.)
     parser.add_argument('--ignore_index', type=int, default=-1)
     parser.add_argument('--image_size', type=int, default=256)
+    parser.add_argument('--ema4eval', action='store_true')
+    parser.add_argument('--measure_time', action='store_true')
+    parser.add_argument('--disable_sampling_cache', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -39,6 +43,8 @@ def get_args_parser():
     parser.add_argument('--dec_qkv_proj', action='store_true')
     parser.add_argument('--dec_attn_concat_src', action='store_true')
     parser.add_argument('--dec_layer_type', type=str, default='v1')
+    parser.add_argument('--per_token_sem_loss', action='store_true')
+    parser.add_argument('--add_cls_token', action='store_true')
 
     # backbone
     parser.add_argument('--backbone', default='resnet50', type=str,
@@ -156,14 +162,16 @@ def main(args):
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('number of params:', n_parameters)
 
-
     for n, p in model.named_parameters():
         print(n)
 
     output_dir = Path(args.output_dir)
 
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
-    ckpt_state_dict = copy.deepcopy(checkpoint['model'])
+    if args.ema4eval:
+        ckpt_state_dict = copy.deepcopy(checkpoint['ema'])
+    else:
+        ckpt_state_dict = copy.deepcopy(checkpoint['model'])
     for key, value in checkpoint['model'].items():
         if key.startswith('module.'):
             ckpt_state_dict[key[7:]] = checkpoint['model'][key]
@@ -174,6 +182,35 @@ def main(args):
         print('Missing Keys: {}'.format(missing_keys))
     if len(unexpected_keys) > 0:
         print('Unexpected Keys: {}'.format(unexpected_keys))
+
+    # disable grad
+    for param in model.parameters():
+        param.requires_grad = False
+
+    if args.measure_time:
+        images = torch.rand(args.batch_size, 3, args.image_size, args.image_size).to(device)
+        # INIT LOGGERS
+        starter, ender = torch.cuda.Event(
+            enable_timing=True), torch.cuda.Event(enable_timing=True)
+        repetitions = 50
+        timings = np.zeros((repetitions, 1))
+        # GPU-WARM-UP
+        for _ in trange(10, desc="GPU-WARM-UP"):
+            _ = generate(model, images, semantic_rich=args.semantic_classes>0, use_cache=True)
+        # MEASURE PERFORMANCE
+        with torch.no_grad():
+            for rep in trange(repetitions):
+                starter.record()
+                outputs = generate(model, images, semantic_rich=args.semantic_classes>0, use_cache=not args.disable_sampling_cache)
+                ender.record()
+                # WAIT FOR GPU SYNC
+                torch.cuda.synchronize()
+                curr_time = starter.elapsed_time(ender)
+                timings[rep] = curr_time
+        mean_syn = np.sum(timings) / repetitions
+        std_syn = np.std(timings)
+        print("Inference time: {:.2f}+/-{:.2f}ms".format(mean_syn, std_syn))
+        exit(0)
 
     save_dir = os.path.join(os.path.dirname(args.checkpoint), output_dir)
     if not args.poly2seq:
@@ -195,6 +232,7 @@ def main(args):
                     plot_gt=args.plot_gt,
                     semantic_rich=args.semantic_classes>0,
                     save_pred=args.save_pred,
+                    per_token_sem_loss=args.per_token_sem_loss,
                     )
 
 

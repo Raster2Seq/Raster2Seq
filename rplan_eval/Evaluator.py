@@ -115,7 +115,7 @@ class Evaluator_RPlan():
 
     def evaluate_scene(self, room_polys, gt_polys, room_types, gt_polys_types,
                        window_door_lines=None, gt_window_doors_list=None, window_door_lines_types=None, gt_window_doors_type_list=None,
-                       show=False, name="ours", dataset_type="s3d"):
+                       show=False, name="ours", dataset_type="s3d", img_size=(256, 256)):
 
         gt_polys_list = [np.concatenate([poly, poly[None, 0]]) for poly in gt_polys]
         room_polys = [np.concatenate([poly, poly[None, 0]]) for poly in room_polys]
@@ -123,7 +123,6 @@ class Evaluator_RPlan():
         ignore_mask_region = None
 
         #TODO: input img_size
-        img_size = (256, 256)
         quant_result_dict = self.get_quantitative(gt_polys_list, 
                                                 gt_polys_types, 
                                                 gt_window_doors_list, 
@@ -383,8 +382,8 @@ class Evaluator_RPlan():
         gt2pred_indices_sem = [-1] * len(gt_polys)
         gt2pred_exists_sem = [False] * len(gt_polys)
 
-        gt2pred_indices_wd = [-1] * len(gt_window_doors)
-        gt2pred_exists_wd = [False] * len(gt_window_doors)
+        gt2pred_indices_wd = None if gt_window_doors is None else [-1] * len(gt_window_doors)
+        gt2pred_exists_wd = None if gt_window_doors is None else [False] * len(gt_window_doors)
 
         ### match predicted rooms to ground truth rooms
         best_iou = 0.

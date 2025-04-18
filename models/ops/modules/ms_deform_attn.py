@@ -57,6 +57,7 @@ class MSDeformAttn(nn.Module):
         self.value_proj = nn.Linear(d_model, d_model)
         self.output_proj = nn.Linear(d_model, d_model)
 
+        self.cache = None
         self._reset_parameters()
 
     def _reset_parameters(self):
@@ -75,7 +76,8 @@ class MSDeformAttn(nn.Module):
         xavier_uniform_(self.output_proj.weight.data)
         constant_(self.output_proj.bias.data, 0.)
 
-    def forward(self, query, reference_points, input_flatten, input_spatial_shapes, input_level_start_index, input_padding_mask=None):
+    def forward(self, query, reference_points, input_flatten, input_spatial_shapes, input_level_start_index, input_padding_mask=None,
+                use_cache=False):
         """
         :param query                       (N, Length_{query}, C)
         :param reference_points            (N, Length_{query}, n_levels, 2), range in [0, 1], top-left (0,0), bottom-right (1, 1), including padding area
@@ -91,10 +93,16 @@ class MSDeformAttn(nn.Module):
         N, Len_in, _ = input_flatten.shape
         assert (input_spatial_shapes[:, 0] * input_spatial_shapes[:, 1]).sum() == Len_in
 
-        value = self.value_proj(input_flatten)
-        if input_padding_mask is not None:
-            value = value.masked_fill(input_padding_mask[..., None], float(0))
-        value = value.view(N, Len_in, self.n_heads, self.d_model // self.n_heads)
+        if use_cache and self.cache is not None:
+            value = self.cache.get()
+        else:
+            value = self.value_proj(input_flatten)
+            if input_padding_mask is not None:
+                value = value.masked_fill(input_padding_mask[..., None], float(0))
+            value = value.view(N, Len_in, self.n_heads, self.d_model // self.n_heads)
+            if self.cache is not None:
+                self.cache.update(value)
+
         sampling_offsets = self.sampling_offsets(query).view(N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
         attention_weights = self.attention_weights(query).view(N, Len_q, self.n_heads, self.n_levels * self.n_points)
         attention_weights = F.softmax(attention_weights, -1).view(N, Len_q, self.n_heads, self.n_levels, self.n_points)

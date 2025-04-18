@@ -58,6 +58,9 @@ def get_args_parser():
     parser.add_argument('--dec_qkv_proj', action='store_true')
     parser.add_argument('--dec_attn_concat_src', action='store_true')
     parser.add_argument('--dec_layer_type', type=str, default='v1')
+    parser.add_argument('--per_token_sem_loss', action='store_true')
+    parser.add_argument('--add_cls_token', action='store_true')
+    parser.add_argument('--jointly_train', action='store_true')
 
     # parser.add_argument('--use_room_attn_at_last_dec_layer', default=False, action='store_true', help="use room-wise attention in last decoder layer")
 
@@ -178,8 +181,9 @@ def main(args):
 
     # overfit one sample
     if args.debug:
-        dataset_val = torch.utils.data.Subset(copy.deepcopy(dataset_train), [445])
+        dataset_val = torch.utils.data.Subset(copy.deepcopy(dataset_val), [0])
         dataset_train = copy.deepcopy(dataset_val)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
+        dataset_train[0]
 
     sampler_train = DistributedSampler(dataset_train, num_replicas=dist.get_world_size(), rank=rank, shuffle=True, seed=args.seed)
     sampler_val = DistributedSampler(dataset_val, num_replicas=dist.get_world_size(), rank=rank, shuffle=False, seed=args.seed)
@@ -273,6 +277,14 @@ def main(args):
 
     for n, p in model.named_parameters():
         print(n)
+    
+    if args.per_token_sem_loss and not args.jointly_train:
+        # disable gradient for model, except new classifier
+        for n, p in model.named_parameters():
+            if 'room_class_embed' in n:
+                p.requires_grad = True
+            else:
+                p.requires_grad = False
 
     param_dicts = [
         {
@@ -290,6 +302,8 @@ def main(args):
             "lr": args.lr * args.lr_linear_proj_mult,
         }
     ]
+    print(f"Rank {dist.get_rank()}: Model has {sum(p.numel() for p in model.parameters())} parameters")
+
     if args.sgd:
         optimizer = torch.optim.SGD(param_dicts, lr=args.lr, momentum=0.9,
                                     weight_decay=args.weight_decay)
@@ -306,14 +320,15 @@ def main(args):
     output_dir = Path(args.output_dir)
     if args.resume:
         checkpoint = torch.load(args.resume, map_location='cpu')
-        # for key, value in checkpoint['model'].items():
-        #     if key.startswith('module.'):
-        #         checkpoint[key[7:]] = checkpoint['model'][key]
-        #         del checkpoint[key]
-        missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model'], strict=False)
+        for key, value in checkpoint['model'].items():
+            if key.startswith('module.'):
+                checkpoint[key[7:]] = checkpoint['model'][key]
+                del checkpoint[key]
+        missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint['model'], strict=False)
         unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]
         if len(missing_keys) > 0:
             print('Missing Keys: {}'.format(missing_keys))
+            raise ValueError('Missing keys in state_dict')
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
         if 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
@@ -338,26 +353,39 @@ def main(args):
                 lr_scheduler.step(lr_scheduler.last_epoch)
             args.start_epoch = checkpoint['epoch'] + 1
 
-        # check the resumed model
-        if not args.poly2seq:
-            test_stats = evaluate(
-                model, criterion, args.dataset_name, data_loader_val, device
-            )
-        else:
-            test_stats = evaluate_v2(
-                model, criterion, args.dataset_name, data_loader_val, device, poly2seq=args.poly2seq
-            )
+        # # check the resumed model
+        # if not args.poly2seq:
+        #     test_stats = evaluate(
+        #         model, criterion, args.dataset_name, data_loader_val, device
+        #     )
+        # else:
+        #     test_stats = evaluate_v2(
+        #         model, criterion, args.dataset_name, data_loader_val, device, poly2seq=args.poly2seq
+        #     )
+        dist.barrier()
 
     if args.start_from_checkpoint:
-        checkpoint = torch.load(args.start_from_checkpoint, map_location='cpu')
-        if checkpoint['model']['module.backbone.0.body.conv1.weight'].size(1) != args.input_channels:
-            checkpoint['model']['module.backbone.0.body.conv1.weight'] = checkpoint['model']['module.backbone.0.body.conv1.weight'].repeat(1, args.input_channels, 1, 1)
-        missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model'], strict=False)
+        checkpoint = torch.load(args.start_from_checkpoint, map_location='cpu')['model']
+        # if checkpoint['model']['module.backbone.0.body.conv1.weight'].size(1) != args.input_channels:
+        #     checkpoint['model']['module.backbone.0.body.conv1.weight'] = checkpoint['model']['module.backbone.0.body.conv1.weight'].repeat(1, args.input_channels, 1, 1)
+        for key, value in checkpoint.items():
+            if 'class_embed' in key :
+                if checkpoint[key].size(0) != model.module.num_classes:
+                    if 'weight' in key:
+                        checkpoint[key] = torch.cat([checkpoint[key], torch.zeros((1, checkpoint[key].size(1)), dtype=torch.float)], dim=0)
+                    else:
+                        checkpoint[key] = torch.cat([checkpoint[key], torch.zeros([1], dtype=torch.float)], dim=0)
+            elif 'token_embed' in key:
+                if checkpoint[key].size(0) != model.module.transformer.decoder.token_embed.weight.size(0):
+                    checkpoint[key] = torch.cat([checkpoint[key], torch.zeros((1, checkpoint[key].size(1)), dtype=torch.float)], dim=0)
+
+        missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint, strict=False)
         unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]
         if len(missing_keys) > 0:
             print('Missing Keys: {}'.format(missing_keys))
         if len(unexpected_keys) > 0:
             print('Unexpected Keys: {}'.format(unexpected_keys))
+        dist.barrier()
     
     # Prepare models for training:
     utils.update_ema(ema, model.module, decay=0)  # Ensure EMA is initialized with synced weights
@@ -426,6 +454,8 @@ def main(args):
                 test_stats = evaluate_v2(
                     eval_model, criterion, args.dataset_name, data_loader_val, device, 
                     plot_density=True, output_dir=output_dir, epoch=epoch, poly2seq=args.poly2seq,
+                    add_cls_token=args.add_cls_token,
+                    per_token_sem_loss=args.per_token_sem_loss,
                 )
             log_stats.update(**{f'test_{k}': v for k, v in test_stats.items()})
 

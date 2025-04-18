@@ -26,7 +26,8 @@ def _get_clones(module, N):
 class RoomFormerV2(nn.Module):
     """ This is the RoomFormer module that performs floorplan reconstruction """
     def __init__(self, backbone, transformer, num_classes, num_queries, num_polys, num_feature_levels,
-                 aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1, seq_len=1024, tokenizer=None):
+                 aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1, seq_len=1024, tokenizer=None,
+                 ):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -45,10 +46,14 @@ class RoomFormerV2(nn.Module):
         assert  num_queries % num_polys == 0
         self.transformer = transformer
         hidden_dim = transformer.d_model
+        self.num_classes = num_classes
+
+
         self.class_embed = nn.Linear(hidden_dim, num_classes)
         self.coords_embed = MLP(hidden_dim, hidden_dim, 2, 3)
         self.num_feature_levels = num_feature_levels
         self.tokenizer = tokenizer
+        self.seq_len = seq_len
 
         # self.query_embed = nn.Embedding(num_queries, 2)
         # self.tgt_embed = nn.Embedding(num_queries, hidden_dim)
@@ -185,7 +190,6 @@ class RoomFormerV2(nn.Module):
 
         # hack implementation of room label prediction, not compatible with auxiliary loss
         if self.room_class_embed is not None:
-            # outputs_room_class = self.room_class_embed(hs[-1].view(bs, hs[-1].size[1], self.num_queries_per_poly, -1).mean(axis=2))
             outputs_room_class = self.room_class_embed(hs[-1])
             out = {'pred_logits': outputs_class[-1], 'pred_coords': outputs_coord[-1], 'pred_room_logits': outputs_room_class}
         
@@ -212,7 +216,7 @@ class RoomFormerV2(nn.Module):
             gen_out
         )
 
-    def forward_inference(self, samples: NestedTensor):
+    def forward_inference(self, samples: NestedTensor, use_cache=True):
         """ The forward expects a NestedTensor, which consists of:
                - samples.tensors: batched images, of shape [batch_size x C x H x W]
                - samples.mask: a binary mask of shape [batch_size x H x W], containing 1 on padded pixels
@@ -231,6 +235,7 @@ class RoomFormerV2(nn.Module):
         features, pos = self.backbone(samples)
 
         bs = samples.tensors.shape[0]
+
         srcs = []
         masks = []
         for l, feat in enumerate(features):
@@ -253,6 +258,11 @@ class RoomFormerV2(nn.Module):
                 pos.append(pos_l)
 
         ##### decoder part
+        if use_cache:
+            # kv cache for faster inference
+            max_src_len = sum([x.size(2) * x.size(3) for x in srcs]) # 1360
+            self._setup_caches(bs, max_src_len)
+
         (prev_output_token_11, prev_output_token_12, prev_output_token_21, prev_output_token_22,
             delta_x1, delta_x2, delta_y1, delta_y2,
             gen_out) = self._prepare_sequences(bs)
@@ -260,6 +270,7 @@ class RoomFormerV2(nn.Module):
         # query_embeds = self.query_embed.weight
         # tgt_embeds = self.tgt_embed.weight
         query_embeds, tgt_embeds = None, None
+        enc_cache = None
 
         device = samples.tensors.device
         num_bins = self.tokenizer.num_bins
@@ -269,15 +280,17 @@ class RoomFormerV2(nn.Module):
 
         i = 0
 
+        output_hs_list = []
         while i < max_len and unfinish_flag.any():
-            prev_output_tokens_11_tensor = torch.tensor(np.array(prev_output_token_11)).to(device).long()
-            prev_output_tokens_12_tensor = torch.tensor(np.array(prev_output_token_12)).to(device).long()
-            prev_output_tokens_21_tensor = torch.tensor(np.array(prev_output_token_21)).to(device).long()
-            prev_output_tokens_22_tensor = torch.tensor(np.array(prev_output_token_22)).to(device).long()
-            delta_x1_tensor = torch.tensor(np.array(delta_x1), dtype=torch.float32).to(device)
-            delta_x2_tensor = torch.tensor(np.array(delta_x2), dtype=torch.float32).to(device)
-            delta_y1_tensor = torch.tensor(np.array(delta_y1), dtype=torch.float32).to(device)
-            delta_y2_tensor = torch.tensor(np.array(delta_y2), dtype=torch.float32).to(device)
+            prev_output_tokens_11_tensor = torch.tensor(np.array(prev_output_token_11)[:, i:i+1]).to(device).long()
+            prev_output_tokens_12_tensor = torch.tensor(np.array(prev_output_token_12)[:, i:i+1]).to(device).long()
+            prev_output_tokens_21_tensor = torch.tensor(np.array(prev_output_token_21)[:, i:i+1]).to(device).long()
+            prev_output_tokens_22_tensor = torch.tensor(np.array(prev_output_token_22)[:, i:i+1]).to(device).long()
+            delta_x1_tensor = torch.tensor(np.array(delta_x1)[:, i:i+1], dtype=torch.float32).to(device)
+            delta_x2_tensor = torch.tensor(np.array(delta_x2)[:, i:i+1], dtype=torch.float32).to(device)
+            delta_y1_tensor = torch.tensor(np.array(delta_y1)[:, i:i+1], dtype=torch.float32).to(device)
+            delta_y2_tensor = torch.tensor(np.array(delta_y2)[:, i:i+1], dtype=torch.float32).to(device)
+
 
             seq_kwargs = {
                 'seq11': prev_output_tokens_11_tensor,
@@ -290,14 +303,23 @@ class RoomFormerV2(nn.Module):
                 'delta_y2': delta_y2_tensor,
             }
 
-            hs, _, reg_output, cls_output = self.transformer(srcs, masks, pos, query_embeds, tgt_embeds, None, 
-                                                                                   seq_kwargs, force_simple_returns=True)
+            if not use_cache:
+                hs, _, reg_output, cls_output = self.transformer(srcs, masks, pos, query_embeds, tgt_embeds, None, 
+                                                                                    seq_kwargs, force_simple_returns=True, return_enc_cache=use_cache, 
+                                                                                    enc_cache=None, decode_token_pos=None)
+                output_hs_list.append(hs[:, i:i+1])
+            else:
+                decode_token_pos = torch.tensor([i], device=device, dtype=torch.int)
+                hs, _, reg_output, cls_output, enc_cache = self.transformer(srcs, masks, pos, query_embeds, tgt_embeds, None, 
+                                                                                    seq_kwargs, force_simple_returns=True, return_enc_cache=use_cache, 
+                                                                                    enc_cache=enc_cache, decode_token_pos=decode_token_pos)
+                output_hs_list.append(hs)
             cls_type = torch.argmax(cls_output, 2)
             for j in range(bs):
                 if unfinish_flag[j] == 1:  # prediction is not finished
-                    cls_j = cls_type[j, i].item()
+                    cls_j = cls_type[j, 0].item()
                     if cls_j == TokenType.coord.value or (cls_j == TokenType.eos.value and i < min_len):
-                        output_j_x, output_j_y = reg_output[j, i].cpu().numpy()
+                        output_j_x, output_j_y = reg_output[j, 0].detach().cpu().numpy()
                         output_j_x = min(output_j_x, 1)
                         output_j_y = min(output_j_y, 1)
 
@@ -361,13 +383,13 @@ class RoomFormerV2(nn.Module):
                 delta_x2[j].append(1 - delta_x)
                 delta_y2[j].append(1 - delta_y)
             i += 1
-
-
+        
         out = {'pred_logits': cls_output, 'pred_coords': reg_output, 'gen_out': gen_out}
 
         # hack implementation of room label prediction, not compatible with auxiliary loss
         if self.room_class_embed is not None:
             # outputs_room_class = self.room_class_embed(hs[-1].view(bs, hs[-1].size[1], self.num_queries_per_poly, -1).mean(axis=2))
+            hs = torch.cat(output_hs_list, dim=1)
             outputs_room_class = self.room_class_embed(hs)
             out = {'pred_logits': cls_output, 'pred_coords': reg_output, 
                    'pred_room_logits': outputs_room_class, 'gen_out': gen_out}
@@ -382,6 +404,13 @@ class RoomFormerV2(nn.Module):
         # as a dict having both a Tensor and a list.
         return [{'pred_logits': a, 'pred_coords': b}
                 for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
+    
+    def _setup_caches(self, max_bs, max_src_len):
+        self.transformer._setup_caches(max_bs, self.seq_len, max_src_len,
+                                      self.transformer.d_model,
+                                      self.transformer.nhead,
+                                      self.transformer.level_embed.dtype,
+                                      device=self.transformer.level_embed.device)
 
 
 class SetCriterion(nn.Module):
@@ -390,7 +419,8 @@ class SetCriterion(nn.Module):
         1) we compute hungarian assignment between ground truth polygons and the outputs of the model
         2) we supervise each pair of matched ground-truth / prediction (supervise class and coords)
     """
-    def __init__(self, num_classes, semantic_classes, matcher, weight_dict, losses, label_smoothing=0.):
+    def __init__(self, num_classes, semantic_classes, matcher, weight_dict, losses, label_smoothing=0.,
+                 per_token_sem_loss=False):
         """ Create the criterion.
         Parameters:
             num_classes: number of classes for corner validity (binary)
@@ -406,6 +436,8 @@ class SetCriterion(nn.Module):
         self.weight_dict = weight_dict
         self.losses = losses
         self.label_smoothing = label_smoothing
+        self.per_token_sem_loss = per_token_sem_loss
+
         # self.raster_loss = MaskRasterizationLoss(None)
 
 
@@ -438,9 +470,14 @@ class SetCriterion(nn.Module):
             # room_target_classes = torch.full(room_src_logits.shape[:2], self.semantic_classes-1,
             #                             dtype=torch.int64, device=room_src_logits.device)
             # room_target_classes[idx] = room_target_classes_o
-            mask = (target_classes == 3) # cls token
-            room_target_classes = targets['target_polygon_labels'].to(room_src_logits.device)
-            loss_ce_room = F.cross_entropy(room_src_logits[mask], room_target_classes[room_target_classes != -1])
+            if not self.per_token_sem_loss:
+                mask = (target_classes == 3) # cls token
+                room_target_classes = targets['target_polygon_labels'].to(room_src_logits.device)
+                loss_ce_room = F.cross_entropy(room_src_logits[mask], room_target_classes[room_target_classes != -1])
+            else:
+                room_target_classes = targets['target_polygon_labels'].to(room_src_logits.device)
+                loss_ce_room = F.cross_entropy(room_src_logits[room_target_classes != -1], room_target_classes[room_target_classes != -1])
+                
             losses = {'loss_ce': loss_ce, 'loss_ce_room': loss_ce_room}
 
         return losses
@@ -572,11 +609,12 @@ class MLP(nn.Module):
 
 
 def build(args, train=True, tokenizer=None):
-    num_classes = 3 if args.semantic_classes == -1 else 4 # <coord> <sep> <eos> <cls>
-    vocab_size = args.num_bins
+    num_classes = 3 if not args.add_cls_token else 4 # <coord> <sep> <eos> <cls>
+    if tokenizer is not None:
+        pad_idx = tokenizer.pad
 
     backbone = build_backbone(args)
-    transformer = build_deforamble_transformer(args)
+    transformer = build_deforamble_transformer(args, pad_idx=pad_idx)
     model = RoomFormerV2(
         backbone,
         transformer,
@@ -619,7 +657,8 @@ def build(args, train=True, tokenizer=None):
     losses = ['labels', 'polys', 'cardinality']
     # num_classes, matcher, weight_dict, losses
     criterion = SetCriterion(num_classes, args.semantic_classes, matcher, weight_dict, losses,
-                             label_smoothing=args.label_smoothing)
+                             label_smoothing=args.label_smoothing, 
+                             per_token_sem_loss=args.per_token_sem_loss)
     criterion.to(device)
 
     return model, criterion
