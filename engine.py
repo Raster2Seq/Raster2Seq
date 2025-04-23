@@ -385,8 +385,8 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
                 corners = np.around(corners).astype(np.int32)
 
                 if not semantic_rich:
-                    # # only regular rooms
-                    # if len(corners)>=4 and Polygon(corners).area >= 100:
+                    # only regular rooms
+                    if len(corners)>=4: # and Polygon(corners).area >= 100:
                     room_polys.append(corners)
                 else:
                     if per_token_sem_loss:
