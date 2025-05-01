@@ -480,10 +480,13 @@ class SetCriterion(nn.Module):
             if not self.per_token_sem_loss:
                 mask = (target_classes == 3) # cls token
                 room_target_classes = targets['target_polygon_labels'].to(room_src_logits.device)
-                loss_ce_room = F.cross_entropy(room_src_logits[mask], room_target_classes[room_target_classes != -1])
+                # loss_ce_room = F.cross_entropy(room_src_logits[mask], room_target_classes[room_target_classes != -1])
+                loss_ce_room = label_smoothed_nll_loss(room_src_logits[mask], room_target_classes[room_target_classes != -1], epsilon=self.label_smoothing, reduction='mean')
             else:
                 room_target_classes = targets['target_polygon_labels'].to(room_src_logits.device)
-                loss_ce_room = F.cross_entropy(room_src_logits[room_target_classes != -1], room_target_classes[room_target_classes != -1])
+                # loss_ce_room = F.cross_entropy(room_src_logits[room_target_classes != -1], room_target_classes[room_target_classes != -1])
+                loss_ce_room = label_smoothed_nll_loss(room_src_logits[room_target_classes != -1], room_target_classes[room_target_classes 
+                    != -1], epsilon=self.label_smoothing, reduction='mean')
                 
             losses = {'loss_ce': loss_ce, 'loss_ce_room': loss_ce_room}
 
