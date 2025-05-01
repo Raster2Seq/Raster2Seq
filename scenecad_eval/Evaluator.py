@@ -22,9 +22,10 @@ angle_metric_thresh = 5
 # colormap_255 = [[i, i, i] for i in range(40)]
 
 class Evaluator_SceneCAD():
-    def __init__(self, data_rw=None, options=None):
+    def __init__(self, data_rw=None, options=None, disable_overlapping_filter=False):
         self.data_rw = data_rw
         self.options = options
+        self.disable_overlapping_filter = disable_overlapping_filter
 
         self.device = torch.device("cuda")
 
@@ -131,30 +132,30 @@ class Evaluator_SceneCAD():
     def get_quantitative(self, gt_polys, ignore_mask_region, pred_polys=None, masks_list=None, img_size=(256, 256), dataset_type="s3d"):
         def get_room_metric():
             pred_overlaps = [False] * len(pred_room_map_list)
+            if not self.disable_overlapping_filter:
+                for pred_ind1 in range(len(pred_room_map_list) - 1):
+                    pred_map1 = pred_room_map_list[pred_ind1]
 
-            for pred_ind1 in range(len(pred_room_map_list) - 1):
-                pred_map1 = pred_room_map_list[pred_ind1]
+                    for pred_ind2 in range(pred_ind1 + 1, len(pred_room_map_list)):
+                        pred_map2 = pred_room_map_list[pred_ind2]
 
-                for pred_ind2 in range(pred_ind1 + 1, len(pred_room_map_list)):
-                    pred_map2 = pred_room_map_list[pred_ind2]
+                        if dataset_type == "s3d":
+                            kernel = np.ones((5, 5), np.uint8)
+                        else:
+                            kernel = np.ones((3, 3), np.uint8)
 
-                    if dataset_type == "s3d":
-                        kernel = np.ones((5, 5), np.uint8)
-                    else:
-                        kernel = np.ones((3, 3), np.uint8)
+                        # todo: for our method, the rooms share corners and edges, need to check here
+                        pred_map1_er = cv2.erode(pred_map1, kernel)
+                        pred_map2_er = cv2.erode(pred_map2, kernel)
 
-                    # todo: for our method, the rooms share corners and edges, need to check here
-                    pred_map1_er = cv2.erode(pred_map1, kernel)
-                    pred_map2_er = cv2.erode(pred_map2, kernel)
+                        intersection = (pred_map1_er + pred_map2_er) == 2
+                        # intersection = (pred_map1 + pred_map2) == 2
 
-                    intersection = (pred_map1_er + pred_map2_er) == 2
-                    # intersection = (pred_map1 + pred_map2) == 2
+                        intersection_area = np.sum(intersection)
 
-                    intersection_area = np.sum(intersection)
-
-                    if intersection_area >= 1:
-                        pred_overlaps[pred_ind1] = True
-                        pred_overlaps[pred_ind2] = True
+                        if intersection_area >= 1:
+                            pred_overlaps[pred_ind1] = True
+                            pred_overlaps[pred_ind2] = True
 
             # import pdb; pdb.set_trace()
             room_metric = [np.bool((1 - pred_overlaps[ind]) * pred2gt_exists[ind]) for ind in range(len(pred_polys))]

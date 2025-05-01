@@ -7,6 +7,7 @@ from matplotlib.cm import get_cmap
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arc
 import matplotlib.patches as mpatches
+from matplotlib.colors import to_hex
 from PIL import ImageColor
 
 import cv2 
@@ -91,18 +92,27 @@ RED = '#ff3333'
 BLACK = '#000000'
 
 
-def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256):
+def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256, matching_labels=None):
     """Draw floorplan map where different colors indicate different rooms
     """
-    colors = colors_12
+    cmap = get_cmap('tab20', 20) # nipy_spectral
+    colors = [cmap(x) for x in np.linspace(0, 1, 21)] # colors = colors_12
+    gray_color = tuple(c / 255.0 for c in (255,255,255,255))
 
     regions = [(region * scale / 256).round().astype(np.int32) for region in regions]
 
-    # define the color map
-    room_colors = [colors[i % len(colors)] for i in range(len(regions))]
+    # Ensure room_colors contains valid hex strings
+    if matching_labels is None:
+        room_colors = [to_hex(colors[i % len(colors)]) for i in range(len(regions))]
+    else:
+        room_colors = [
+            to_hex(colors[i % len(colors)]) if matching_labels[i] else to_hex(gray_color[:3])
+            for i in range(len(regions))
+        ]
 
-    colorMap = [tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in room_colors]
-    colorMap = np.asarray(colorMap)
+    # colorMap = [tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in room_colors]
+    # colorMap = np.asarray(colorMap)
+    colorMap = np.array([ImageColor.getrgb(h) for h in room_colors], dtype=np.uint8)
     if len(regions) > 0:
         colorMap = np.concatenate([np.full(shape=(1, 3), fill_value=0), colorMap], axis=0).astype(
             np.uint8)
@@ -118,11 +128,11 @@ def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256):
     colorMap = np.concatenate([colorMap, np.expand_dims(alpha_channels, axis=-1)], axis=-1)
 
     room_map = np.zeros([scale, scale]).astype(np.int32)
-    # sort regions
-    if len(regions) > 1:
-        avg_corner = [region.mean(axis=0) for region in regions]
-        ind = np.argsort(np.square(np.array(avg_corner)).sum(axis=1), axis=0)
-        regions = [regions[_idx] for _idx in ind] # np.array(regions)[ind]
+    # # sort regions
+    # if len(regions) > 1:
+    #     avg_corner = [region.mean(axis=0) for region in regions]
+    #     ind = np.argsort(np.square(np.array(avg_corner)).sum(axis=1), axis=0)
+    #     regions = [regions[_idx] for _idx in ind] # np.array(regions)[ind]
 
     for idx, polygon in enumerate(regions):
         cv2.fillPoly(room_map, [polygon], color=idx + 1)
@@ -884,3 +894,43 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
     print(f"Saved improved floorplan to {file_name}")
     
     return image  # Return the image for optional further processing or visualization
+
+
+def sort_polygons_by_matching(matching_pred2gt, pred_polygons, gt_polygons):
+    """
+    Sorts pred_polygons and gt_polygons based on the matching indices.
+
+    Args:
+        matching_pred2gt (list): List of matching indices from pred to gt.
+        pred_polygons (list): List of predicted polygons.
+        gt_polygons (list): List of ground truth polygons.
+
+    Returns:
+        tuple: (sorted_pred_polygons, sorted_gt_polygons)
+    """
+    sorted_pred_polygons = []  # Keep the order of pred_polygons as is
+    sorted_gt_polygons = []
+    pred_mask = []
+    gt_mask = [] 
+    remaining_pred_polygons = []
+
+    for i, match_idx in enumerate(matching_pred2gt):
+        if match_idx == -1:
+            # sorted_gt_polygons.append(None)  # No match, insert placeholder
+            remaining_pred_polygons.append(pred_polygons[i])
+            continue
+        else:
+            sorted_pred_polygons.append(pred_polygons[i])
+            sorted_gt_polygons.append(gt_polygons[match_idx])
+            gt_mask.append(1)
+            pred_mask.append(1)
+    
+    sorted_pred_polygons.extend(remaining_pred_polygons)
+    pred_mask.extend([0] * len(remaining_pred_polygons))
+    
+    for i in range(len(gt_polygons)):
+        if i not in matching_pred2gt:
+            sorted_gt_polygons.append(gt_polygons[i])
+            gt_mask.append(0)
+
+    return sorted_pred_polygons, sorted_gt_polygons, pred_mask, gt_mask

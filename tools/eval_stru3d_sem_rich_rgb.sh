@@ -14,7 +14,7 @@
 python eval.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
                --eval_set=test \
-               --checkpoint=/home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_sem_bs32_coo20_cls1_nopolyrefine_predecPE_deccatsrc_v1/checkpoint0999.pth \
+               --checkpoint=/home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_sem1_bs32_coo20_cls5_anchor_deccatsrc_correct_pts_finetune_t1/checkpoint.pth \
                --output_dir=eval_stru3d_sem_rich \
                --num_queries=1200 \
                --num_polys=30 \
@@ -27,12 +27,11 @@ python eval.py --dataset_name=stru3d \
                --pre_decoder_pos_embed \
                --dec_attn_concat_src \
                --ema4eval \
-               --debug \
-               # --per_token_sem_loss \
+               --use_anchor \
+               --per_token_sem_loss \
+               # --debug \
                # --add_cls_token \
                # --batch_size 1 \
                # --measure_time \
             #    --disable_sampling_cache
                # --dec_qkv_proj \
-
-s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_nopolyrefine_predecPE_deccatsrc_v1

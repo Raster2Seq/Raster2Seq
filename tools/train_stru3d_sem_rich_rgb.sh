@@ -20,16 +20,20 @@
 #                --semantic_classes=19 \
 #                --job_name=train_stru3d_sem_rich
 
-MASTER_PORT=13555
+MASTER_PORT=13559
+SEM_COEFF=1
 CLS_COEFF=1
 COO_COEFF=20
+JOB=s3d_bw_ddp_poly2seq_l${SEQ_LEN}_sem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_correct_smoothing1e-1_numcls19_t1
+PRETRAIN=/home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1/checkpoint2349.pth
+
 WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
                --num_queries=1200 \
                --num_polys=30 \
                --semantic_classes=19 \
-               --job_name=s3d_bw_ddp_poly2seq_l512_sem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_nopolyrefine_predecPE_deccatsrc_pts_finetune_t1 \
-               --batch_size 32 \
+               --job_name=s3d_bw_ddp_poly2seq_l512_sem${SEM_COEFF}_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_nopolyrefine_predecPE_deccatsrc_pts_finetune_t1 \
+               --batch_size 28 \
                --input_channels=3 \
                --output_dir /share/elor/htp26/roomformer/output/ \
                --poly2seq \
@@ -40,20 +44,19 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --lr 2e-4 \
                --lr_backbone 2e-5 \
                --label_smoothing 0.1 \
-               --epochs 1000 \
+               --epochs 1800 \
                --lr_drop '' \
                --cls_loss_coef ${CLS_COEFF} \
                --coords_loss_coef ${COO_COEFF} \
-               --room_cls_loss_coef 1 \
+               --room_cls_loss_coef ${SEM_COEFF} \
                --disable_poly_refine \
-               --pre_decoder_pos_embed \
                --dec_attn_concat_src \
                --per_token_sem_loss \
                --ema4eval \
-               --start_from_checkpoint /home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_nopolyrefine_predecPE_deccatsrc_v1/checkpoint2299.pth \
                --jointly_train \
+               --start_from_checkpoint ${PRETRAIN} \
+               --use_anchor \
+               # --pre_decoder_pos_embed \
                # --dec_layer_type='v4' \
                # --clip_max_norm 1.0 \
                # --dec_qkv_proj \
-            #    --set_cost_coords=10 \
-            #    --coords_loss_coef=10

@@ -23,7 +23,7 @@ from scenecad_eval.Evaluator import Evaluator_SceneCAD
 from rplan_eval.Evaluator import Evaluator_RPlan
 
 from util.poly_ops import pad_gt_polys
-from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan, plot_semantic_rich_floorplan_tight
+from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan, plot_semantic_rich_floorplan_tight, sort_polygons_by_matching
 from datasets import get_dataset_class_labels
 
 options = MCSSOptions()
@@ -316,35 +316,36 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
         # process per scene
         for i in range(bs):
 
+            gt_polys, gt_polys_types = [], []
+            gt_window_doors = []
+            gt_window_doors_types = []
+            for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
+                gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
+                if gt_id in door_window_index:
+                    gt_window_doors.append(gt_poly)
+                    gt_window_doors_types.append(gt_id)
+                else:
+                    gt_polys.append(gt_poly)
+                    gt_polys_types.append(gt_id)
+
             if dataset_name == 'stru3d':
                 if int(scene_ids[i]) in wrong_s3d_annotations_list:
                     continue
                 curr_opts = copy.deepcopy(opts)
                 curr_opts.scene_id = "scene_0" + str(scene_ids[i])
                 curr_data_rw = S3DRW(curr_opts, mode = "online_eval")
-                evaluator = Evaluator(curr_data_rw, curr_opts)
+                evaluator = Evaluator(curr_data_rw, curr_opts, disable_overlapping_filter=True)
             elif dataset_name == 'scenecad':
                 gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1,2).astype(np.int32)]
-                evaluator = Evaluator_SceneCAD()
+                evaluator = Evaluator_SceneCAD(disable_overlapping_filter=True)
             elif dataset_name == 'rplan':
                 gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
                 gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
                 gt_window_doors = []
                 gt_window_doors_types = []
-                evaluator = Evaluator_RPlan()
+                evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
             elif dataset_name == 'cubicasa':
-                gt_polys, gt_polys_types = [], []
-                gt_window_doors = []
-                gt_window_doors_types = []
-                for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
-                    gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
-                    if gt_id in door_window_index:
-                        gt_window_doors.append(gt_poly)
-                        gt_window_doors_types.append(gt_id)
-                    else:
-                        gt_polys.append(gt_poly)
-                        gt_polys_types.append(gt_id)
-                evaluator = Evaluator_RPlan()
+                evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
             
             print("Running Evaluation for scene %s" % scene_ids[i])
 
@@ -507,36 +508,36 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
 
         image_size = samples[0].size(2)
 
-        # draw GT map
-        if plot_gt:
-            for i, gt_inst in enumerate(gt_instances):
-                if not semantic_rich:
-                    # plot regular room floorplan
-                    gt_polys = []
-                    density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
-                    density_map = np.repeat(density_map, 3, axis=2)
+        # # draw GT map
+        # if plot_gt:
+        #     for i, gt_inst in enumerate(gt_instances):
+        #         if not semantic_rich:
+        #             # plot regular room floorplan
+        #             gt_polys = []
+        #             density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
+        #             density_map = np.repeat(density_map, 3, axis=2)
 
-                    gt_corner_map = np.zeros([image_size, image_size, 3])
-                    for j, poly in enumerate(gt_inst.gt_masks.polygons):
-                        corners = poly[0].reshape(-1, 2)
-                        gt_polys.append(corners)
+        #             gt_corner_map = np.zeros([image_size, image_size, 3])
+        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
+        #                 corners = poly[0].reshape(-1, 2)
+        #                 gt_polys.append(corners)
                         
-                    gt_room_polys = [np.array(r) for r in gt_polys]
-                    gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
-                    cv2.imwrite(os.path.join(output_dir, '{}_gt.png'.format(scene_ids[i])), gt_floorplan_map)
-                else:
-                    # plot semantically-rich floorplan
-                    gt_sem_rich = []
-                    for j, poly in enumerate(gt_inst.gt_masks.polygons):
-                        corners = poly[0].reshape(-1, 2).astype(np.int32)
-                        corners_flip_y = corners.copy()
-                        corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
-                        corners = corners_flip_y
-                        gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
+        #             gt_room_polys = [np.array(r) for r in gt_polys]
+        #             gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
+        #             cv2.imwrite(os.path.join(output_dir, '{}_gt.png'.format(scene_ids[i])), gt_floorplan_map)
+        #         else:
+        #             # plot semantically-rich floorplan
+        #             gt_sem_rich = []
+        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
+        #                 corners = poly[0].reshape(-1, 2).astype(np.int32)
+        #                 corners_flip_y = corners.copy()
+        #                 corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
+        #                 corners = corners_flip_y
+        #                 gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
 
-                    gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
-                    # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
-                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False, door_window_index=door_window_index)
+        #             gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
+        #             # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
+        #             plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False, door_window_index=door_window_index)
 
         outputs = model(samples)
         pred_logits = outputs['pred_logits']
@@ -647,32 +648,95 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
 
             scene_counter += 1
 
-            if plot_pred:
-                if semantic_rich:
-                    # plot predicted semantic rich floorplan
-                    pred_sem_rich = []
-                    for j in range(len(room_polys)):
-                        temp_poly = room_polys[j]
-                        temp_poly_flip_y = temp_poly.copy()
-                        temp_poly_flip_y[:,1] = image_size - 1 - temp_poly_flip_y[:,1]
-                        pred_sem_rich.append([temp_poly_flip_y, room_types[j]])
-                    for j in range(len(window_doors)):
-                        temp_line = window_doors[j]
-                        temp_line_flip_y = temp_line.copy()
-                        temp_line_flip_y[:,1] = image_size - 1 - temp_line_flip_y[:,1]
-                        pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
+            # plot regular room floorplan
+            gt_room_polys = [np.array(poly) for poly in gt_polys]
+            room_polys = [np.array(poly) for poly in room_polys]
 
-                    pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
-                    # plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
-                    plot_semantic_rich_floorplan_tight(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], 
-                                                       rec=quant_result_dict_scene['room_rec'], plot_text=True, is_bw=False,
-                                                       door_window_index=door_window_index
-                                                       )
-                else:
-                    # plot regular room floorplan
-                    room_polys = [np.array(r) for r in room_polys]
-                    floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000)
-                    cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), floorplan_map)
+            if 'gt_polys_sorted_indcs' in quant_result_dict_scene:
+                gt_polys_sorted_indcs = quant_result_dict_scene['gt_polys_sorted_indcs']
+                del quant_result_dict_scene['gt_polys_sorted_indcs']
+                gt_room_polys = [gt_room_polys[ind] for ind in gt_polys_sorted_indcs]
+                    
+
+            if 'pred2gt_indices' in quant_result_dict_scene:
+                pred2gt_indices = quant_result_dict_scene['pred2gt_indices']
+                del quant_result_dict_scene['pred2gt_indices']
+                room_polys, gt_room_polys, pred_mask, gt_mask = sort_polygons_by_matching(pred2gt_indices, room_polys, gt_room_polys)
+            else:
+                pred_mask, gt_mask = None, None
+
+            prec, rec = quant_result_dict_scene['room_prec'], quant_result_dict_scene['room_rec']
+            f1 = 2*prec*rec/(prec+rec+1e-5)
+            missing_rate = quant_result_dict_scene['room_missing_ratio']
+            plot_statistics = {
+                'f1': f1, 'prec': prec, 'rec': rec, 'missing_rate': missing_rate, 
+                'num_preds': len(room_polys), 'num_gt': len(gt_polys), 'num_matched_preds': sum([x != -1 for x in pred2gt_indices])
+            }
+
+            if plot_pred:
+                # if semantic_rich:
+                #     # plot predicted semantic rich floorplan
+                #     # pred_sem_rich = []
+                #     # for j in range(len(room_polys)):
+                #     #     temp_poly = room_polys[j]
+                #     #     temp_poly_flip_y = temp_poly.copy()
+                #     #     temp_poly_flip_y[:,1] = image_size - 1 - temp_poly_flip_y[:,1]
+                #     #     pred_sem_rich.append([temp_poly_flip_y, room_types[j]])
+                #     # for j in range(len(window_doors)):
+                #     #     temp_line = window_doors[j]
+                #     #     temp_line_flip_y = temp_line.copy()
+                #     #     temp_line_flip_y[:,1] = image_size - 1 - temp_line_flip_y[:,1]
+                #     #     pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
+
+                #     # pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
+                #     # # plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
+                #     # plot_semantic_rich_floorplan_tight(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], 
+                #     #                                    rec=quant_result_dict_scene['room_rec'], plot_text=True, is_bw=False,
+                #     #                                    door_window_index=door_window_index
+                #     #                                    )
+
+                #     # pred_sem_rich = []
+                #     # for j in range(len(room_polys)):
+                #     #     temp_poly = room_polys[j]
+                #     #     temp_poly_flip_y = temp_poly.copy()
+                #     #     temp_poly_flip_y[:,1] = image_size - 1 - temp_poly_flip_y[:,1]
+                #     #     pred_sem_rich.append([temp_poly_flip_y, j % 18]) # room_types[j]
+
+                #     # # plot semantically-rich floorplan
+                #     # gt_sem_rich = []
+                #     # for j, poly in enumerate(gt_room_polys):
+                #     #     corners = poly.reshape(-1, 2).astype(np.int32)
+                #     #     corners_flip_y = corners.copy()
+                #     #     corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
+                #     #     corners = corners_flip_y
+                #     #     gt_sem_rich.append([corners, j % 18])
+
+
+                #     # gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
+                #     # plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False, is_bw=False, 
+                #     #                                    door_window_index=[-1, -1]) # door_window_index
+
+                #     # pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
+                #     # plot_semantic_rich_floorplan_tight(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], 
+                #     #                                    rec=quant_result_dict_scene['room_rec'], plot_text=False, is_bw=False,
+                #     #                                    door_window_index=[-1, -1], #door_window_index
+                #     #                                    )
+                    
+                    
+                # else:
+                #     # # plot regular room floorplan
+                #     # room_polys = [np.array(r) for r in room_polys]
+                #     # floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000)
+
+                #     # concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
+                #     # cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), concatenated_map)
+
+                gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000, matching_labels=gt_mask)
+                floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000, matching_labels=pred_mask)
+
+                concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
+                cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), concatenated_map)
+
 
             if save_pred:
                 # Save room_polys as JSON
@@ -694,20 +758,11 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     json.dump(output_json, json_file)
 
             if plot_density:
-                density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
-                if density_map.shape[2] == 3:
-                    density_map = density_map * (image_size - 1)
-                else:
-                    density_map = np.repeat(density_map, 3, axis=2) * (image_size - 1)
-                pred_room_map = np.zeros([image_size, image_size, 3])
+                pred_room_map = plot_density_map(samples[i], image_size, room_polys, pred_room_label_per_scene)
+                gt_room_map = plot_density_map(samples[i], image_size, gt_polys, gt_polys_types)
 
-                for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
-                    pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)
-
-                # Blend the overlay with the density map using alpha blending
-                alpha = 0.6  # Adjust for desired transparency
-                pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
-                cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), pred_room_map)
+                concatenated_map = concat_floorplan_maps(gt_room_map, pred_room_map, plot_statistics)
+                cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), concatenated_map)
 
 
     for k in quant_result_dict.keys():
@@ -730,6 +785,23 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
         file.write(json.dumps(quant_result_dict))
 
 
+def plot_density_map(sample, image_size, room_polys, pred_room_label_per_scene):
+    density_map = np.transpose(sample.cpu().numpy(), [1, 2, 0])
+    if density_map.shape[2] == 3:
+        density_map = density_map * (image_size - 1)
+    else:
+        density_map = np.repeat(density_map, 3, axis=2) * (image_size - 1)
+    pred_room_map = np.zeros([image_size, image_size, 3])
+
+    for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
+        pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)
+
+    # Blend the overlay with the density map using alpha blending
+    alpha = 0.6  # Adjust for desired transparency
+    pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
+    return pred_room_map
+
+
 @torch.no_grad()
 def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False,
                       save_pred=False, add_cls_token=False, per_token_sem_loss=False):
@@ -750,35 +822,35 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
 
         image_size = samples[0].size(2)
-        # draw GT map
-        if plot_gt:
-            for i, gt_inst in enumerate(gt_instances):
-                if not semantic_rich:
-                    # plot regular room floorplan
-                    gt_polys = []
-                    density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
-                    density_map = np.repeat(density_map, 3, axis=2)
+        # # draw GT map
+        # if plot_gt:
+        #     for i, gt_inst in enumerate(gt_instances):
+        #         if not semantic_rich:
+        #             # plot regular room floorplan
+        #             gt_polys = []
+        #             density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
+        #             density_map = np.repeat(density_map, 3, axis=2)
 
-                    gt_corner_map = np.zeros([image_size, image_size, 3])
-                    for j, poly in enumerate(gt_inst.gt_masks.polygons):
-                        corners = poly[0].reshape(-1, 2).astype(np.int32)
-                        gt_polys.append(corners)
-                    gt_room_polys = gt_polys # [np.array(r) for r in gt_polys]
-                    gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
-                    cv2.imwrite(os.path.join(output_dir, '{}_gt.png'.format(scene_ids[i])), gt_floorplan_map)
-                else:
-                    # plot semantically-rich floorplan
-                    gt_sem_rich = []
-                    for j, poly in enumerate(gt_inst.gt_masks.polygons):
-                        corners = poly[0].reshape(-1, 2).astype(np.int32)
-                        corners_flip_y = corners.copy()
-                        corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
-                        corners = corners_flip_y
-                        gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
+        #             gt_corner_map = np.zeros([image_size, image_size, 3])
+        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
+        #                 corners = poly[0].reshape(-1, 2).astype(np.int32)
+        #                 gt_polys.append(corners)
+        #             gt_room_polys = gt_polys # [np.array(r) for r in gt_polys]
+        #             gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
+        #             cv2.imwrite(os.path.join(output_dir, '{}_gt.png'.format(scene_ids[i])), gt_floorplan_map)
+        #         else:
+        #             # plot semantically-rich floorplan
+        #             gt_sem_rich = []
+        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
+        #                 corners = poly[0].reshape(-1, 2).astype(np.int32)
+        #                 corners_flip_y = corners.copy()
+        #                 corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
+        #                 corners = corners_flip_y
+        #                 gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
 
-                    gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
-                    # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
-                    plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False, door_window_index=door_window_index)
+        #             gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
+        #             # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1) 
+        #             plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False, door_window_index=door_window_index)
 
         outputs = model.forward_inference(samples)
         pred_corners = outputs['gen_out']
@@ -791,6 +863,18 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
 
         # process per scene
         for i in range(bs):
+
+            gt_polys, gt_polys_types = [], []
+            gt_window_doors = []
+            gt_window_doors_types = []
+            for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
+                gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
+                if gt_id in door_window_index:
+                    gt_window_doors.append(gt_poly)
+                    gt_window_doors_types.append(gt_id)
+                else:
+                    gt_polys.append(gt_poly)
+                    gt_polys_types.append(gt_id)
             
             if dataset_name == 'stru3d':
                 if int(scene_ids[i]) in wrong_s3d_annotations_list:
@@ -798,27 +882,16 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                 curr_opts = copy.deepcopy(opts)
                 curr_opts.scene_id = "scene_0" + str(scene_ids[i])
                 curr_data_rw = S3DRW(curr_opts, mode = "test")
-                evaluator = Evaluator(curr_data_rw, curr_opts)
+                evaluator = Evaluator(curr_data_rw, curr_opts, disable_overlapping_filter=True)
             elif dataset_name == 'scenecad':
                 gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1,2).astype(np.int32)]
-                evaluator = Evaluator_SceneCAD()
+                evaluator = Evaluator_SceneCAD(disable_overlapping_filter=True)
             elif dataset_name == 'rplan':
                 gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
                 gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
-                evaluator = Evaluator_RPlan()
+                evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
             elif dataset_name == 'cubicasa':
-                gt_polys, gt_polys_types = [], []
-                gt_window_doors = []
-                gt_window_doors_types = []
-                for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
-                    gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
-                    if gt_id in door_window_index:
-                        gt_window_doors.append(gt_poly)
-                        gt_window_doors_types.append(gt_id)
-                    else:
-                        gt_polys.append(gt_poly)
-                        gt_polys_types.append(gt_id)
-                evaluator = Evaluator_RPlan()
+                evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
 
             print("Running Evaluation for scene %s" % scene_ids[i])
 
@@ -855,10 +928,11 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     continue
                 corners = np.array(poly, dtype=np.float32) * (image_size - 1)
                 corners = np.around(corners).astype(np.int32)
+                # print(len(corners))
 
                 if not semantic_rich:
-                    # # only regular rooms
-                    if len(corners)>=4: # and Polygon(corners).area >= 100:
+                    # only regular rooms
+                    if len(corners)>=4 and Polygon(corners).area >= 100:
                         room_polys.append(corners)
                     # room_polys.append(corners)
                 else:
@@ -870,8 +944,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     final_pred_classes.append(pred_class)
 
                     # regular rooms
-                    if len(corners)>=4:
-                        # if len(corners)>=4 and Polygon(corners).area >= 100:
+                    if len(corners)>=4 and Polygon(corners).area >= 100:
                         room_polys.append(corners)
                         room_types.append(pred_class)
                     # window / door
@@ -901,7 +974,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
-                                                                img_size=(image_size, image_size)
+                                                                img_size=(image_size, image_size),
                                                                     )
                 else:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
@@ -920,32 +993,69 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
 
             scene_counter += 1
 
-            if plot_pred:
-                if semantic_rich:
-                    # plot predicted semantic rich floorplan
-                    pred_sem_rich = []
-                    for j in range(len(room_polys)):
-                        temp_poly = room_polys[j]
-                        temp_poly_flip_y = temp_poly.copy()
-                        temp_poly_flip_y[:,1] = image_size - 1 - temp_poly_flip_y[:,1]
-                        pred_sem_rich.append([temp_poly_flip_y, room_types[j]])
-                    for j in range(len(window_doors)):
-                        temp_line = window_doors[j]
-                        temp_line_flip_y = temp_line.copy()
-                        temp_line_flip_y[:,1] = image_size - 1 - temp_line_flip_y[:,1]
-                        pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
+            # plot regular room floorplan
+            gt_room_polys = [np.array(poly) for poly in gt_polys]
+            room_polys = [np.array(poly) for poly in room_polys]
 
-                    pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
-                    # plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
-                    plot_semantic_rich_floorplan_tight(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], 
-                                                       rec=quant_result_dict_scene['room_rec'], plot_text=True, is_bw=False,
-                                                       door_window_index=door_window_index
-                                                       )
-                else:
-                    # plot regular room floorplan
-                    room_polys = [np.array(r) for r in room_polys]
-                    floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000)
-                    cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), floorplan_map)
+            if 'gt_polys_sorted_indcs' in quant_result_dict_scene:
+                gt_polys_sorted_indcs = quant_result_dict_scene['gt_polys_sorted_indcs']
+                del quant_result_dict_scene['gt_polys_sorted_indcs']
+                gt_room_polys = [gt_room_polys[ind] for ind in gt_polys_sorted_indcs]
+                    
+
+            if 'pred2gt_indices' in quant_result_dict_scene:
+                pred2gt_indices = quant_result_dict_scene['pred2gt_indices']
+                del quant_result_dict_scene['pred2gt_indices']
+                room_polys, gt_room_polys, pred_mask, gt_mask = sort_polygons_by_matching(pred2gt_indices, room_polys, gt_room_polys)
+            else:
+                pred_mask, gt_mask = None, None
+
+            prec, rec = quant_result_dict_scene['room_prec'], quant_result_dict_scene['room_rec']
+            f1 = 2*prec*rec/(prec+rec+1e-5)
+            missing_rate = quant_result_dict_scene['room_missing_ratio']
+            plot_statistics = {
+                'f1': f1, 'prec': prec, 'rec': rec, 'missing_rate': missing_rate, 
+                'num_preds': len(room_polys), 'num_gt': len(gt_polys), 'num_matched_preds': sum([x != -1 for x in pred2gt_indices])
+            }
+
+            if plot_pred:
+                # if semantic_rich:
+                #     # plot predicted semantic rich floorplan
+                #     pred_sem_rich = []
+                #     for j in range(len(room_polys)):
+                #         temp_poly = room_polys[j]
+                #         temp_poly_flip_y = temp_poly.copy()
+                #         temp_poly_flip_y[:,1] = image_size - 1 - temp_poly_flip_y[:,1]
+                #         pred_sem_rich.append([temp_poly_flip_y, room_types[j]])
+                #     for j in range(len(window_doors)):
+                #         temp_line = window_doors[j]
+                #         temp_line_flip_y = temp_line.copy()
+                #         temp_line_flip_y[:,1] = image_size - 1 - temp_line_flip_y[:,1]
+                #         pred_sem_rich.append([temp_line_flip_y, window_doors_types[j]])
+
+                #     pred_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_pred.png'.format(scene_ids[i]))
+                #     # plot_semantic_rich_floorplan(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], rec=quant_result_dict_scene['room_rec'])
+                #     plot_semantic_rich_floorplan_tight(pred_sem_rich, pred_sem_rich_path, prec=quant_result_dict_scene['room_prec'], 
+                #                                        rec=quant_result_dict_scene['room_rec'], plot_text=True, is_bw=False,
+                #                                        door_window_index=door_window_index
+                #                                        )
+                # else:
+                #     # plot regular room floorplan
+                #     gt_room_polys = [np.array(r) for r in gt_polys]
+                #     gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
+                #     room_polys = [np.array(r) for r in room_polys]
+                #     floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000)
+                #     breakpoint()
+
+                #     concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
+                #     cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), concatenated_map)
+
+                gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000, matching_labels=gt_mask)
+                floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000, matching_labels=pred_mask)
+
+                concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
+                cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), concatenated_map)
+
 
             if save_pred:
                 # Save room_polys as JSON
@@ -967,20 +1077,11 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     json.dump(output_json, json_file)
 
             if plot_density:
-                density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
-                if density_map.shape[2] == 3:
-                    density_map = density_map * (image_size - 1)
-                else:
-                    density_map = np.repeat(density_map, 3, axis=2) * (image_size - 1)
-                pred_room_map = np.zeros([image_size, image_size, 3])
+                pred_room_map = plot_density_map(samples[i], image_size, room_polys, pred_room_label_per_scene)
+                gt_room_map = plot_density_map(samples[i], image_size, gt_polys, gt_polys_types)
 
-                for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
-                    pred_room_map = plot_room_map(room_poly, pred_room_map, room_id)
-
-                # Blend the overlay with the density map using alpha blending
-                alpha = 0.6  # Adjust for desired transparency
-                pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
-                cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), pred_room_map)
+                concatenated_map = concat_floorplan_maps(gt_room_map, pred_room_map, plot_statistics)
+                cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), concatenated_map)
 
 
     for k in quant_result_dict.keys():
@@ -1003,7 +1104,78 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
         file.write(json.dumps(quant_result_dict))
 
 
-def generate(model, samples, semantic_rich=False, use_cache=True):
+def generate(model, samples, semantic_rich=False):
+    model.eval()
+    outputs = model(samples)
+    pred_corners = outputs['pred_coords']
+    pred_logits = outputs['pred_logits']
+    fg_mask = torch.sigmoid(pred_logits) > 0.5 # select valid corners
+
+    bs = outputs['pred_logits'].shape[0]
+    image_size = samples[0].size(2)
+
+    if 'pred_room_logits' in outputs:
+        prob = torch.nn.functional.softmax(outputs['pred_room_logits'], -1)
+        _, pred_room_label = prob[..., :-1].max(-1)
+    
+    outputs = []
+    output_classes = []
+
+    # process per scene
+    for i in range(bs):
+        fg_mask_per_scene = fg_mask[i]
+        pred_corners_per_scene = pred_corners[i]
+        room_polys = []
+
+        if semantic_rich:
+            room_types = []
+            window_doors = []
+            window_doors_types = []
+            pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
+
+
+        # process per room
+        for j in range(fg_mask_per_scene.shape[0]):
+            fg_mask_per_room = fg_mask_per_scene[j]
+            pred_corners_per_room = pred_corners_per_scene[j]
+            valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
+            if len(valid_corners_per_room)>0:
+                corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
+                corners = np.around(corners).astype(np.int32)
+
+                if not semantic_rich:
+                    # only regular rooms
+                    if len(corners)>=4 and Polygon(corners).area >= 100:
+                        room_polys.append(corners)
+                else:
+                    # regular rooms
+                    if len(corners)>=4 and Polygon(corners).area >= 100:
+                        room_polys.append(corners)
+                        room_types.append(pred_room_label_per_scene[j])
+                    # window / door
+                    elif len(corners)==2:
+                        window_doors.append(corners)
+                        window_doors_types.append(pred_room_label_per_scene[j])
+        
+        if not semantic_rich:
+            pred_room_label_per_scene = len(room_polys) * [-1]
+        else:
+            pred_room_label_per_scene = pred_room_label_per_scene.tolist()
+
+        if window_doors:
+            outputs.append(room_polys + window_doors)
+            output_classes.append(pred_room_label_per_scene + window_doors_types)
+        else:
+            outputs.append(room_polys)
+            output_classes.append(pred_room_label_per_scene)
+    
+    return {
+        'room': outputs, 
+        'labels': output_classes
+    }
+
+
+def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_sem_loss=False):
     model.eval()
     outputs = model.forward_inference(samples, use_cache)
     pred_corners = outputs['gen_out']
@@ -1016,6 +1188,7 @@ def generate(model, samples, semantic_rich=False, use_cache=True):
         _, pred_room_label = prob[..., :-1].max(-1)
     
     outputs = []
+    output_classes = []
 
     # process per scene
     for i in range(bs):
@@ -1023,32 +1196,99 @@ def generate(model, samples, semantic_rich=False, use_cache=True):
         room_polys = []
 
         if semantic_rich:
+            room_types = []
+            window_doors = []
+            window_doors_types = []
             pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
 
         all_room_polys = []
         tmp = []
+        all_length_list = [0]
         for j in range(len(pred_corners_per_scene)):
             if isinstance(pred_corners_per_scene[j], int):
                 if pred_corners_per_scene[j] == 2 and tmp: # sep
                     all_room_polys.append(tmp)
+                    all_length_list.append(len(tmp)+1)
                     tmp = []
                 continue
             tmp.append(pred_corners_per_scene[j])
         
         if len(tmp):
             all_room_polys.append(tmp)
+            all_length_list.append(len(tmp)+1)
+        start_poly_indices = np.cumsum(all_length_list)
 
-        for poly in all_room_polys:
+        final_pred_classes = []
+        for j, poly in enumerate(all_room_polys):
             if len(poly) < 2:
                 continue
             corners = np.array(poly, dtype=np.float32) * (image_size - 1)
             corners = np.around(corners).astype(np.int32)
-            room_polys.append(corners)
+            # print(len(corners))
 
+            if not semantic_rich:
+                # only regular rooms
+                if len(corners)>=4 and Polygon(corners).area >= 100:
+                    room_polys.append(corners)
+            else:
+                if per_token_sem_loss:
+                    pred_classes, counts = np.unique(pred_room_label_per_scene[start_poly_indices[j]:start_poly_indices[j+1]][:-1], return_counts=True)
+                    pred_class = pred_classes[np.argmax(counts)]
+                else:
+                    pred_class = pred_room_label_per_scene[start_poly_indices[j+1]-1] # get last cls token in the seq
+                final_pred_classes.append(pred_class)
+
+                # regular rooms
+                if len(corners)>=4 and Polygon(corners).area >= 100:
+                    room_polys.append(corners)
+                    room_types.append(pred_class)
+                # window / door
+                elif len(corners)==2:
+                    window_doors.append(corners)
+                    window_doors_types.append(pred_class)
+            
         if not semantic_rich:
-            pred_room_label_per_scene = len(room_polys) * [-1]
+            pred_room_label_per_scene = len(all_room_polys) * [-1]
         else:
-            pred_room_label_per_scene = pred_room_label_per_scene.tolist()
-        outputs.append(list(zip(room_polys, pred_room_label_per_scene)))
+            pred_room_label_per_scene = final_pred_classes
+
+        if window_doors:
+            outputs.append(room_polys + window_doors)
+            output_classes.append(pred_room_label_per_scene + window_doors_types)
+        else:
+            outputs.append(room_polys)
+            output_classes.append(pred_room_label_per_scene)
     
-    return outputs
+    return {
+        'room': outputs, 
+        'labels': output_classes
+    }
+
+
+def concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics={}):
+    pad_color = (0,0,0) if gt_floorplan_map.shape[2] == 3 else (0,0,0,0)
+    padding = np.full((gt_floorplan_map.shape[0], 10, gt_floorplan_map.shape[2]), pad_color, dtype=np.uint8)
+    # Concatenate pred_room_map, padding, and gt_room_map
+    concatenated_map = cv2.hconcat([gt_floorplan_map, padding, floorplan_map])
+    top_padding = np.full((100, concatenated_map.shape[1], concatenated_map.shape[2]), pad_color, dtype=np.uint8)
+
+    # Add text for f1 and missing_rate
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_color = (255, 255, 255) if gt_floorplan_map.shape[2] == 3 else (0, 0, 255, 255) # White text
+    thickness = 2
+    line_type = cv2.LINE_AA
+
+    # Position for the text
+    text_f1 = f"F1: {plot_statistics['f1']:.2f}, Prec: {plot_statistics['prec']:.2f}, Rec: {plot_statistics['rec']:.2f}"
+    text_missing_rate = f"Missing Rate: {plot_statistics['missing_rate']:.2f}, {plot_statistics['num_preds']}/{plot_statistics['num_matched_preds']}/{plot_statistics['num_gt']}"
+    text_position_f1 = (10, 30)  # Position within the top padding
+    text_position_missing_rate = (10, 70)  # Adjusted position for the second line
+
+    # Overlay text on the top padding
+    cv2.putText(top_padding, text_f1, text_position_f1, font, font_scale, font_color, thickness, line_type)
+    cv2.putText(top_padding, text_missing_rate, text_position_missing_rate, font, font_scale, font_color, thickness, line_type)
+
+    # Concatenate the top padding with the concatenated_map
+    final_map = cv2.vconcat([top_padding, concatenated_map])
+    return final_map

@@ -48,6 +48,9 @@ def get_args_parser():
     parser.add_argument('--ignore_index', type=int, default=-1)
     parser.add_argument('--image_size', type=int, default=256)
     parser.add_argument('--ema4eval', action='store_true')
+    parser.add_argument('--increase_cls_loss_coef', default=1.0, type=float)
+    parser.add_argument('--increase_cls_loss_coef_epoch_ratio', default=-1, type=float)
+    parser.add_argument('--use_anchor', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -164,8 +167,8 @@ def main(args):
     # setup wandb for logging
     if rank == 0:
         utils.setup_wandb()
-        wandb.init(project="RoomFormer")
-        wandb.run.name = args.run_name
+        wandb.init(project="RoomFormer", resume="allow", id=args.run_name)
+        # wandb.run.name = args.run_name
 
 
     # build dataset and dataloader
@@ -318,7 +321,7 @@ def main(args):
 
 
     output_dir = Path(args.output_dir)
-    if args.resume:
+    if args.resume and os.path.exists(args.resume):
         checkpoint = torch.load(args.resume, map_location='cpu')
         for key, value in checkpoint['model'].items():
             if key.startswith('module.'):
@@ -378,6 +381,10 @@ def main(args):
             elif 'token_embed' in key:
                 if checkpoint[key].size(0) != model.module.transformer.decoder.token_embed.weight.size(0):
                     checkpoint[key] = torch.cat([checkpoint[key], torch.zeros((1, checkpoint[key].size(1)), dtype=torch.float)], dim=0)
+            elif 'pos_embed' in key and checkpoint[key].shape[1] != model.module.transformer.pos_embed.shape[1]:
+                checkpoint[key] = model.module.transformer.pos_embed
+            elif 'attention_mask' in key and checkpoint[key].shape[0] != model.module.attention_mask.shape[0]:
+                checkpoint[key] = model.module.attention_mask
 
         missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint, strict=False)
         unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]
@@ -399,6 +406,11 @@ def main(args):
             model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm, args.poly2seq, ema_model=ema)
         if lr_scheduler is not None:
             lr_scheduler.step()
+
+
+        if epoch > int(args.increase_cls_loss_coef_epoch_ratio * args.epochs) and args.increase_cls_loss_coef > 1.:
+            criterion._update_ce_coeff(args.increase_cls_loss_coef * args.cls_loss_coef)
+
         if (epoch + 1) in args.lr_drop or (epoch + 1) % args.ckpt_every_epoch == 0 or (epoch + 1) == args.epochs:
             if rank == 0:
                 checkpoint_paths = [output_dir / 'checkpoint.pth']

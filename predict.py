@@ -6,15 +6,66 @@ import os
 import time
 from pathlib import Path
 import copy
-from tqdm import trange
+from tqdm import trange, tqdm
 
+import cv2
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+from detectron2.data import transforms as T
+import torchvision
+
+from PIL import Image
+
 import util.misc as utils
+from datasets.transforms import ResizeAndPad
 from datasets import build_dataset
-from engine import evaluate_floor, evaluate_floor_v2, generate
+from datasets.discrete_tokenizer import DiscreteTokenizer
+from engine import evaluate_floor, evaluate_floor_v2, plot_density_map, plot_floorplan_with_regions
+from engine import generate, generate_v2
 from models import build_model
+
+
+class ImageDataset(Dataset):
+    def __init__(self, image_paths, transform=None):
+        """
+        Args:
+            image_paths (list): List of image file paths.
+            transform (callable, optional): Optional transform to be applied on an image.
+        """
+        self.image_paths = image_paths
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def _expand_image_dims(self, x):
+        if len(x.shape) == 2:
+            exp_img = np.expand_dims(x, 0)
+        else:
+            exp_img = x.transpose((2, 0, 1)) # (h,w,c) -> (c,h,w)
+        return exp_img
+
+    def __getitem__(self, idx):
+        """
+        Args:
+            idx (int): Index of the image to fetch.
+
+        Returns:
+            torch.Tensor: Transformed image tensor.
+        """
+        img_path = self.image_paths[idx]
+        image = np.array(Image.open(img_path).convert("RGB"))  # Ensure 3-channel RGB
+        if self.transform:
+            aug_input = T.AugInput(image)
+            _ = self.transform(aug_input)
+            image = aug_input.image
+
+        image = (1/255) * torch.as_tensor(np.array(self._expand_image_dims(image)))
+        return {
+            'file_name': img_path,
+            'image': image,
+            }
 
 
 def get_args_parser():
@@ -121,6 +172,28 @@ def get_args_parser():
     return parser
 
 
+def get_image_paths_from_directory(directory_path):
+    """
+    Load all images from the specified directory.
+
+    Args:
+        directory_path (str): Path to the directory containing images.
+
+    Returns:
+        list: A list of PIL Image objects.
+    """
+    paths = []
+    valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff')  # Add more extensions if needed
+
+    # Iterate through all files in the directory
+    for filename in os.listdir(directory_path):
+        if filename.lower().endswith(valid_extensions):  # Check for valid image extensions
+            file_path = os.path.join(directory_path, filename)
+            paths.append(file_path)
+
+    return paths
+
+
 def main(args):
 
     device = torch.device(args.device)
@@ -131,28 +204,24 @@ def main(args):
     np.random.seed(seed)
     random.seed(seed)
 
-    # build dataset and dataloader
-    dataset_eval = build_dataset(image_set=args.eval_set, args=args)
+    image_paths = get_image_paths_from_directory(args.dataset_root)
+    data_transform = T.AugmentationList([
+        ResizeAndPad((args.image_size, args.image_size), pad_value=255),
+    ])
+    dataset_eval = ImageDataset(image_paths, transform=data_transform)
 
     tokenizer = None
     if args.poly2seq:
-        args.vocab_size = dataset_eval.get_vocab_size()
-        tokenizer = dataset_eval.get_tokenizer()
+        tokenizer = DiscreteTokenizer(args.num_bins, args.seq_len, add_cls=args.add_cls_token)
+        args.vocab_size = len(tokenizer)
 
     # overfit one sample
     if args.debug:
-        dataset_eval = torch.utils.data.Subset(dataset_eval, [0])
+        dataset_eval = torch.utils.data.Subset(dataset_eval, [4])
 
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
-
-    def trivial_batch_collator(batch):
-        """
-        A batch collator that does nothing.
-        """
-        return batch, None
-
     data_loader_eval = DataLoader(dataset_eval, args.batch_size, sampler=sampler_eval,
-                                 drop_last=False, collate_fn=trivial_batch_collator, num_workers=args.num_workers,
+                                 drop_last=False, num_workers=args.num_workers,
                                  pin_memory=True)
 
     # build model
@@ -161,11 +230,6 @@ def main(args):
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('number of params:', n_parameters)
-
-    for n, p in model.named_parameters():
-        print(n)
-
-    output_dir = Path(args.output_dir)
 
     checkpoint = torch.load(args.checkpoint, map_location='cpu')
     if args.ema4eval:
@@ -187,56 +251,35 @@ def main(args):
     for param in model.parameters():
         param.requires_grad = False
 
-    if args.measure_time:
-        images = torch.rand(args.batch_size, 3, args.image_size, args.image_size).to(device)
-        # INIT LOGGERS
-        starter, ender = torch.cuda.Event(
-            enable_timing=True), torch.cuda.Event(enable_timing=True)
-        repetitions = 50
-        timings = np.zeros((repetitions, 1))
-        # GPU-WARM-UP
-        for _ in trange(10, desc="GPU-WARM-UP"):
-            _ = generate(model, images, semantic_rich=args.semantic_classes>0, use_cache=True)
-        # MEASURE PERFORMANCE
-        with torch.no_grad():
-            for rep in trange(repetitions):
-                starter.record()
-                outputs = generate(model, images, semantic_rich=args.semantic_classes>0, use_cache=not args.disable_sampling_cache)
-                ender.record()
-                # WAIT FOR GPU SYNC
-                torch.cuda.synchronize()
-                curr_time = starter.elapsed_time(ender)
-                timings[rep] = curr_time
-        mean_syn = np.sum(timings) / repetitions
-        std_syn = np.std(timings)
-        print("Inference time: {:.2f}+/-{:.2f}ms".format(mean_syn, std_syn))
-        exit(0)
-
-    # save_dir = os.path.join(os.path.dirname(args.checkpoint), output_dir)
-    # save_dir = os.path.join(output_dir, os.path.dirname(args.checkpoint).split('/')[-1])
-    save_dir = output_dir
+    save_dir = os.path.join(args.output_dir, os.path.dirname(args.checkpoint).split('/')[-1])
     os.makedirs(save_dir, exist_ok=True)
-    if not args.poly2seq:
-        evaluate_floor(
-                    model, args.dataset_name, data_loader_eval, 
-                    device, save_dir, 
-                    plot_pred=args.plot_pred, 
-                    plot_density=args.plot_density, 
-                    plot_gt=args.plot_gt,
-                    semantic_rich=args.semantic_classes>0,
-                    save_pred=args.save_pred,
+
+    for batch_images in tqdm(data_loader_eval):
+        x = batch_images['image'].to(device)
+        filenames = batch_images['file_name']
+        if not args.poly2seq:
+            outputs = generate(model,
+                    x,
+                    semantic_rich=args.semantic_classes>0, 
                     )
-    else:
-        evaluate_floor_v2(
-                    model, args.dataset_name, data_loader_eval, 
-                    device, save_dir,
-                    plot_pred=args.plot_pred, 
-                    plot_density=args.plot_density, 
-                    plot_gt=args.plot_gt,
-                    semantic_rich=args.semantic_classes>0,
-                    save_pred=args.save_pred,
+        else:
+            outputs = generate_v2(model, 
+                    x,
+                    semantic_rich=args.semantic_classes>0, 
+                    use_cache=True,
                     per_token_sem_loss=args.per_token_sem_loss,
                     )
+        pred_rooms = outputs['room']
+        pred_labels = outputs['labels']
+
+        image_size = x.shape[-2]
+        for j, (pred_rm, pred_cls) in enumerate(zip(pred_rooms, pred_labels)):
+            pred_room_map = plot_density_map(x[j], image_size, 
+                                             pred_rm, pred_cls)
+            cv2.imwrite(os.path.join(save_dir, '{}_pred_room_map.png'.format(os.path.basename(filenames[j]))), pred_room_map)
+
+            # floorplan_map = plot_floorplan_with_regions(pred_rm, scale=256, matching_labels=None)
+            # cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan.png'.format(os.path.basename(filenames[j]))), floorplan_map)
 
 
 if __name__ == '__main__':

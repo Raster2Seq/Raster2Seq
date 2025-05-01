@@ -85,6 +85,8 @@ class MultiPoly(Dataset):
                 target = [t for t in target if t['category_id'] not in [16, 17]]
             elif self.dataset_name == 'rplan':
                 target = [t for t in target if t['category_id'] not in [9, 11]]
+            elif self.dataset_name == 'cubicasa':
+                target = [t for t in target if t['category_id'] not in [9, 10]]
 
         path = coco.loadImgs(img_id)[0]['file_name']
 

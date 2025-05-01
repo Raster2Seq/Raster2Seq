@@ -59,11 +59,13 @@ class DeformableTransformer(nn.Module):
                  num_feature_levels=4, dec_n_points=4, enc_n_points=4, query_pos_type="none", 
                  vocab_size=None, seq_len=1024, pre_decoder_pos_embed=False, learnable_dec_pe=False,
                  dec_attn_concat_src=False, dec_qkv_proj=True, dec_layer_type='v1',
-                 pad_idx=None):
+                 pad_idx=None, use_anchor=False):
         super().__init__()
 
         self.d_model = d_model
         self.nhead = nhead
+        self.poly_refine = poly_refine
+        self.use_anchor = use_anchor
 
         encoder_layer = DeformableTransformerEncoderLayer(d_model, dim_feedforward,
                                                           dropout, activation,
@@ -119,15 +121,17 @@ class DeformableTransformer(nn.Module):
                                           aux_loss, 
                                           query_pos_type,
                                           vocab_size,
-                                          pad_idx)
+                                          pad_idx,
+                                          use_anchor=use_anchor,)
 
         self.level_embed = nn.Parameter(torch.Tensor(num_feature_levels, d_model))
 
-        # if query_pos_type == 'sine':
-        #     self.decoder.pos_trans = nn.Linear(d_model, d_model)
-        #     self.decoder.pos_trans_norm = nn.LayerNorm(d_model)
+        if query_pos_type == 'sine' and (poly_refine or use_anchor):
+            self.decoder.pos_trans = nn.Linear(d_model, d_model)
+            self.decoder.pos_trans_norm = nn.LayerNorm(d_model)
 
         self.pre_decoder_pos_embed = pre_decoder_pos_embed
+
         self.pos_embed = nn.Parameter(torch.zeros(1, seq_len, d_model), requires_grad=learnable_dec_pe)
         pos_embed = get_1d_sincos_pos_embed_from_grid(d_model, seq_len)
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
@@ -212,11 +216,16 @@ class DeformableTransformer(nn.Module):
         # prepare input for decoder
         bs, _, c = memory.shape
         
-        # query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
-        # tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
-        reference_points = None # reference_points = query_embed.sigmoid()
+        assert not(self.use_anchor and self.poly_refine), 'use_anchor and poly_refine cannot be used together'
+        if self.poly_refine or self.use_anchor:
+            query_embed = query_embed.unsqueeze(0).expand(bs, -1, -1)
+            reference_points = query_embed.sigmoid()
+            query_pos = None # inferred from reference_points
+        else:
+            # tgt = tgt.unsqueeze(0).expand(bs, -1, -1)
+            reference_points = None 
+            query_pos = self.pos_embed
         init_reference_out = reference_points
-        query_pos = self.pos_embed
 
         if tgt_masks is None:
             # make causal mask
@@ -312,7 +321,7 @@ class TransformerDecoderLayer(nn.Module):
             k = torch.cat([src, k], dim=1)
             v = torch.cat([src, v], dim=1)
             tgt_masks = torch.cat([torch.zeros(q.size(1), src.size(1), device=q.device), 
-                                   tgt_masks], dim=1).to(dtype=torch.float32)
+                                tgt_masks], dim=1).to(dtype=torch.float32)
         
         tgt2 = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), v.transpose(0, 1), attn_mask=tgt_masks)[0].transpose(0, 1)
         tgt = tgt + self.dropout2(tgt2)
@@ -501,7 +510,6 @@ class TransformerDecoderLayerV6(nn.Module):
             pool_src = src_list[-1] # (b, lv, d)
             k = torch.cat([pool_src, k], dim=1)
             v = torch.cat([pool_src, v], dim=1)
-            breakpoint()
             tgt_masks = torch.cat([torch.zeros(q.size(1), pool_src.size(1), device=q.device), 
                                    tgt_masks], dim=1).to(dtype=torch.float32)
 
@@ -899,7 +907,8 @@ class TransformerDecoder(nn.Module):
                  aux_loss=False, 
                  query_pos_type='none', 
                  vocab_size=None,
-                 pad_idx=None):
+                 pad_idx=None,
+                 use_anchor=None):
         super().__init__()
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
@@ -912,6 +921,7 @@ class TransformerDecoder(nn.Module):
         self.class_embed = None
         self.pos_trans = None
         self.pos_trans_norm = None
+        self.use_anchor = use_anchor
 
         self.token_embed = Embedding(vocab_size, 
                                      self.layers[0].d_model, 
@@ -964,31 +974,41 @@ class TransformerDecoder(nn.Module):
                                 delta_x1=seq_kwargs['delta_x1'], delta_x2=seq_kwargs['delta_x2'], 
                                 delta_y1=seq_kwargs['delta_y1'], delta_y2=seq_kwargs['delta_y2']) # [B, L, D]
 
+        if decode_token_pos is not None:
+            if query_pos is not None: # if using abs pos_embed
+                query_pos = query_pos[:, decode_token_pos]
+            if reference_points is not None:
+                reference_points = reference_points[:, decode_token_pos:decode_token_pos+1]
+
+        if reference_points is None:
+            reference_points = torch.zeros(output.shape[0], output.shape[1], 2).to(output.device)
+
+        # assert not(pre_decoder_pos_embed and self.poly_refine), 'pre_decoder_pos_embed and poly_refine cannot be used together'
+
         if pre_decoder_pos_embed:
-            if decode_token_pos is not None:
-                output = output + query_pos[:, decode_token_pos]
-            else:
-                output = self.with_pos_embed(output, query_pos)
+            # infer query_pos from reference_points 
+            if (self.poly_refine or self.use_anchor) and self.query_pos_type == 'sine':
+                query_pos = self.pos_trans_norm(self.pos_trans(self.get_query_pos_embed(reference_points)))
+            output = self.with_pos_embed(output, query_pos)
             query_pos = None
 
         intermediate = []
         intermediate_reference_points = []
         intermediate_classes = []
         point_classes = torch.zeros(output.shape[0], output.shape[1], self.class_embed[0].out_features).to(output.device)
-        if reference_points is None:
-            reference_points = torch.zeros(output.shape[0], output.shape[1], 2).to(output.device)
         for lid, layer in enumerate(self.layers):
-            # assert reference_points.shape[-1] == 2
-            # reference_points_input = reference_points[:, :, None] * src_valid_ratios[:, None]
+            if self.poly_refine or self.use_anchor:
+                assert reference_points.shape[-1] == 2
+                reference_points_input = reference_points[:, :, None] * src_valid_ratios[:, None]
+                # disable adding query_pos for every layer
+                if not pre_decoder_pos_embed:
+                    if self.query_pos_type == 'sine':
+                        query_pos = self.pos_trans_norm(self.pos_trans(self.get_query_pos_embed(reference_points)))
 
-            # if self.query_pos_type == 'sine':
-            #     query_pos = self.pos_trans_norm(self.pos_trans(self.get_query_pos_embed(reference_points)))
-
-            # elif self.query_pos_type == 'none':
-            #     query_pos = None
-
-            #TODO: update reference_points_input over time?
-            reference_points_input = None
+                    elif self.query_pos_type == 'none':
+                        query_pos = None
+            else:
+                reference_points_input = None
             output, src_tmp = layer(output, query_pos, 
                            reference_points_input, src, 
                            src_spatial_shapes, src_level_start_index, src_padding_mask, 
@@ -998,29 +1018,25 @@ class TransformerDecoder(nn.Module):
                 src = src_tmp
     
             # iterative polygon refinement
-            # if self.poly_refine:
-            #     if reference_points is not None:
-            #         offset = self.coords_embed[lid](output)
-            #         assert reference_points.shape[-1] == 2
-            #         new_reference_points = offset
-            #         new_reference_points = offset + inverse_sigmoid(reference_points)
-            #         new_reference_points = new_reference_points.sigmoid()
-            #         reference_points = new_reference_points
-            #     else:
-            #         reference_points = self.coords_embed[lid](output).sigmoid()
+            if self.poly_refine:
+                offset = self.coords_embed[lid](output)
+                assert reference_points.shape[-1] == 2
+                new_reference_points = offset
+                new_reference_points = offset + inverse_sigmoid(reference_points)
+                new_reference_points = new_reference_points.sigmoid()
+                reference_points = new_reference_points
 
             # if not using iterative polygon refinement, just output the reference points decoded from the last layer
-            if lid == len(self.layers)-1:
-                # if reference_points is not None:
-                #     offset = self.coords_embed[-1](output)
-                #     assert reference_points.shape[-1] == 2
-                #     new_reference_points = offset
-                #     new_reference_points = offset + inverse_sigmoid(reference_points)
-                #     new_reference_points = new_reference_points.sigmoid()
-                #     reference_points = new_reference_points
-                # else:
-                #     reference_points = self.coords_embed[-1](output).sigmoid()
-                reference_points = self.coords_embed[-1](output).sigmoid()
+            elif lid == len(self.layers)-1:
+                if self.use_anchor:
+                    offset = self.coords_embed[-1](output)
+                    assert reference_points.shape[-1] == 2
+                    new_reference_points = offset
+                    new_reference_points = offset + inverse_sigmoid(reference_points)
+                    new_reference_points = new_reference_points.sigmoid()
+                    reference_points = new_reference_points
+                else:
+                    reference_points = self.coords_embed[-1](output).sigmoid()
             
             # If aux loss supervision, we predict classes label from each layer and supervise loss
             if self.aux_loss:
@@ -1081,6 +1097,7 @@ def build_deforamble_transformer(args, pad_idx=None):
         dec_qkv_proj=args.dec_qkv_proj,
         dec_layer_type=args.dec_layer_type,
         pad_idx=pad_idx,
+        use_anchor=args.use_anchor,
         )
 
 

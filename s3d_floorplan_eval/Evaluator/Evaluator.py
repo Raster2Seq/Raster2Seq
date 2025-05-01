@@ -19,9 +19,10 @@ angle_metric_thresh = 5
 # colormap_255 = [[i, i, i] for i in range(40)]
 
 class Evaluator():
-    def __init__(self, data_rw, options):
+    def __init__(self, data_rw, options, disable_overlapping_filter=False):
         self.data_rw = data_rw
         self.options = options
+        self.disable_overlapping_filter = disable_overlapping_filter
 
         self.device = torch.device("cuda")
 
@@ -169,29 +170,30 @@ class Evaluator():
         def get_room_metric():
             pred_overlaps = [False] * len(pred_room_map_list)
 
-            for pred_ind1 in range(len(pred_room_map_list) - 1):
-                pred_map1 = pred_room_map_list[pred_ind1]
+            if not self.disable_overlapping_filter:
+                for pred_ind1 in range(len(pred_room_map_list) - 1):
+                    pred_map1 = pred_room_map_list[pred_ind1]
 
-                for pred_ind2 in range(pred_ind1 + 1, len(pred_room_map_list)):
-                    pred_map2 = pred_room_map_list[pred_ind2]
+                    for pred_ind2 in range(pred_ind1 + 1, len(pred_room_map_list)):
+                        pred_map2 = pred_room_map_list[pred_ind2]
 
-                    if dataset_type == "s3d":
-                        kernel = np.ones((5, 5), np.uint8)
-                    else:
-                        kernel = np.ones((3, 3), np.uint8)
+                        if dataset_type == "s3d":
+                            kernel = np.ones((5, 5), np.uint8)
+                        else:
+                            kernel = np.ones((3, 3), np.uint8)
 
-                    # todo: for our method, the rooms share corners and edges, need to check here
-                    pred_map1_er = cv2.erode(pred_map1, kernel)
-                    pred_map2_er = cv2.erode(pred_map2, kernel)
+                        # todo: for our method, the rooms share corners and edges, need to check here
+                        pred_map1_er = cv2.erode(pred_map1, kernel)
+                        pred_map2_er = cv2.erode(pred_map2, kernel)
 
-                    intersection = (pred_map1_er + pred_map2_er) == 2
-                    # intersection = (pred_map1 + pred_map2) == 2
+                        intersection = (pred_map1_er + pred_map2_er) == 2
+                        # intersection = (pred_map1 + pred_map2) == 2
 
-                    intersection_area = np.sum(intersection)
+                        intersection_area = np.sum(intersection)
 
-                    if intersection_area >= 1:
-                        pred_overlaps[pred_ind1] = True
-                        pred_overlaps[pred_ind2] = True
+                        if intersection_area >= 1:
+                            pred_overlaps[pred_ind1] = True
+                            pred_overlaps[pred_ind2] = True
 
             # import pdb; pdb.set_trace()
             room_metric = [np.bool((1 - pred_overlaps[ind]) * pred2gt_exists[ind]) for ind in range(len(pred_polys))]
@@ -476,6 +478,8 @@ class Evaluator():
         pred2gt_exists = [True if pred_ind in gt2pred_indices else False for pred_ind, _ in enumerate(pred_polys)]
         pred2gt_indices = [gt2pred_indices.index(pred_ind) if pred_ind in gt2pred_indices else -1 for pred_ind, _ in enumerate(pred_polys)]
 
+        room_missing_ratio = 1.0 - sum(pred2gt_exists) / float(len(gt_polys) + 1e-4)
+
         if pred_types is not None:
             pred2gt_exists_sem = [True if pred_ind in gt2pred_indices_sem else False for pred_ind, _ in enumerate(pred_polys)]
             pred2gt_indices_sem = [gt2pred_indices_sem.index(pred_ind) if pred_ind in gt2pred_indices_sem else -1 for pred_ind, _ in enumerate(pred_polys)]
@@ -560,6 +564,9 @@ class Evaluator():
             'corner_rec': corner_metric_rec,
             'angles_prec': angles_metric_prec,
             'angles_rec': angles_metric_rec,
+            'room_missing_ratio': room_missing_ratio,
+            'pred2gt_indices': pred2gt_indices,
+            'gt_polys_sorted_indcs': gt_polys_sorted_indcs,
         }
 
         if pred_types is not None:

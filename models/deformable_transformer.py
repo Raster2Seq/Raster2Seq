@@ -116,6 +116,7 @@ class DeformableTransformer(nn.Module):
                                             spatial_shapes, level_start_index, valid_ratios, query_embed, mask_flatten, tgt_masks)
 
         return hs, init_reference_out, inter_references, inter_classes
+    
 
 
 class DeformableTransformerEncoderLayer(nn.Module):

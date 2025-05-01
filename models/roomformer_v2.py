@@ -27,6 +27,7 @@ class RoomFormerV2(nn.Module):
     """ This is the RoomFormer module that performs floorplan reconstruction """
     def __init__(self, backbone, transformer, num_classes, num_queries, num_polys, num_feature_levels,
                  aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1, seq_len=1024, tokenizer=None,
+                 use_anchor=False,
                  ):
         """ Initializes the model.
         Parameters:
@@ -55,7 +56,6 @@ class RoomFormerV2(nn.Module):
         self.tokenizer = tokenizer
         self.seq_len = seq_len
 
-        # self.query_embed = nn.Embedding(num_queries, 2)
         # self.tgt_embed = nn.Embedding(num_queries, hidden_dim)
         if num_feature_levels > 1:
             num_backbone_outs = len(backbone.strides)
@@ -102,6 +102,11 @@ class RoomFormerV2(nn.Module):
             nn.init.constant_(self.coords_embed.layers[-1].bias.data[2:], -2.0)
             self.class_embed = nn.ModuleList([self.class_embed for _ in range(num_pred)])
             self.coords_embed = nn.ModuleList([self.coords_embed for _ in range(num_pred)])
+
+        if use_anchor or with_poly_refine:
+            self.query_embed = nn.Embedding(seq_len, 2)
+        else:
+            self.query_embed = None
 
         self.transformer.decoder.coords_embed = self.coords_embed
         self.transformer.decoder.class_embed = self.class_embed
@@ -175,10 +180,9 @@ class RoomFormerV2(nn.Module):
                 masks.append(mask)
                 pos.append(pos_l)
 
-
-        # query_embeds = self.query_embed.weight
+        query_embeds = None if self.query_embed is None else self.query_embed.weight
         # tgt_embeds = self.tgt_embed.weight
-        query_embeds, tgt_embeds = None, None
+        tgt_embeds = None
         
         hs, init_reference, inter_references, inter_classes = self.transformer(srcs, masks, pos, query_embeds, tgt_embeds, self.attention_mask, seq_kwargs)
 
@@ -267,9 +271,9 @@ class RoomFormerV2(nn.Module):
             delta_x1, delta_x2, delta_y1, delta_y2,
             gen_out) = self._prepare_sequences(bs)
 
-        # query_embeds = self.query_embed.weight
+        query_embeds = None if self.query_embed is None else self.query_embed.weight
         # tgt_embeds = self.tgt_embed.weight
-        query_embeds, tgt_embeds = None, None
+        tgt_embeds = None
         enc_cache = None
 
         device = samples.tensors.device
@@ -315,6 +319,7 @@ class RoomFormerV2(nn.Module):
                                                                                     enc_cache=enc_cache, decode_token_pos=decode_token_pos)
                 output_hs_list.append(hs)
             cls_type = torch.argmax(cls_output, 2)
+            # print(cls_type, torch.softmax(cls_output, dim=2)[:, :, cls_type], torch.topk(torch.softmax(cls_output, dim=2), k=3))
             for j in range(bs):
                 if unfinish_flag[j] == 1:  # prediction is not finished
                     cls_j = cls_type[j, 0].item()
@@ -439,7 +444,9 @@ class SetCriterion(nn.Module):
         self.per_token_sem_loss = per_token_sem_loss
 
         # self.raster_loss = MaskRasterizationLoss(None)
-
+    
+    def _update_ce_coeff(self, loss_ce_coeff):
+        self.weight_dict['loss_ce'] = loss_ce_coeff
 
     def loss_labels(self, outputs, targets, indices):
         """Classification loss (NLL)
@@ -627,7 +634,8 @@ def build(args, train=True, tokenizer=None):
         masked_attn=args.masked_attn,
         semantic_classes=args.semantic_classes,
         seq_len=args.seq_len,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        use_anchor=args.use_anchor,
     )
 
     if not train:

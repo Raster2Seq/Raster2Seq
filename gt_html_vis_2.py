@@ -5,7 +5,7 @@ from html4vision import Col, imagetable
 
 org_root_path = "data/coco_cubicasa5k_nowalls_v4"
 root_path = "data/coco_cubicasa5k_nowalls_v4-1_refined"
-split = 'train'
+split = 'test'
 max_samples = 100
 
 # Create elements from directory of images
