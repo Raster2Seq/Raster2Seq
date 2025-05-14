@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J cc5k_sem              # Job name
+#SBATCH -J cc5k_sem_v2              # Job name
 #SBATCH -o watch_folder/%x_%j.out     # output file (%j expands to jobID)
 #SBATCH -N 1                          # Total number of nodes requested
 #SBATCH --get-user-env                # retrieve the users login environment
@@ -9,7 +9,7 @@
 #SBATCH --constraint="[a6000|a100|6000ada]"
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1                # Type/number of GPUs needed
-#SBATCH --cpus-per-gpu=4             # Number of CPU cores per gpu
+#SBATCH --cpus-per-gpu=2             # Number of CPU cores per gpu
 #SBATCH --open-mode=append            # Do not overwrite logs
 #SBATCH --requeue                     # Requeue upon pre-emption
 
@@ -36,18 +36,19 @@ export NCCL_P2P_LEVEL=NVL
 #                # --start_from_checkpoint output/s3d_sem_rgb_ddp_queries40x30/checkpoint0499.pth
 #                # --resume output/cubi_queries60x30_sem_debug_t3/checkpoint.pth
 
-MASTER_PORT=14151
-CLS_COEFF=5
+MASTER_PORT=14153
+CLS_COEFF=1
 COO_COEFF=20
 SEM_COEFF=1
 SEQ_LEN=512
 NUM_BINS=32
-JOB=cubi_v4-1refined_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_sem${SEM_COEFF}_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_smoothing_cls12_t1
+DATA=data/coco_cubicasa5k_nowalls_v5-2_refined/
+JOB=cubi_v5-2refined_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_sem${SEM_COEFF}_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_smoothing_cls12_from-cc5kv41pretrain_t1
 
 PRETRAIN=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_nosem_coo20_cls1_anchor_deccatsrc_fromckpt2450_ignorewd_smoothing_clscoeffx5@6e-1_t1/checkpoint1999.pth
 
 WANDB_MODE=online torchrun --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=cubicasa \
-               --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
+               --dataset_root=${DATA} \
                --num_queries=2800 \
                --num_polys=50 \
                --semantic_classes=12 \
@@ -74,5 +75,6 @@ WANDB_MODE=online torchrun --nproc_per_node=1 --master_port=$MASTER_PORT main_dd
                --jointly_train \
                --resume output/${JOB}/checkpoint.pth \
                --use_anchor \
+               --disable_wd_as_line \
             #    --pre_decoder_pos_embed \
                # --dec_layer_type='v3' \

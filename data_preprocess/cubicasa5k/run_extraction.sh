@@ -1,3 +1,3 @@
 python floorplan_extraction.py \
-    --data_root /share/elor/htp26/floorplan_datasets/coco_cubicasa5k_nowalls_v4/ \
-    --output /share/elor/htp26/floorplan_datasets/coco_cubicasa5k_nowalls_v4-1_refined/
+    --data_root /share/elor/htp26/floorplan_datasets/coco_cubicasa5k_nowalls_v5/ \
+    --output /share/elor/htp26/floorplan_datasets/coco_cubicasa5k_nowalls_v5-1_refined/

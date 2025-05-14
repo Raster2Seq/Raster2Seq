@@ -9,7 +9,7 @@
 #SBATCH --constraint="[a6000|a100|6000ada]"
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1                # Type/number of GPUs needed
-#SBATCH --cpus-per-gpu=4              # Number of CPU cores per gpu
+#SBATCH --cpus-per-gpu=2              # Number of CPU cores per gpu
 #SBATCH --open-mode=append            # Do not overwrite logs
 #SBATCH --requeue                     # Requeue upon pre-emption
 
@@ -22,8 +22,8 @@
 #                --job_name=stru3d_org_org \
 #                --resume=/share/kuleshov/htp26/roomformer/output/stru3d_org_org/checkpoint.pth
 
-MASTER_PORT=23471
-CLS_COEFF=1
+MASTER_PORT=23472
+CLS_COEFF=8
 COO_COEFF=20
 SEQ_LEN=512
 NUM_BINS=32
@@ -36,7 +36,7 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --semantic_classes=-1 \
                --job_name=${JOB} \
                --batch_size 32 \
-               --input_channels=3 \
+               --input_channels=1 \
                --output_dir /share/elor/htp26/roomformer/output/ \
                --poly2seq \
                --seq_len ${SEQ_LEN} \

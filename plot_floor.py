@@ -50,11 +50,13 @@ def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=F
                     gt_corner_map = np.zeros([256, 256, 3])
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
                         corners = poly[0].reshape(-1, 2)
+                        if len(corners) < 3:
+                            continue
                         gt_polys.append(corners)
                         
                     gt_room_polys = [np.array(r) for r in gt_polys]
                     gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
-                    cv2.imwrite(os.path.join(output_dir, '{}_gt.png'.format(scene_ids[i])), gt_floorplan_map)
+                    cv2.imwrite(os.path.join(output_dir, '{}_floor_nosem.png'.format(scene_ids[i])), gt_floorplan_map)
                 else:
                     # plot semantically-rich floorplan
                     gt_sem_rich = []
@@ -231,6 +233,9 @@ def get_args_parser():
 
     # new
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--image_size', type=int, default=256)
+    parser.add_argument('--add_cls_token', action='store_true')
+    parser.add_argument('--per_token_sem_loss', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')

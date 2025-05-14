@@ -22,6 +22,7 @@ from datasets.transforms import ResizeAndPad
 from datasets import build_dataset
 from datasets.discrete_tokenizer import DiscreteTokenizer
 from engine import evaluate_floor, evaluate_floor_v2, plot_density_map, plot_floorplan_with_regions
+from util.plot_utils import plot_semantic_rich_floorplan_opencv, CC5K_LABEL
 from engine import generate, generate_v2
 from models import build_model
 
@@ -85,6 +86,7 @@ def get_args_parser():
     parser.add_argument('--measure_time', action='store_true')
     parser.add_argument('--disable_sampling_cache', action='store_true')
     parser.add_argument('--use_anchor', action='store_true')
+    parser.add_argument('--drop_wd', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -186,16 +188,16 @@ def get_image_paths_from_directory(directory_path):
     valid_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff')  # Add more extensions if needed
 
     # Iterate through all files in the directory
-    for filename in os.listdir(directory_path):
-        if filename.lower().endswith(valid_extensions):  # Check for valid image extensions
-            file_path = os.path.join(directory_path, filename)
-            paths.append(file_path)
+    for root, _, files in os.walk(directory_path):
+        for filename in files:
+            if filename.lower().endswith(valid_extensions):  # Check for valid image extensions
+                file_path = os.path.join(root, filename)
+                paths.append(file_path)
 
     return paths
 
 
 def main(args):
-
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
@@ -261,6 +263,7 @@ def main(args):
             outputs = generate(model,
                     x,
                     semantic_rich=args.semantic_classes>0, 
+                    drop_wd=args.drop_wd,
                     )
         else:
             outputs = generate_v2(model, 
@@ -268,18 +271,26 @@ def main(args):
                     semantic_rich=args.semantic_classes>0, 
                     use_cache=True,
                     per_token_sem_loss=args.per_token_sem_loss,
+                    drop_wd=args.drop_wd,
                     )
         pred_rooms = outputs['room']
         pred_labels = outputs['labels']
 
         image_size = x.shape[-2]
+        door_window_index = [10, 9] # if args.dataset_name == 'cubicasa' else [9, 8]
         for j, (pred_rm, pred_cls) in enumerate(zip(pred_rooms, pred_labels)):
+            fn = os.path.basename(filenames[j]).split('.')[0]
             pred_room_map = plot_density_map(x[j], image_size, 
-                                             pred_rm, pred_cls)
-            cv2.imwrite(os.path.join(save_dir, '{}_pred_room_map.png'.format(os.path.basename(filenames[j]))), pred_room_map)
+                                             pred_rm, pred_cls, plot_text=False,)
+            cv2.imwrite(os.path.join(save_dir, '{}_pred_room_map.png'.format(fn)), pred_room_map)
 
-            # floorplan_map = plot_floorplan_with_regions(pred_rm, scale=256, matching_labels=None)
-            # cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan.png'.format(os.path.basename(filenames[j]))), floorplan_map)
+            floorplan_map = plot_semantic_rich_floorplan_opencv(zip(pred_rm, pred_cls), 
+                os.path.join(save_dir, '{}_pred_floorplan.png'.format(fn)), door_window_index=door_window_index,
+                semantics_label_mapping=CC5K_LABEL, 
+                plot_text=True)
+            cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan.png'.format(fn)), floorplan_map)
+            cv2.imwrite(os.path.join(save_dir, '{}.png'.format(fn)), x[j].permute(1, 2, 0).cpu().numpy() * 255)
+
 
 
 if __name__ == '__main__':

@@ -375,6 +375,7 @@ def config():
     a = argparse.ArgumentParser(description='Generate coco format data for Structured3D')
     a.add_argument('--data_root', default='Structured3D_panorama', type=str, help='path to raw Structured3D_panorama folder')
     a.add_argument('--output', default='coco_cubicasa5k', type=str, help='path to output folder')
+    a.add_argument('--disable_wd2line', action='store_true')
     
     args = a.parse_args()
     return args
@@ -429,7 +430,8 @@ def create_coco_bounding_box(bb_x, bb_y, image_width, image_height, bound_pad=2)
     return coco_bb
         
 
-def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, use_org_cc5k_classs=False, vis_fp=False):
+def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, use_org_cc5k_classs=False, vis_fp=False, 
+                      wd2line=False):
     # image_set = dataset[scene_id]
     if use_org_cc5k_classs:
         class_mapping_dict = CC5K_MAPPING_2 # old: CC5K_MAPPING
@@ -542,7 +544,7 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
         polygon = np.array(polygon)
 
         ### here we convert door/window annotation into a single line
-        if poly_type in door_window_index:
+        if poly_type in door_window_index and wd2line:
             # convert to rect
             # if polygon.shape[0] > 4:
             #     min_x = np.min(polygon[:, 0])
@@ -582,7 +584,6 @@ def process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos
 
         coco_seg_poly = []
         poly_sorted = resort_corners(polygon)
-        # image = draw_polygon_on_image(image, poly_shapely, "test_poly.jpg")
 
         for p in poly_sorted:
             coco_seg_poly += list(p)
@@ -697,7 +698,8 @@ if __name__ == '__main__':
 
     def wrapper(scene_id):
         image_set = dataset[scene_id]
-        process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, use_org_cc5k_classs=True, vis_fp=scene_id < 100)
+        process_floorplan(image_set, scene_id, start_scene_id, args, save_dir, annos_folder, use_org_cc5k_classs=True, vis_fp=scene_id < 100,
+                          wd2line=not args.disable_wd2line)
 
     def worker_init(dataset_obj):
         # Store dataset as global to avoid pickling issues

@@ -13,28 +13,36 @@
 #             #    --ema4eval \
 #             #    --save_pred \
 
-python predict.py \
-               --dataset_root=data/waffle/benchmark/pngs/ \
-               --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_queries56x50_sem_v1/checkpoint0499.pth \
-               --output_dir=/share/elor/htp26/roomformer/waffle_benchmark_preds \
-               --num_queries=2800 \
-               --num_polys=50 \
-               --semantic_classes=12 \
-               --input_channels 3 \
+DATA=data/waffle/data/original_size_images/
+FOLDER=00000 # missing_images
+# DATA=data/waffle_benchmark_processed/
+# FOLDER=test
 
 # python predict.py \
-#                --dataset_root=data/waffle/benchmark/pngs/ \
-#                --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_sem_coo20_cls5_nopolyrefine_predecPE_fromckpt_ignorewd_smoothing_t1/checkpoint1999.pth \
-#                --output_dir=waffle_benchmark_preds \
-#                --semantic_classes=11 \
+#                --dataset_root=${DATA}/${FOLDER} \
+#                --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_queries56x50_sem_v1/checkpoint0499.pth \
+#                --output_dir=waffle_raster${FOLDER}_preds \
+#                --num_queries=2800 \
+#                --num_polys=50 \
+#                --semantic_classes=12 \
 #                --input_channels 3 \
-#                --poly2seq \
-#                --seq_len 512 \
-#                --num_bins 32 \
-#                --disable_poly_refine \
-#                --pre_decoder_pos_embed \
-#                --dec_attn_concat_src \
-#                --ema4eval \
-#                --per_token_sem_loss \
-#                # --debug \
-#                # --save_pred \
+#             #    --drop_wd \
+
+python predict.py \
+               --dataset_root=${DATA}/${FOLDER} \
+               --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_t1/checkpoint1899.pth \
+               --output_dir=waffle_raster${FOLDER}_preds \
+               --semantic_classes=12 \
+               --input_channels 3 \
+               --poly2seq \
+               --seq_len 512 \
+               --num_bins 32 \
+               --disable_poly_refine \
+               --dec_attn_concat_src \
+               --use_anchor \
+               --ema4eval \
+               --per_token_sem_loss \
+            #    --drop_wd \
+            #    --save_pred \
+            #    --pre_decoder_pos_embed \
+               # --debug \

@@ -366,7 +366,7 @@ def transform_keypoint_annotations(keypoints, transforms, image_size, keypoint_h
     return keypoints
 
 
-def annotations_to_instances(annos, image_size, mask_format="polygon"):
+def annotations_to_instances(annos, image_size, mask_format="polygon", no_boxes=False):
     """
     Create an :class:`Instances` object used by the models,
     from instance annotations in the dataset dict.
@@ -382,15 +382,17 @@ def annotations_to_instances(annos, image_size, mask_format="polygon"):
             "gt_masks", "gt_keypoints", if they can be obtained from `annos`.
             This is the format that builtin models expect.
     """
-    boxes = (
-        np.stack(
-            [BoxMode.convert(obj["bbox"], obj["bbox_mode"], BoxMode.XYXY_ABS) for obj in annos]
-        )
-        if len(annos)
-        else np.zeros((0, 4))
-    )
+
     target = Instances(image_size)
-    target.gt_boxes = Boxes(boxes)
+    if not no_boxes:
+        boxes = (
+            np.stack(
+                [BoxMode.convert(obj["bbox"], obj["bbox_mode"], BoxMode.XYXY_ABS) for obj in annos]
+            )
+            if len(annos)
+            else np.zeros((0, 4))
+        )
+        target.gt_boxes = Boxes(boxes)
 
     classes = [int(obj["category_id"]) for obj in annos]
     classes = torch.tensor(classes, dtype=torch.int64)
@@ -410,6 +412,8 @@ def annotations_to_instances(annos, image_size, mask_format="polygon"):
             masks = []
             for segm in segms:
                 if isinstance(segm, list):
+                    if len(segm[0]) < 5:
+                        continue
                     # polygon
                     masks.append(polygons_to_bitmask(segm, *image_size))
                 elif isinstance(segm, dict):

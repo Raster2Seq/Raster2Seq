@@ -34,6 +34,8 @@ def get_args_parser():
     parser.add_argument('--measure_time', action='store_true')
     parser.add_argument('--disable_sampling_cache', action='store_true')
     parser.add_argument('--use_anchor', action='store_true')
+    parser.add_argument('--iou_thres', type=float, default=0.5)
+    parser.add_argument('--disable_sem_rich', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -115,7 +117,7 @@ def get_args_parser():
     # visualization options
     parser.add_argument('--plot_pred', default=True, type=bool, help="plot predicted floorplan")
     parser.add_argument('--plot_density', default=True, type=bool, help="plot predicited room polygons overlaid on the density map")
-    parser.add_argument('--plot_gt', default=False, type=bool, help="plot ground truth floorplan")
+    parser.add_argument('--plot_gt', default=True, type=bool, help="plot ground truth floorplan")
     parser.add_argument('--save_pred', action='store_true', help="save_pred")
 
     return parser
@@ -141,7 +143,8 @@ def main(args):
 
     # overfit one sample
     if args.debug:
-        dataset_eval = torch.utils.data.Subset(dataset_eval, [0])
+        dataset_eval = torch.utils.data.Subset(dataset_eval, [2])
+        dataset_eval[0]
 
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
 
@@ -223,8 +226,9 @@ def main(args):
                     plot_pred=args.plot_pred, 
                     plot_density=args.plot_density, 
                     plot_gt=args.plot_gt,
-                    semantic_rich=args.semantic_classes>0,
+                    semantic_rich=(args.semantic_classes>0 and not args.disable_sem_rich),
                     save_pred=args.save_pred,
+                    iou_thres=args.iou_thres,
                     )
     else:
         evaluate_floor_v2(
@@ -233,9 +237,10 @@ def main(args):
                     plot_pred=args.plot_pred, 
                     plot_density=args.plot_density, 
                     plot_gt=args.plot_gt,
-                    semantic_rich=args.semantic_classes>0,
+                    semantic_rich=(args.semantic_classes>0 and not args.disable_sem_rich),
                     save_pred=args.save_pred,
                     per_token_sem_loss=args.per_token_sem_loss,
+                    iou_thres=args.iou_thres,
                     )
 
 

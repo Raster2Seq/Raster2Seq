@@ -21,7 +21,7 @@ CUDA_VISIBLE_DEVICES={device} python eval.py --dataset_name=stru3d \
                --output_dir={slurm_output}/eval_s3d_sem_epoch{epoch} \
                --num_queries=1200 \
                --num_polys=30 \
-               --semantic_classes=18 \
+               --semantic_classes=19 \
                --input_channels 3 \
                --poly2seq \
                --seq_len 512 \
@@ -36,22 +36,20 @@ CUDA_VISIBLE_DEVICES={device} python eval.py --dataset_name=stru3d \
 """
 
 ###### ARGS
-exp = "s3d_bw_ddp_poly2seq_l512_sem1_bs32_coo20_cls5_anchor_deccatsrc_correct_pts_finetune_t1"
+exp = "s3d_bw_ddp_poly2seq_l512_sem_bs32_coo20_cls1_anchor_deccatsrc_correct_smoothing1e-1_numcls19_pts_finetune_t3"
 device = "0"
 
 config = pd.DataFrame({
-    "epochs": [1649, 1699, 1749, 1799],
+    "epochs": [1749, 1799],
 })
 print(config)
 
 ###################################
-slurm_file_path = f"/share/elor/htp26/roomformer/slurm_scripts/{exp}/run.sh"
-slurm_output = f"/share/elor/htp26/roomformer/slurm_scripts/{exp}/"
+slurm_file_path = f"slurm_scripts/{exp}/run.sh"
+slurm_output = f"slurm_scripts/{exp}/"
 os.makedirs(slurm_output, exist_ok=True)
 
 for idx, row in config.iterrows():
-    # device = str(idx % 2)
-    # slurm_file_path = f"/lustre/scratch/client/vinai/users/haopt12/cnf_flow/slurm_scripts/{exp}/run{device}.sh"
     slurm_command = slurm_template.format(
         exp=exp,
         epoch=row.epochs,

@@ -17,6 +17,7 @@ from imageio import imsave
 from shapely.geometry import LineString
 from shapely.geometry import Polygon
 from descartes.patch import PolygonPatch
+from plotly.colors import qualitative
 
 
 colors_12 = [
@@ -61,7 +62,7 @@ semantics_cmap = {
     17: '#ffd7b4'
 }
 
-semantics_label = {
+S3D_LABEL = {
     0: 'Living Room',
     1: 'Kitchen',
     2: 'Bedroom',
@@ -82,6 +83,21 @@ semantics_label = {
     17: 'Window'
 }
 
+CC5K_LABEL = {
+    0: "Outdoor",
+    1: "Kitchen",
+    2: "Living Room",
+    3: "Bed Room",
+    4: "Bath",
+    5: "Entry",
+    6: "Storage",
+    7: "Garage",
+    8: "Undefined",
+    9: "Window",
+    10: "Door",
+}
+
+
 
 BLUE = '#6699cc'
 GRAY = '#999999'
@@ -95,8 +111,9 @@ BLACK = '#000000'
 def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256, matching_labels=None):
     """Draw floorplan map where different colors indicate different rooms
     """
-    cmap = get_cmap('tab20', 20) # nipy_spectral
-    colors = [cmap(x) for x in np.linspace(0, 1, 21)] # colors = colors_12
+    # cmap = get_cmap('tab20', 20) # nipy_spectral
+    # colors = [cmap(x) for x in np.linspace(0, 1, 21)] # colors = colors_12
+    colors = qualitative.Light24
     gray_color = tuple(c / 255.0 for c in (255,255,255,255))
 
     regions = [(region * scale / 256).round().astype(np.int32) for region in regions]
@@ -178,7 +195,7 @@ def plot_score_map(corner_map, scores):
     return score_map
 
 
-def plot_room_map(preds, room_map, room_id=0, im_size=256):
+def plot_room_map(preds, room_map, room_id=0, im_size=256, plot_text=True):
     """Draw room polygons overlaid on the density map
     """
     centroid_x = int(np.mean(preds[:, 0]))
@@ -190,36 +207,53 @@ def plot_room_map(preds, room_map, room_id=0, im_size=256):
     thickness = 1
     text = str(room_id)
     (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-
+    border_color = (252, 252, 0)
 
     for i, corner in enumerate(preds):
         if i == len(preds)-1:
-            cv2.line(room_map, (round(corner[0]), round(corner[1])), (round(preds[0][0]), round(preds[0][1])), (252, 252, 0), 2)
+            cv2.line(room_map, (round(corner[0]), round(corner[1])), (round(preds[0][0]), round(preds[0][1])), border_color, 2)
         else:
-            cv2.line(room_map, (round(corner[0]), round(corner[1])), (round(preds[i+1][0]), round(preds[i+1][1])), (252, 252, 0), 2)
+            cv2.line(room_map, (round(corner[0]), round(corner[1])), (round(preds[i+1][0]), round(preds[i+1][1])), border_color, 2)
         cv2.circle(room_map, (round(corner[0]), round(corner[1])), 2, (0, 0, 255), 2)
         # cv2.putText(room_map, str(i), (round(corner[0]), round(corner[1])), cv2.FONT_HERSHEY_SIMPLEX, 
         #            0.4, (0, 255, 0), 1, cv2.LINE_AA)
 
         # Draw white background box with transparency
-        overlay = room_map.copy()
-        cv2.rectangle(overlay, 
-                    (centroid_x - text_width//2 - 1, centroid_y - text_height//2 - 1),
-                    (centroid_x + text_width//2 + 1, centroid_y + text_height//2 + 1),
-                    (0, 0, 0), 
-                    -1)  # Filled rectangle
-        cv2.addWeighted(overlay, 0.7, room_map, 0.3, 0, room_map)  # 70% opacity
+        # overlay = room_map.copy()
+        # cv2.addWeighted(overlay, 0.7, room_map, 0.3, 0, room_map)  # 70% opacity
 
         # Draw text
-        cv2.putText(room_map, 
-                    text, 
-                    (centroid_x - text_width//2, centroid_y + text_height//2), 
-                    font, 
-                    font_scale, 
-                    (0, 255, 0),
-                    thickness)
+        if plot_text:
+            cv2.rectangle(room_map, 
+                        (centroid_x - text_width//2 - 2, centroid_y - text_height//2 - 2),
+                        (centroid_x + text_width//2 + 2, centroid_y + text_height//2 + 2),
+                        (255, 255, 255), # (0, 0, 0), 
+                        -1)  # Filled rectangle
+            cv2.putText(room_map, 
+                        text, 
+                        (centroid_x - text_width//2, centroid_y + text_height//2), 
+                        font, 
+                        font_scale, 
+                        (0, 100, 0),
+                        thickness)
         
     return room_map
+
+
+def plot_density_map(sample, image_size, room_polys, pred_room_label_per_scene, plot_text=True):
+    density_map = np.transpose(sample.cpu().numpy(), [1, 2, 0])
+    if density_map.shape[2] == 3:
+        density_map = density_map * (image_size - 1)
+    else:
+        density_map = np.repeat(density_map, 3, axis=2) * (image_size - 1)
+    pred_room_map = np.zeros([image_size, image_size, 3])
+
+    for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
+        pred_room_map = plot_room_map(room_poly, pred_room_map, room_id, plot_text=plot_text)
+
+    alpha = 0.4  # Adjust for desired transparency
+    pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
+    return pred_room_map
 
 
 def plot_anno(img, annos, save_path, transformed=False, draw_poly=True, draw_bbx=True, thickness=2):
@@ -328,7 +362,7 @@ def plot_semantic_rich_floorplan(polygons, file_name, prec=None, rec=None):
             patch = PolygonPatch(polygon, facecolor=semantics_cmap[poly_type], alpha=0.5, linewidth=1, capstyle='round', edgecolor='#000000FF')
             ax.add_patch(patch)
             ax.text(np.mean(poly[:, 0]), np.mean(poly[:, 1]), 
-                    semantics_label[poly_type], 
+                    S3D_LABEL[poly_type], 
                     fontsize=6, 
                     horizontalalignment='center', 
                     verticalalignment='center',
@@ -445,7 +479,7 @@ def plot_semantic_rich_floorplan_tight(polygons, file_name, prec=None, rec=None,
                 patch = PolygonPatch(polygon, facecolor=semantics_cmap[poly_type], alpha=0.5, linewidth=1, capstyle='round', edgecolor='#000000FF')
                 ax.add_patch(patch)
             if plot_text:
-                ax.text(np.mean(poly[:, 0]), np.mean(poly[:, 1]), semantics_label[poly_type], size=6, horizontalalignment='center', verticalalignment='center')
+                ax.text(np.mean(poly[:, 0]), np.mean(poly[:, 1]), S3D_LABEL[poly_type], size=6, horizontalalignment='center', verticalalignment='center')
 
     # Compute door size statistics (median)
     door_median_size = np.median([door_length for (_, _, door_length) in polygons_doors])
@@ -519,7 +553,7 @@ def plot_semantic_rich_floorplan_nicely(polygons,
                                       door_window_index=[16,17], 
                                       img_w=256, 
                                       img_h=256,
-                                      semantics_label_mapping=semantics_label,
+                                      semantics_label_mapping=S3D_LABEL,
                                       ):
     """plot semantically-rich floorplan (i.e. with additional room label, door, window)
     """
@@ -641,85 +675,10 @@ def plot_semantic_rich_floorplan_nicely(polygons,
     plt.close()
 
 
-# def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=256, door_window_index=[16,17], semantics_label_mapping=semantics_label, is_bw=False):
-#     """
-#     Plot semantically-rich floorplan using OpenCV.
-
-#     Args:
-#         polygons (list): A list of polygons, where each polygon is a list of (x, y) coordinates.
-#         file_name (str): Path to save the output image.
-#         img_w (int): Width of the image.
-#         img_h (int): Height of the image.
-#         is_bw (bool): If True, use black and white colors only.
-#     """
-#     # Create a blank black image
-#     if is_bw:
-#         image = np.zeros((img_h, img_w), dtype=np.uint8)  # Grayscale image
-#     else:
-#         image = np.zeros((img_h, img_w, 3), dtype=np.uint8)  # RGB image
-
-#     # Define colors
-#     door_color = (200, 200, 200) if is_bw else (255, 0, 0)  # Light gray for BW, Blue for RGB
-#     window_color = (150, 150, 150) if is_bw else (0, 0, 255)  # Dark gray for BW, Red for RGB
-#     text_color = (0, 0, 0) if is_bw else (0, 0, 0)  # White text for both modes
-
-#     # Create an overlay for transparency
-#     overlay = image.copy()
-
-#     # Draw polygons
-#     for poly, poly_type in polygons:
-#         points = np.array(poly, dtype=np.int32)  # Convert to NumPy array
-#         if poly_type == door_window_index[0]:  # Door
-#             cv2.polylines(overlay, [points], isClosed=True, color=door_color[:3], thickness=2)
-#         elif poly_type == door_window_index[1]:  # Window
-#             cv2.polylines(overlay, [points], isClosed=True, color=window_color[:3], thickness=2)
-#         else:  # Regular room
-#             rgb_color = ImageColor.getcolor(semantics_cmap[poly_type], "RGB")
-#             cv2.fillPoly(overlay, [points], color=(rgb_color[2], rgb_color[1], rgb_color[0]))
-
-#             # Calculate the centroid of the polygon for the label
-#             M = cv2.moments(points)
-#             if M["m00"] != 0:  # Avoid division by zero
-#                 centroid_x = int(M["m10"] / M["m00"])
-#                 centroid_y = int(M["m01"] / M["m00"])
-#                 # Get the text size for the label
-#                 label = semantics_label_mapping[poly_type]
-#                 font_scale = 0.5
-#                 text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)[0]
-#                 text_width, text_height = text_size[0], text_size[1]
-
-#                 # # Define the top-left and bottom-right corners of the rectangle
-#                 # top_left = (centroid_x - text_width // 2 - font_scale, centroid_y - text_height // 2 - font_scale)
-#                 # bottom_right = (centroid_x + text_width // 2 + font_scale, centroid_y + text_height // 2 + font_scale)
-
-#                 # # Draw a white rectangle as the background for the text
-#                 # cv2.rectangle(overlay, top_left, bottom_right, (255, 255, 255), -1)
-
-#                 # Draw the label at the centroid
-#                 cv2.putText(
-#                     overlay,
-#                     semantics_label_mapping[poly_type],  # Label text
-#                     (centroid_x, centroid_y),
-#                     cv2.FONT_HERSHEY_SIMPLEX,
-#                     font_scale,  # Font scale
-#                     text_color[:3],
-#                     1,  # Thickness
-#                     cv2.LINE_AA,
-#                 )
-
-#     # Blend the overlay with the original image
-#     alpha = 0.7  # Transparency level
-#     cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
-
-#     # Save the image
-#     cv2.imwrite(file_name, image)
-#     print(f"Saved floorplan to {file_name}")
-
-
 def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=256, 
                                        door_window_index=[16,17], 
-                                       semantics_label_mapping=semantics_label, 
-                                       is_bw=False,
+                                       semantics_label_mapping=S3D_LABEL, 
+                                       is_bw=False, plot_text=True,
                                        ):
     """
     Plot semantically-rich floorplan using OpenCV with improved quality.
@@ -739,9 +698,14 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
         anti_aliasing (bool): Whether to use anti-aliasing for lines.
     """
     line_thickness=2
-    text_padding=5
-    font_scale=1.0
+    text_padding=1
+    font_scale=0.28
     room_alpha=0.6
+
+    colors = [to_hex(x) for x in qualitative.Light24]
+
+    # cmap = get_cmap('tab20', 20)
+    # colors = [to_hex(cmap(x)) for x in np.linspace(0, 1, 20)]  # Convert to hex
     # Create a white background image (more conventional for floorplans)
     if is_bw:
         image = np.ones((img_h, img_w), dtype=np.uint8) * 255  # White grayscale image
@@ -771,11 +735,14 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
             room_polygons.append((points, poly_type))
     
     # Draw rooms first (bottom layer)
-    for points, poly_type in room_polygons:
+    for room_id, (points, poly_type) in enumerate(room_polygons):
         # Fill room with color
         if not is_bw:
             # Get RGB color from semantics_cmap and convert from RGB to BGR for OpenCV
-            rgb_color = ImageColor.getcolor(semantics_cmap[poly_type], "RGB")
+            if not plot_text:
+                rgb_color = ImageColor.getcolor(colors[room_id % len(colors)], "RGB")
+            else:
+                rgb_color = ImageColor.getcolor(colors[poly_type], "RGB")
             bgr_color = (rgb_color[2], rgb_color[1], rgb_color[0])
             
             cv2.fillPoly(overlay, [points], color=bgr_color)
@@ -839,48 +806,49 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
                              color=window_color, thickness=line_thickness,
                              lineType=line_type)
     
-    # Add room labels
-    for points, poly_type in room_polygons:
-        # Calculate the centroid for text placement
-        M = cv2.moments(points)
-        if M["m00"] != 0:  # Avoid division by zero
-            centroid_x = int(M["m10"] / M["m00"])
-            centroid_y = int(M["m01"] / M["m00"])
-            
-            # Get room label
-            label = semantics_label_mapping[poly_type]
-            
-            # Get text size for centering and background
-            text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 
-                                       font_scale, 1)[0]
-            
-            # Calculate text background rectangle
-            text_x = centroid_x - text_size[0] // 2
-            text_y = centroid_y + text_size[1] // 2
-            
-            # Create background for text
-            rect_top_left = (text_x - text_padding, text_y - text_size[1] - text_padding)
-            rect_bottom_right = (text_x + text_size[0] + text_padding, text_y + text_padding)
-            
-            # Draw semi-transparent white background for text
-            background = image.copy()
-            cv2.rectangle(background, rect_top_left, rect_bottom_right, 
-                         (255, 255, 255), -1)
-            
-            # Blend the background
-            cv2.addWeighted(background, 0.7, image, 0.3, 0, image)
-            
-            # Draw the text
-            cv2.putText(
-                image,
-                label,
-                (text_x, text_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                font_scale,
-                (0, 0, 0),  # Black text
-                1,  # Thickness
-                cv2.LINE_AA,  # Anti-aliased text
-            )
+    if plot_text:
+        # Add room labels
+        for points, poly_type in room_polygons:
+            # Calculate the centroid for text placement
+            M = cv2.moments(points)
+            if M["m00"] != 0:  # Avoid division by zero
+                centroid_x = int(M["m10"] / M["m00"])
+                centroid_y = int(M["m01"] / M["m00"])
+                
+                # Get room label
+                label = semantics_label_mapping[poly_type]
+                
+                # Get text size for centering and background
+                text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 
+                                        font_scale, 1)[0]
+                
+                # Calculate text background rectangle
+                text_x = centroid_x - text_size[0] // 2
+                text_y = centroid_y + text_size[1] // 2
+                
+                # Create background for text
+                rect_top_left = (text_x - text_padding, text_y - text_size[1] - text_padding)
+                rect_bottom_right = (text_x + text_size[0] + text_padding, text_y + text_padding)
+                
+                # Draw semi-transparent white background for text
+                background = image.copy()
+                cv2.rectangle(background, rect_top_left, rect_bottom_right, 
+                            (255, 255, 255), -1)
+                
+                # Blend the background
+                cv2.addWeighted(background, 0.7, image, 0.3, 0, image)
+                
+                # Draw the text
+                cv2.putText(
+                    image,
+                    label,
+                    (text_x, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    (0, 0, 0),  # Black text
+                    1,  # Thickness
+                    cv2.LINE_AA,  # Anti-aliased text
+                )
     
     # Add border around the image for better framing
     cv2.rectangle(image, (0, 0), (img_w-1, img_h-1), (0, 0, 0), 1, cv2.LINE_AA)

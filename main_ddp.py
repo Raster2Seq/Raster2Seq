@@ -51,6 +51,8 @@ def get_args_parser():
     parser.add_argument('--increase_cls_loss_coef', default=1.0, type=float)
     parser.add_argument('--increase_cls_loss_coef_epoch_ratio', default=-1, type=float)
     parser.add_argument('--use_anchor', action='store_true')
+    parser.add_argument('--disable_wd_as_line', action='store_true')
+    parser.add_argument('--wd_only', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -186,7 +188,7 @@ def main(args):
     if args.debug:
         dataset_val = torch.utils.data.Subset(copy.deepcopy(dataset_val), [0])
         dataset_train = copy.deepcopy(dataset_val)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
-        dataset_train[0]
+        dataset_val[0]
 
     sampler_train = DistributedSampler(dataset_train, num_replicas=dist.get_world_size(), rank=rank, shuffle=True, seed=args.seed)
     sampler_val = DistributedSampler(dataset_val, num_replicas=dist.get_world_size(), rank=rank, shuffle=False, seed=args.seed)
@@ -468,6 +470,7 @@ def main(args):
                     plot_density=True, output_dir=output_dir, epoch=epoch, poly2seq=args.poly2seq,
                     add_cls_token=args.add_cls_token,
                     per_token_sem_loss=args.per_token_sem_loss,
+                    wd_as_line=not args.disable_wd_as_line,
                 )
             log_stats.update(**{f'test_{k}': v for k, v in test_stats.items()})
 

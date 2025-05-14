@@ -21,10 +21,12 @@ angle_metric_thresh = 5
 # colormap_255 = [[i, i, i] for i in range(40)]
 
 class Evaluator_RPlan():
-    def __init__(self, data_rw=None, options=None, disable_overlapping_filter=False):
+    def __init__(self, data_rw=None, options=None, disable_overlapping_filter=False, iou_thres=0.5, wd_as_line=True):
         self.data_rw = data_rw
         self.options = options
         self.disable_overlapping_filter = disable_overlapping_filter
+        self.iou_thres = iou_thres
+        self.wd_as_line = wd_as_line
 
         self.device = torch.device("cuda")
 
@@ -404,7 +406,7 @@ class Evaluator_RPlan():
 
                 iou = np.sum(intersection) / (np.sum(union) + 1)
 
-                if iou > best_iou and iou > 0.5:
+                if iou > best_iou and iou > self.iou_thres:
                     best_iou = iou
                     best_ind = pred_ind
 
@@ -437,24 +439,65 @@ class Evaluator_RPlan():
             
         ### match predicted window/door to ground truth window/door
         if pred_window_doors_types is not None:
-            for gt_ind, gt_wd in enumerate(gt_window_doors):
-                best_dist = 100000.
-                best_ind = -1
+            if self.wd_as_line:
+                for gt_ind, gt_wd in enumerate(gt_window_doors):
+                    best_dist = 100000.
+                    best_ind = -1
 
-                for pred_ind, pred_wd in enumerate(pred_window_doors):
+                    for pred_ind, pred_wd in enumerate(pred_window_doors):
 
-                    dist_match1 = [np.linalg.norm(gt_wd[0] - pred_wd[0], axis=0, ord=2), np.linalg.norm(gt_wd[1] - pred_wd[1], axis=0, ord=2)]
-                    dist_match2 = [np.linalg.norm(gt_wd[0] - pred_wd[1], axis=0, ord=2), np.linalg.norm(gt_wd[1] - pred_wd[0], axis=0, ord=2)]
+                        dist_match1 = [np.linalg.norm(gt_wd[0] - pred_wd[0], axis=0, ord=2), np.linalg.norm(gt_wd[1] - pred_wd[1], axis=0, ord=2)]
+                        dist_match2 = [np.linalg.norm(gt_wd[0] - pred_wd[1], axis=0, ord=2), np.linalg.norm(gt_wd[1] - pred_wd[0], axis=0, ord=2)]
 
-                    dist_match = dist_match1 if sum(dist_match1) < sum(dist_match2) else dist_match2
+                        dist_match = dist_match1 if sum(dist_match1) < sum(dist_match2) else dist_match2
 
-                    if sum(dist_match) < best_dist and dist_match[0] < corner_metric_thresh and dist_match[1] < corner_metric_thresh and gt_window_doors_types[gt_ind] == pred_window_doors_types[pred_ind]:
-                        best_dist = sum(dist_match)
-                        best_ind = pred_ind
+                        if sum(dist_match) < best_dist and dist_match[0] < corner_metric_thresh and dist_match[1] < corner_metric_thresh and gt_window_doors_types[gt_ind] == pred_window_doors_types[pred_ind]:
+                            best_dist = sum(dist_match)
+                            best_ind = pred_ind
 
-                gt2pred_indices_wd[gt_ind] = best_ind
-                gt2pred_exists_wd[gt_ind] = best_ind != -1
+                    gt2pred_indices_wd[gt_ind] = best_ind
+                    gt2pred_exists_wd[gt_ind] = best_ind != -1
+            else:
+                gt_wd_map_list = []
+                for wd_ind, poly in enumerate(gt_window_doors):
+                    wd_map = np.zeros((h, w))
+                    cv2.fillPoly(wd_map, [poly], color=1.)
+                    gt_wd_map_list.append(wd_map)
 
+                gt_wd_polys_sorted_indcs = [i[0] for i in sorted(enumerate(gt_wd_map_list), key=poly_map_sort_key, reverse=True)]
+
+                gt_window_doors = [gt_window_doors[ind] for ind in gt_wd_polys_sorted_indcs]
+                gt_wd_map_list = [gt_wd_map_list[ind] for ind in gt_wd_polys_sorted_indcs]
+
+                if pred_window_doors is not None:
+                    pred_wd_map_list = []
+                    for wd_ind, poly in enumerate(pred_window_doors):
+                        wd_map = np.zeros((h, w))
+                        cv2.fillPoly(wd_map, [poly], color=1.)
+
+                        pred_wd_map_list.append(wd_map)
+                else:
+                    pred_wd_map_list = masks_list
+
+                for gt_ind, gt_map in enumerate(gt_wd_map_list):
+
+                    best_iou = 0.
+                    best_ind = -1
+                    for pred_ind, pred_map in enumerate(pred_wd_map_list):
+
+                        # intersection = (1 - ignore_mask_region) * ((pred_map + gt_map) == 2)
+                        # union = (1 - ignore_mask_region) * ((pred_map + gt_map) >= 1)
+                        intersection = (pred_map + gt_map) == 2
+                        union = (pred_map + gt_map) >= 1
+
+                        iou = np.sum(intersection) / (np.sum(union) + 1)
+
+                        if iou > best_iou and iou > self.iou_thres:
+                            best_iou = iou
+                            best_ind = pred_ind
+
+                    gt2pred_indices_wd[gt_ind] = best_ind
+                    gt2pred_exists_wd[gt_ind] = best_ind != -1
 
         pred2gt_exists = [True if pred_ind in gt2pred_indices else False for pred_ind, _ in enumerate(pred_polys)]
         pred2gt_indices = [gt2pred_indices.index(pred_ind) if pred_ind in gt2pred_indices else -1 for pred_ind, _ in enumerate(pred_polys)]

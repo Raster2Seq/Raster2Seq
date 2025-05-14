@@ -9,7 +9,7 @@
 #SBATCH --constraint="[a6000|a100|6000ada]"
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1                # Type/number of GPUs needed
-#SBATCH --cpus-per-gpu=4             # Number of CPU cores per gpu
+#SBATCH --cpus-per-gpu=2             # Number of CPU cores per gpu
 #SBATCH --open-mode=append            # Do not overwrite logs
 #SBATCH --requeue                     # Requeue upon pre-emption
 
@@ -36,20 +36,22 @@ export NCCL_P2P_LEVEL=NVL
 #                # --start_from_checkpoint output/s3d_sem_rgb_ddp_queries40x30/checkpoint0499.pth
 #                # --resume output/cubi_queries60x30_sem_debug_t3/checkpoint.pth
 
-MASTER_PORT=14157
-CLS_COEFF=20
+MASTER_PORT=14159
+CLS_COEFF=5
 COO_COEFF=20
 SEQ_LEN=512
 NUM_BINS=32
-JOB=cubi_v4-1refined_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_fromckpt1200@anchor_ignorewd_smoothing_t1
+JOB=cubi_v4-2refined_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_fromckpt_ignorewd_smoothing_fromckpt1200_t1
+NUM_GPUS=1
+PRETRAIN=/home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1/checkpoint2449.pth
 
-WANDB_MODE=online torchrun --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=cubicasa \
-               --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
+WANDB_MODE=online torchrun --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT main_ddp.py --dataset_name=cubicasa \
+               --dataset_root=data/coco_cubicasa5k_nowalls_v4-2_refined/ \
                --num_queries=2800 \
                --num_polys=50 \
                --semantic_classes=-1 \
                --job_name=${JOB} \
-               --batch_size 56 \
+               --batch_size 28 \
                --input_channels=3 \
                --output_dir /share/elor/htp26/roomformer/output \
                --poly2seq \
@@ -58,7 +60,7 @@ WANDB_MODE=online torchrun --nproc_per_node=1 --master_port=$MASTER_PORT main_dd
                --ckpt_every_epoch=50 \
                --eval_every_epoch=50 \
                --label_smoothing 0.1 \
-               --epochs 1000 \
+               --epochs 2000 \
                --lr_drop '' \
                --cls_loss_coef ${CLS_COEFF} \
                --coords_loss_coef ${COO_COEFF} \
@@ -67,9 +69,11 @@ WANDB_MODE=online torchrun --nproc_per_node=1 --master_port=$MASTER_PORT main_dd
                --ema4eval \
                --resume output/${JOB}/checkpoint.pth \
                --use_anchor \
-               --start_from_checkpoint /home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_nosem_coo20_cls1_anchor_deccatsrc_fromckpt2450_ignorewd_smoothing_clscoeffx5@6e-1_t1/checkpoint1199.pth \
+               --start_from_checkpoint ${PRETRAIN} \
+               # --start_from_checkpoint /home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1/checkpoint2449.pth
                # --increase_cls_loss_coef_epoch_ratio 0.6 --increase_cls_loss_coef 10. \
-               # /home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1/checkpoint2449.pth \
+               # /home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_nosem_coo20_cls1_anchor_deccatsrc_fromckpt2450_ignorewd_smoothing_clscoeffx5@6e-1_t1/checkpoint1199.pth \
+               #  \
             #    --debug
             #    --pre_decoder_pos_embed \
                # --dec_layer_type='v3' \

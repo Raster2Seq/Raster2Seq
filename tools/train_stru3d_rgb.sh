@@ -42,8 +42,8 @@ MASTER_PORT=13471
 CLS_COEFF=1
 COO_COEFF=20
 SEQ_LEN=512
-NUM_BINS=16
-JOB=s3d_bw_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_nopolyrefine_predecPE_deccatsrc_t1
+NUM_BINS=32
+JOB=s3d_bw_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_nopolyrefine_predecPE_deccatsrc_wdonly_t1
 
 WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
@@ -71,9 +71,9 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --disable_poly_refine \
                --dec_attn_concat_src \
                --pre_decoder_pos_embed \
+               --wd_only \
             #    --use_anchor \
             #    --increase_cls_loss_coef_epoch_ratio 0.6 --increase_cls_loss_coef 5. \
-               # --debug \
                # --dec_layer_type='v6' \
                # --clip_max_norm 1.0 \
                # --debug
