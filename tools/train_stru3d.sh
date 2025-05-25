@@ -23,11 +23,12 @@
 #                --resume=/share/kuleshov/htp26/roomformer/output/stru3d_org_org/checkpoint.pth
 
 MASTER_PORT=23472
-CLS_COEFF=8
+CLS_COEFF=2
 COO_COEFF=20
 SEQ_LEN=512
 NUM_BINS=32
-JOB=s3d_projection_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_t1
+CONVERTER=v3
+JOB=s3d_projection_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_converter${CONVERTER}_t1
 
 WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
                --dataset_root=data/stru3d \
@@ -46,7 +47,7 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --lr 2e-4 \
                --lr_backbone 2e-5 \
                --label_smoothing 0.0 \
-               --epochs 2800 \
+               --epochs 1400 \
                --lr_drop '1950' \
                --cls_loss_coef ${CLS_COEFF} \
                --coords_loss_coef ${COO_COEFF} \
@@ -55,6 +56,7 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --disable_poly_refine \
                --dec_attn_concat_src \
                --use_anchor \
+               --converter_version ${CONVERTER} \
             #    --pre_decoder_pos_embed \
             #    --increase_cls_loss_coef_epoch_ratio 0.6 --increase_cls_loss_coef 5. \
                # --debug \

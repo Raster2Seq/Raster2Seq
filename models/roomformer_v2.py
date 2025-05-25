@@ -27,7 +27,7 @@ class RoomFormerV2(nn.Module):
     """ This is the RoomFormer module that performs floorplan reconstruction """
     def __init__(self, backbone, transformer, num_classes, num_queries, num_polys, num_feature_levels,
                  aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1, seq_len=1024, tokenizer=None,
-                 use_anchor=False,
+                 use_anchor=False, patch_size=1, freeze_anchor=False,
                  ):
         """ Initializes the model.
         Parameters:
@@ -55,6 +55,7 @@ class RoomFormerV2(nn.Module):
         self.num_feature_levels = num_feature_levels
         self.tokenizer = tokenizer
         self.seq_len = seq_len
+        self.patch_size = patch_size
 
         # self.tgt_embed = nn.Embedding(num_queries, hidden_dim)
         if num_feature_levels > 1:
@@ -63,14 +64,20 @@ class RoomFormerV2(nn.Module):
             for _ in range(num_backbone_outs):
                 in_channels = backbone.num_channels[_]
                 input_proj_list.append(nn.Sequential(
-                    nn.Conv2d(in_channels, hidden_dim, kernel_size=1),
+                    nn.Conv2d(in_channels, hidden_dim, kernel_size=patch_size, stride=patch_size, padding=0),
                     nn.GroupNorm(32, hidden_dim),
                 ))
             for _ in range(num_feature_levels - num_backbone_outs):
-                input_proj_list.append(nn.Sequential(
-                    nn.Conv2d(in_channels, hidden_dim, kernel_size=3, stride=2, padding=1),
-                    nn.GroupNorm(32, hidden_dim),
-                ))
+                if patch_size == 1:
+                    input_proj_list.append(nn.Sequential(
+                        nn.Conv2d(in_channels, hidden_dim, kernel_size=3, stride=2, padding=1),
+                        nn.GroupNorm(32, hidden_dim),
+                    ))
+                else:
+                    input_proj_list.append(nn.Sequential(
+                        nn.Conv2d(in_channels, hidden_dim, kernel_size=2*patch_size, stride=2*patch_size, padding=0),
+                        nn.GroupNorm(32, hidden_dim),
+                    ))
                 in_channels = hidden_dim
             self.input_proj = nn.ModuleList(input_proj_list)
         else:
@@ -105,6 +112,7 @@ class RoomFormerV2(nn.Module):
 
         if use_anchor or with_poly_refine:
             self.query_embed = nn.Embedding(seq_len, 2)
+            self.query_embed.weight.requires_grad = not freeze_anchor
         else:
             self.query_embed = None
 
@@ -163,7 +171,11 @@ class RoomFormerV2(nn.Module):
         masks = []
         for l, feat in enumerate(features):
             src, mask = feat.decompose()
-            srcs.append(self.input_proj[l](src))
+            src = self.input_proj[l](src)
+            srcs.append(src)
+            if self.patch_size != 1:
+                mask = F.interpolate(mask[None].float(), size=src.shape[-2:]).to(torch.bool)[0]
+                pos[l] = self.backbone[1](NestedTensor(src, mask)).to(src.dtype)
             masks.append(mask)
             assert mask is not None
         if self.num_feature_levels > len(srcs):
@@ -244,7 +256,11 @@ class RoomFormerV2(nn.Module):
         masks = []
         for l, feat in enumerate(features):
             src, mask = feat.decompose()
-            srcs.append(self.input_proj[l](src))
+            src = self.input_proj[l](src)
+            srcs.append(src)
+            if self.patch_size != 1:
+                mask = F.interpolate(mask[None].float(), size=src.shape[-2:]).to(torch.bool)[0]
+                pos[l] = self.backbone[1](NestedTensor(src, mask)).to(src.dtype)
             masks.append(mask)
             assert mask is not None
         if self.num_feature_levels > len(srcs):
@@ -418,6 +434,41 @@ class RoomFormerV2(nn.Module):
                                       device=self.transformer.level_embed.device)
 
 
+class SemHead(nn.Module):
+    def __init__(self, hidden_dim, num_classes):
+        super().__init__()
+        self.shared_layer = nn.Linear(hidden_dim, hidden_dim)
+        self.room_embed = nn.Linear(hidden_dim, num_classes-2)
+        self.num_classes = num_classes
+        self.window_door_embed = nn.Linear(hidden_dim, 2)
+    
+    def forward(self, x):
+        x = F.normalize(torch.relu(self.shared_layer(x)), p=2, dim=-1, eps=1e-12)
+        room_out = self.room_embed(x)
+        window_door_out = self.window_door_embed(x)
+        out = torch.cat([room_out[:,:,:-1], window_door_out, room_out[:,:,-1:]], dim=-1)
+        return out.contiguous()
+
+
+class Raster2Seq(RoomFormerV2):
+    """ This is the RoomFormer module that performs floorplan reconstruction """
+    def __init__(self, backbone, transformer, num_classes, num_queries, num_polys, num_feature_levels,
+                 aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1, seq_len=1024, tokenizer=None,
+                 use_anchor=False,
+                 ):
+        
+        super().__init__(backbone, transformer, num_classes, num_queries, num_polys, num_feature_levels,
+                         aux_loss=aux_loss, with_poly_refine=with_poly_refine, masked_attn=masked_attn,
+                         semantic_classes=semantic_classes, seq_len=seq_len, tokenizer=tokenizer,
+                         use_anchor=use_anchor)
+
+        # Semantically-rich floorplan
+        hidden_dim = transformer.d_model
+        self.room_class_embed = None
+        if semantic_classes > 0:
+            self.room_class_embed = SemHead(hidden_dim, semantic_classes)
+
+
 class SetCriterion(nn.Module):
     """ This class computes the loss for multiple polygons.
     The process happens in two steps:
@@ -525,7 +576,6 @@ class SetCriterion(nn.Module):
         # target_len =  torch.cat([t['lengths'][i] for t, (_, i) in zip(targets, indices)], dim=0)
 
         # loss_coords = custom_L1_loss(src_polys.flatten(1,2), target_polys, target_len)
-
         loss_coords = F.l1_loss(src_poly[mask], target_polys[mask])
 
         losses = {}
@@ -625,21 +675,40 @@ def build(args, train=True, tokenizer=None):
 
     backbone = build_backbone(args)
     transformer = build_deforamble_transformer(args, pad_idx=pad_idx)
-    model = RoomFormerV2(
-        backbone,
-        transformer,
-        num_classes=num_classes,
-        num_queries=args.num_queries,
-        num_polys=args.num_polys,
-        num_feature_levels=args.num_feature_levels,
-        aux_loss=args.aux_loss,
-        with_poly_refine=args.with_poly_refine,
-        masked_attn=args.masked_attn,
-        semantic_classes=args.semantic_classes,
-        seq_len=args.seq_len,
-        tokenizer=tokenizer,
-        use_anchor=args.use_anchor,
-    )
+    if getattr(args, 'model_version', 'v1') == 'v1':
+        model = RoomFormerV2(
+            backbone,
+            transformer,
+            num_classes=num_classes,
+            num_queries=args.num_queries,
+            num_polys=args.num_polys,
+            num_feature_levels=args.num_feature_levels,
+            aux_loss=args.aux_loss,
+            with_poly_refine=args.with_poly_refine,
+            masked_attn=args.masked_attn,
+            semantic_classes=args.semantic_classes,
+            seq_len=args.seq_len,
+            tokenizer=tokenizer,
+            use_anchor=args.use_anchor,
+            patch_size=[1, 2][args.image_size == 512], # 1 for 256x256, 2 for 512x512
+            freeze_anchor=getattr(args, 'freeze_anchor', False)
+        )
+    else:
+        model = Raster2Seq(
+            backbone,
+            transformer,
+            num_classes=num_classes,
+            num_queries=args.num_queries,
+            num_polys=args.num_polys,
+            num_feature_levels=args.num_feature_levels,
+            aux_loss=args.aux_loss,
+            with_poly_refine=args.with_poly_refine,
+            masked_attn=args.masked_attn,
+            semantic_classes=args.semantic_classes,
+            seq_len=args.seq_len,
+            tokenizer=tokenizer,
+            use_anchor=args.use_anchor,
+        )
 
     if not train:
         return model

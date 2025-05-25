@@ -7,13 +7,12 @@ import pandas as pd
 
 
 ###### ARGS
-exp = "cubi_v4-2refined_poly2seq_l512_bin32_nosem_coo20_cls5_anchor_deccatsrc_fromckpt_ignorewd_smoothing_fromckpt1200_t1"
+exp = "cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnorder499_t1/"
 device = "0"
-num_classes = -1
+num_classes = 12
 
 config = pd.DataFrame({
-    # "epochs": [699, 799],
-    "epochs": [549],
+    "epochs": ['0449', '0799'],
 })
 print(config)
 
@@ -80,8 +79,8 @@ else:
     """
 
 ###################################
-slurm_file_path = f"slurm_scripts2/{exp}/run.sh"
-slurm_output = f"slurm_scripts2/{exp}/"
+slurm_file_path = f"slurm_scripts4/{exp}/run.sh"
+slurm_output = f"slurm_scripts4/{exp}/"
 os.makedirs(slurm_output, exist_ok=True)
 
 for idx, row in config.iterrows():
@@ -91,7 +90,7 @@ for idx, row in config.iterrows():
         slurm_output=slurm_output,
         device=device,
         num_classes=num_classes,
-        data_versiion="v4-2",
+        data_versiion="v4-1",
     )
     mode = "w" if idx == 0 else "a"
     with open(slurm_file_path, mode) as f:

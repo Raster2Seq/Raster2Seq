@@ -13,33 +13,23 @@
 #             #    --ema4eval \
 #             #    --save_pred \
 
-DATA=data/waffle/data/original_size_images/
-FOLDER=00000 # missing_images
-# DATA=data/waffle_benchmark_processed/
-# FOLDER=test
+DATA=/share/elor/htp26/floorplan_datasets/R2G_dataset/
+FOLDER=test 
 
 # python predict.py \
 #                --dataset_root=${DATA}/${FOLDER} \
 #                --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_queries56x50_sem_v1/checkpoint0499.pth \
-#                --output_dir=waffle_raster${FOLDER}_preds \
+#                --output_dir=cc5k_${FOLDER}_preds \
 #                --num_queries=2800 \
 #                --num_polys=50 \
 #                --semantic_classes=12 \
 #                --input_channels 3 \
 #                --drop_wd \
-#                --one_color \
-#                --image_scale 2 \
-#                --crop_white_space \
-#             #    --save_pred \
-
-# CKPT=output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv2_t1/checkpoint1899.pth
-# CKPT=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnoorder_t1/checkpoint0499.pth
-CKPT=output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnorder499_t1/checkpoint0499.pth
 
 python predict.py \
                --dataset_root=${DATA}/${FOLDER} \
-               --checkpoint=${CKPT} \
-               --output_dir=waffle_raster${FOLDER}_preds \
+               --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv2_t1/checkpoint1899.pth \
+               --output_dir=cc5kmodel_r2g_${FOLDER}_preds \
                --semantic_classes=12 \
                --input_channels 3 \
                --poly2seq \
@@ -51,9 +41,10 @@ python predict.py \
                --ema4eval \
                --per_token_sem_loss \
                --drop_wd \
-               --save_pred \
                --one_color \
-               --image_scale 2 \
-               --crop_white_space \
+               --crop_white_space
+
+               # --plot_text \
+            #    --save_pred \
             #    --pre_decoder_pos_embed \
                # --debug \

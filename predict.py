@@ -20,9 +20,11 @@ from PIL import Image
 import util.misc as utils
 from datasets.transforms import ResizeAndPad
 from datasets import build_dataset
+from datasets.data_utils import sort_polygons
 from datasets.discrete_tokenizer import DiscreteTokenizer
 from engine import evaluate_floor, evaluate_floor_v2, plot_density_map, plot_floorplan_with_regions
-from util.plot_utils import plot_semantic_rich_floorplan_opencv, CC5K_LABEL
+from util.plot_utils import plot_semantic_rich_floorplan_opencv
+from util.plot_utils import S3D_LABEL, CC5K_LABEL, auto_crop_whitespace
 from engine import generate, generate_v2
 from models import build_model
 
@@ -87,6 +89,10 @@ def get_args_parser():
     parser.add_argument('--disable_sampling_cache', action='store_true')
     parser.add_argument('--use_anchor', action='store_true')
     parser.add_argument('--drop_wd', action='store_true')
+    parser.add_argument('--plot_text', action='store_true')
+    parser.add_argument('--image_scale', type=int, default=2)
+    parser.add_argument('--one_color', action='store_true')
+    parser.add_argument('--crop_white_space', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -219,7 +225,11 @@ def main(args):
 
     # overfit one sample
     if args.debug:
-        dataset_eval = torch.utils.data.Subset(dataset_eval, [4])
+        idx = 0
+        for i, x in enumerate(dataset_eval):
+            if '3252' in x['file_name']:
+                idx = i
+        dataset_eval = torch.utils.data.Subset(dataset_eval, [idx])
 
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
     data_loader_eval = DataLoader(dataset_eval, args.batch_size, sampler=sampler_eval,
@@ -256,6 +266,18 @@ def main(args):
     save_dir = os.path.join(args.output_dir, os.path.dirname(args.checkpoint).split('/')[-1])
     os.makedirs(save_dir, exist_ok=True)
 
+    semantics_label_mapping = None
+    if args.dataset_name == 'stru3d':
+        door_window_index = [16, 17]
+        semantics_label_mapping = S3D_LABEL
+    elif args.dataset_name == 'cubicasa':
+        door_window_index = [10, 9]
+        semantics_label_mapping = CC5K_LABEL
+    elif args.dataset_name == 'waffle':
+        door_window_index = [1, 2]
+    else:
+        door_window_index = []
+
     for batch_images in tqdm(data_loader_eval):
         x = batch_images['image'].to(device)
         filenames = batch_images['file_name']
@@ -276,20 +298,72 @@ def main(args):
         pred_rooms = outputs['room']
         pred_labels = outputs['labels']
 
+        # _, sorted_indices = sort_polygons(pred_rooms)
+        # pred_rooms = [ for p in pred_rooms]
+
         image_size = x.shape[-2]
-        door_window_index = [10, 9] # if args.dataset_name == 'cubicasa' else [9, 8]
         for j, (pred_rm, pred_cls) in enumerate(zip(pred_rooms, pred_labels)):
+            if pred_cls is None: pred_cls = [-1] * len(pred_rm)
             fn = os.path.basename(filenames[j]).split('.')[0]
             pred_room_map = plot_density_map(x[j], image_size, 
-                                             pred_rm, pred_cls, plot_text=False,)
-            cv2.imwrite(os.path.join(save_dir, '{}_pred_room_map.png'.format(fn)), pred_room_map)
+                                             pred_rm, pred_cls, plot_text=args.plot_text,)
 
             floorplan_map = plot_semantic_rich_floorplan_opencv(zip(pred_rm, pred_cls), 
-                os.path.join(save_dir, '{}_pred_floorplan.png'.format(fn)), door_window_index=door_window_index,
-                semantics_label_mapping=CC5K_LABEL, 
-                plot_text=True)
-            cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan.png'.format(fn)), floorplan_map)
-            cv2.imwrite(os.path.join(save_dir, '{}.png'.format(fn)), x[j].permute(1, 2, 0).cpu().numpy() * 255)
+                None, door_window_index=door_window_index,
+                semantics_label_mapping=semantics_label_mapping, 
+                plot_text=args.plot_text, one_color=args.one_color,
+                is_sem=args.semantic_classes > 0,
+                img_w=image_size*args.image_scale, img_h=image_size*args.image_scale,
+                scale=args.image_scale)
+
+            # floorplan_map2 = plot_floorplan_with_regions(pred_rm, scale=image_size*args.image_scale, matching_labels=pred_cls,
+            #                             regions_type=pred_cls, plot_text=args.plot_text, semantics_label_mapping=semantics_label_mapping)
+
+            image = x[j].permute(1, 2, 0).cpu().numpy() * 255
+            if args.crop_white_space:
+                image, cropped_box = auto_crop_whitespace(image)
+                _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
+
+                floorplan_map = floorplan_map[_y:_y+_h, _x:_x+_w].copy()
+                floorplan_map2 = floorplan_map[_y:_y+_h, _x:_x+_w].copy()
+
+            # Ensure images are not empty before saving
+            if pred_room_map is not None and pred_room_map.size > 0:
+                cv2.imwrite(os.path.join(save_dir, '{}_pred_room_map.png'.format(fn)), pred_room_map)
+            else:
+                print("Warning: pred_room_map is empty, skipping save.")
+
+            if floorplan_map is not None and floorplan_map.size > 0:
+                cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan.png'.format(fn)), floorplan_map)
+            else:
+                print("Warning: floorplan_map is empty, skipping save.")
+
+            if image is not None and image.size > 0:
+                cv2.imwrite(os.path.join(save_dir, '{}.png'.format(fn)), image)
+            else:
+                print("Warning: image is empty, skipping save.")
+
+            # cv2.imwrite(os.path.join(save_dir, '{}_pred_room_map.png'.format(fn)), pred_room_map)
+            # cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan.png'.format(fn)), floorplan_map)
+            # cv2.imwrite(os.path.join(save_dir, '{}.png'.format(fn)), image)
+            # cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan_nice.png'.format(fn)), floorplan_map2)
+
+            if args.save_pred:
+                # Save room_polys as JSON
+                json_path = os.path.join(save_dir, 'jsons', '{}_pred.json'.format(fn))
+                os.makedirs(os.path.dirname(json_path), exist_ok=True)
+                polys_list = [poly.astype(float).tolist() for poly in pred_rm]
+                types_list = pred_cls
+                # else:
+                #     types_list = [-1] * len(polys_list)
+                
+                output_json = [{'image_id': fn, 
+                                'segmentation': polys_list[instance_id],
+                                'category_id': int(types_list[instance_id]),
+                                'id': instance_id,
+                                } for instance_id in range(len(polys_list))]
+                with open(json_path, 'w') as json_file:
+                    json.dump(output_json, json_file)
 
 
 

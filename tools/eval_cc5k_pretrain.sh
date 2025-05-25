@@ -13,12 +13,13 @@
 #             #    --save_pred \
 #             #    --debug \
 
-
+EXP=cubi_v4-1refined_poly2seq_l512_bin32_nosem_coo20_cls5_anchor_deccatsrc_ignorewd_smoothing_convertv3_fromckpt_t1
+EPOCH=0499
 python eval.py --dataset_name=cubicasa \
                --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
                --eval_set=test \
-               --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_nosem_coo20_cls1_anchor_deccatsrc_fromckpt2450_ignorewd_smoothing_clscoeffx5@6e-1_t1/checkpoint1600.pth \
-               --output_dir=eval_cubi \
+               --checkpoint=output/${EXP}/checkpoint${EPOCH}.pth \
+               --output_dir=slurm_scripts2/${EXP} \
                --num_queries=2800 \
                --num_polys=50 \
                --semantic_classes=-1 \

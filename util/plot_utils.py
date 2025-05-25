@@ -7,7 +7,7 @@ from matplotlib.cm import get_cmap
 import matplotlib.pyplot as plt
 from matplotlib.patches import Arc
 import matplotlib.patches as mpatches
-from matplotlib.colors import to_hex
+from matplotlib.colors import to_hex, to_rgb
 from PIL import ImageColor
 
 import cv2 
@@ -108,12 +108,47 @@ RED = '#ff3333'
 BLACK = '#000000'
 
 
-def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256, matching_labels=None):
+def auto_crop_whitespace(image, color_invert=True):
+    # Convert to grayscale if not already
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # Invert the image so floorplan is white and background is black
+    if color_invert:
+        _, binary = cv2.threshold(255 - gray, 1, 255, cv2.THRESH_BINARY)
+    else:
+        _, binary = cv2.threshold(gray, 1, 255, cv2.THRESH_BINARY)
+
+    # Find non-zero (non-white) content
+    coords = cv2.findNonZero(binary)
+    x, y, w, h = cv2.boundingRect(coords)
+
+    # Crop image
+    cropped_image = image[y:y+h, x:x+w].copy()
+
+    # if polygons is None:
+    #     return cropped_image, None
+
+    # # Shift polygon coordinates
+    # shifted_polygons = [
+    #     [(px - x, py - y) for (px, py) in poly]
+    #     for poly in polygons
+    # ]
+    return cropped_image, [x,y,w,h] # shifted_polygons
+
+
+def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256, matching_labels=None,
+                                regions_type=None, plot_text=False, semantics_label_mapping=None):
     """Draw floorplan map where different colors indicate different rooms
     """
     # cmap = get_cmap('tab20', 20) # nipy_spectral
     # colors = [cmap(x) for x in np.linspace(0, 1, 21)] # colors = colors_12
-    colors = qualitative.Light24
+    colors = list(qualitative.Set3) + list(qualitative.Dark2) # qualitative.Light24
+    rgb_string_to_tuple = lambda rgb_string: tuple(float(x)/255 for x in rgb_string.strip('rgb()').split(','))
+    colors = [rgb_string_to_tuple(x) for x in colors]
+    # colors = [to_rgb(x) for x in colors]
     gray_color = tuple(c / 255.0 for c in (255,255,255,255))
 
     regions = [(region * scale / 256).round().astype(np.int32) for region in regions]
@@ -170,6 +205,56 @@ def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256, ma
         for i, point in enumerate(region):
             cv2.circle(image, tuple(point), color=pointColor, radius=12, thickness=-1)
             cv2.circle(image, tuple(point), color=(255, 255, 255, 0), radius=6, thickness=-1)
+    
+    if plot_text:
+        font_scale=1.
+        text_padding=1
+        # Add room labels
+        for points, poly_type in zip(regions, regions_type):
+            # Calculate the centroid for text placement
+            M = cv2.moments(points)
+            if M["m00"] != 0:  # Avoid division by zero
+                centroid_x = int(M["m10"] / M["m00"])
+                centroid_y = int(M["m01"] / M["m00"])
+                
+                # Get room label
+                label = semantics_label_mapping[poly_type]
+                
+                # Get text size for centering and background
+                text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 
+                                        font_scale, 1)[0]
+                
+                # Calculate text background rectangle
+                text_x = centroid_x - text_size[0] // 2
+                text_y = centroid_y + text_size[1] // 2
+                
+                # Create background for text
+                rect_top_left = (text_x - text_padding, text_y - text_size[1] - text_padding)
+                rect_bottom_right = (text_x + text_size[0] + text_padding, text_y + text_padding)
+                
+                # Draw semi-transparent white background for text
+                background = image.copy()
+                cv2.rectangle(background, rect_top_left, rect_bottom_right, 
+                            (255, 255, 255), -1)
+                
+                # Blend the background
+                cv2.addWeighted(background, 0.4, image, 0.6, 0, image)
+
+                # cv2.rectangle(image, rect_top_left, rect_bottom_right, 
+                #             (255, 255, 255), -1)
+                
+                # Draw the text
+                cv2.putText(
+                    image,
+                    label,
+                    (text_x, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    (0, 0, 0),  # Black text
+                    1,  # Thickness
+                    cv2.LINE_AA,  # Anti-aliased text
+                )
+
 
     return image
 
@@ -241,7 +326,10 @@ def plot_room_map(preds, room_map, room_id=0, im_size=256, plot_text=True):
 
 
 def plot_density_map(sample, image_size, room_polys, pred_room_label_per_scene, plot_text=True):
-    density_map = np.transpose(sample.cpu().numpy(), [1, 2, 0])
+    if not isinstance(sample, np.ndarray):
+        density_map = np.transpose(sample.cpu().numpy(), [1, 2, 0])
+    else:
+        density_map = sample
     if density_map.shape[2] == 3:
         density_map = density_map * (image_size - 1)
     else:
@@ -249,8 +337,8 @@ def plot_density_map(sample, image_size, room_polys, pred_room_label_per_scene, 
     pred_room_map = np.zeros([image_size, image_size, 3])
 
     for room_poly, room_id in zip(room_polys, pred_room_label_per_scene):
-        pred_room_map = plot_room_map(room_poly, pred_room_map, room_id, plot_text=plot_text)
-
+        pred_room_map = plot_room_map(room_poly, pred_room_map, room_id, im_size=image_size, plot_text=plot_text)
+    
     alpha = 0.4  # Adjust for desired transparency
     pred_room_map = cv2.addWeighted(density_map.astype(np.uint8), alpha, pred_room_map.astype(np.uint8), 1-alpha, 0)
     return pred_room_map
@@ -679,6 +767,7 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
                                        door_window_index=[16,17], 
                                        semantics_label_mapping=S3D_LABEL, 
                                        is_bw=False, plot_text=True,
+                                       one_color=False, scale=1, is_sem=True,
                                        ):
     """
     Plot semantically-rich floorplan using OpenCV with improved quality.
@@ -699,10 +788,28 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
     """
     line_thickness=2
     text_padding=1
-    font_scale=0.28
+    font_scale=0.25
     room_alpha=0.6
 
-    colors = [to_hex(x) for x in qualitative.Light24]
+    if scale != 1:
+        new_polygons = []
+        for poly, poly_label in polygons:
+            poly = (poly * scale).round().astype(np.int32)
+            new_polygons.append([poly, poly_label])
+        polygons = new_polygons
+
+    if one_color:
+        colors = ['#FFD700']
+    else:
+        colors = list(qualitative.Set3) + list(qualitative.Dark2)
+        rgb_string_to_tuple = lambda rgb_string: tuple(float(x)/255 for x in rgb_string.strip('rgb()').split(','))
+        colors = [to_hex(rgb_string_to_tuple(x)) for x in colors]
+        # colors = [to_hex(x) for x in colors]
+        # # TODO
+        # colors = ['#85660D'] * len(qualitative.Light24)
+        # colors[polygons[0][1]] = '#FF9616' # red
+        # colors[polygons[1][1]] = '#FE00CE' # green
+        
 
     # cmap = get_cmap('tab20', 20)
     # colors = [to_hex(cmap(x)) for x in np.linspace(0, 1, 20)]  # Convert to hex
@@ -711,6 +818,7 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
         image = np.ones((img_h, img_w), dtype=np.uint8) * 255  # White grayscale image
     else:
         image = np.ones((img_h, img_w, 3), dtype=np.uint8) * 255  # White RGB image
+    
     
     # Create a separate layer for room colors
     overlay = image.copy()
@@ -736,15 +844,23 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
     
     # Draw rooms first (bottom layer)
     for room_id, (points, poly_type) in enumerate(room_polygons):
+        # # # TODO:test
+        # if room_id > 1:
+        #     poly_type = room_polygons[0][1]+1
+
         # Fill room with color
         if not is_bw:
             # Get RGB color from semantics_cmap and convert from RGB to BGR for OpenCV
-            if not plot_text:
+            if not is_sem:
                 rgb_color = ImageColor.getcolor(colors[room_id % len(colors)], "RGB")
             else:
-                rgb_color = ImageColor.getcolor(colors[poly_type], "RGB")
+                rgb_color = ImageColor.getcolor(colors[poly_type % len(colors)], "RGB")
+
+            # # TODO
+            # rgb_color = ImageColor.getcolor(colors[poly_type % len(colors)], "RGB")
             bgr_color = (rgb_color[2], rgb_color[1], rgb_color[0])
-            
+            # bgr_color = rgb_color
+
             cv2.fillPoly(overlay, [points], color=bgr_color)
         else:
             # Use light gray for rooms in BW mode
@@ -808,7 +924,8 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
     
     if plot_text:
         # Add room labels
-        for points, poly_type in room_polygons:
+        for i, (points, poly_type) in enumerate(room_polygons):
+            # if i > 1: continue # TODO:test
             # Calculate the centroid for text placement
             M = cv2.moments(points)
             if M["m00"] != 0:  # Avoid division by zero
@@ -851,7 +968,321 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
                 )
     
     # Add border around the image for better framing
-    cv2.rectangle(image, (0, 0), (img_w-1, img_h-1), (0, 0, 0), 1, cv2.LINE_AA)
+    # cv2.rectangle(image, (0, 0), (img_w-1, img_h-1), (0, 0, 0), 1, cv2.LINE_AA)
+    
+    # Save with high quality
+    if file_name is not None:
+        if is_bw:
+            cv2.imwrite(file_name, image, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        else:
+            cv2.imwrite(file_name, image, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+        print(f"Saved improved floorplan to {file_name}")
+    
+    return image  # Return the image for optional further processing or visualization
+
+
+def draw_dashed_line(image, pt1, pt2, color, thickness, dash_length=10):
+    """Draw a dashed line between two points."""
+    # Calculate the Euclidean distance between the points
+    dist = np.linalg.norm(np.array(pt2) - np.array(pt1))
+    # Calculate the number of dashes
+    num_dashes = int(dist // dash_length)
+    # Calculate the direction vector
+    direction = (np.array(pt2) - np.array(pt1)) / dist
+    for i in range(num_dashes):
+        start = pt1 + direction * (i * dash_length)
+        end = pt1 + direction * ((i + 0.5) * dash_length)
+        cv2.line(image, tuple(start.astype(int)), tuple(end.astype(int)), color, thickness)
+
+# def draw_dashed_line(image, pt1, pt2, color, thickness, dash_length=10, gap_length=5):
+#     """Draw a smoother dashed line between two points."""
+#     # Calculate the Euclidean distance between the points
+#     dist = np.linalg.norm(np.array(pt2) - np.array(pt1))
+#     # Calculate the number of dashes
+#     num_dashes = int(dist // (dash_length + gap_length))
+#     # Calculate the direction vector
+#     direction = (np.array(pt2) - np.array(pt1)) / dist
+#     for i in range(num_dashes):
+#         start = pt1 + direction * (i * (dash_length + gap_length))
+#         end = pt1 + direction * (i * (dash_length + gap_length) + dash_length)
+#         # Ensure the end point does not exceed pt2
+#         if np.linalg.norm(end - np.array(pt1)) > dist:
+#             end = pt2
+#         cv2.line(image, tuple(start.astype(int)), tuple(end.astype(int)), color, thickness)
+
+
+def draw_dashed_polyline(image, points, color, thickness, dash_length=10, gap_length=5):
+    """
+    Draws a dashed polyline with evenly spaced dashes along the entire path.
+
+    Parameters:
+    - image: The image on which to draw.
+    - points: List of points defining the polyline.
+    - color: Color of the dashes (BGR tuple).
+    - thickness: Thickness of the dashes.
+    - dash_length: Length of each dash.
+    - gap_length: Length of the gap between dashes.
+    """
+    if len(points) < 2:
+        return
+
+    # Convert points to numpy array for vectorized operations
+    pts = np.array(points, dtype=np.float32)
+
+    # Calculate the total length of the polyline
+    segment_lengths = np.linalg.norm(pts[1:] - pts[:-1], axis=1)
+    total_length = np.sum(segment_lengths)
+
+    # Determine number of dashes
+    pattern_length = dash_length + gap_length
+    num_dashes = int(total_length // pattern_length)
+
+    # Generate dash start positions along the total length
+    dash_positions = np.arange(0, num_dashes * pattern_length, pattern_length)
+
+    # Initialize variables to track the current segment
+    seg_idx = 0
+    seg_start = pts[0]
+    seg_end = pts[1]
+    seg_length = segment_lengths[0]
+    seg_vector = (seg_end - seg_start) / seg_length
+    seg_pos = 0.0  # Position along the current segment
+
+    for pos in dash_positions:
+        # Advance to the segment containing the current dash
+        while seg_pos + seg_length < pos:
+            seg_pos += seg_length
+            seg_idx += 1
+            if seg_idx >= len(pts) - 1:
+                return
+            seg_start = pts[seg_idx]
+            seg_end = pts[seg_idx + 1]
+            seg_length = segment_lengths[seg_idx]
+            seg_vector = (seg_end - seg_start) / seg_length
+
+        # Calculate start and end points of the dash
+        offset = pos - seg_pos
+        start_point = seg_start + seg_vector * offset
+        end_offset = min(dash_length, seg_length - offset)
+        end_point = start_point + seg_vector * end_offset
+
+        # Draw the dash
+        cv2.line(image,
+                 tuple(np.round(start_point).astype(int)),
+                 tuple(np.round(end_point).astype(int)),
+                 color,
+                 thickness)
+
+
+def plot_semantic_rich_floorplan_opencv_figure(polygons, file_name, img_w=256, img_h=256, 
+                                       door_window_index=[16,17], 
+                                       semantics_label_mapping=S3D_LABEL, 
+                                       is_bw=False, plot_text=True,
+                                       one_color=False
+                                       ):
+    """
+    Plot semantically-rich floorplan using OpenCV with improved quality.
+    
+    Args:
+        polygons (list): A list of polygons, where each polygon is a list of (x, y) coordinates.
+        file_name (str): Path to save the output image.
+        img_w (int): Width of the output image.
+        img_h (int): Height of the output image.
+        door_window_index (list): Indices for door and window types.
+        semantics_label_mapping (dict): Mapping from polygon type to semantic label.
+        is_bw (bool): If True, use black and white colors only.
+        line_thickness (int): Thickness of lines for polygons and doors/windows.
+        text_padding (int): Padding around text labels.
+        font_scale (float): Scale factor for text size.
+        room_alpha (float): Transparency for room colors (0.0-1.0).
+        anti_aliasing (bool): Whether to use anti-aliasing for lines.
+    """
+    line_thickness=2
+    text_padding=1
+    font_scale=1.0
+    room_alpha=0.6
+
+    if img_w != 256:
+        new_polygons = []
+        for poly, poly_label in polygons:
+            poly = (poly * img_w / 256).round().astype(np.int32)
+            new_polygons.append([poly, poly_label])
+        polygons = new_polygons
+
+    if one_color:
+        colors = ['#FFD700']
+    else:
+        # colors = [to_hex(x) for x in qualitative.Light24]
+        # TODO
+        colors = ['#FFFFFF'] * len(qualitative.Light24)
+        colors[polygons[0][1]] = '#FF9616' # red
+        colors[polygons[1][1]] = '#FE00CE' # green
+        
+    # cmap = get_cmap('tab20', 20)
+    # colors = [to_hex(cmap(x)) for x in np.linspace(0, 1, 20)]  # Convert to hex
+    # Create a white background image (more conventional for floorplans)
+    if is_bw:
+        image = np.ones((img_h, img_w), dtype=np.uint8) * 255  # White grayscale image
+    else:
+        image = np.ones((img_h, img_w, 3), dtype=np.uint8) * 255  # White RGB image
+    
+    
+    # Create a separate layer for room colors
+    overlay = image.copy()
+    
+    # Track polygons for each type for proper layering
+    room_polygons = []
+    door_polygons = []
+    window_polygons = []
+    
+    # Sort polygons by type
+    for poly, poly_type in polygons:
+        if len(poly) < 2:  # Skip invalid polygons
+            continue
+            
+        points = np.array(poly, dtype=np.int32)
+        
+        if poly_type == door_window_index[0]:  # Door
+            door_polygons.append((points, poly_type))
+        elif poly_type == door_window_index[1]:  # Window
+            window_polygons.append((points, poly_type))
+        else:  # Room
+            room_polygons.append((points, poly_type))
+    
+    # Draw rooms first (bottom layer)
+    for room_id, (points, poly_type) in enumerate(room_polygons):
+        # TODO:test
+        if room_id > 1:
+            poly_type = room_polygons[0][1]+1
+
+        # Fill room with color
+        if not is_bw:
+            # Get RGB color from semantics_cmap and convert from RGB to BGR for OpenCV
+            # if not plot_text:
+            #     rgb_color = ImageColor.getcolor(colors[room_id % len(colors)], "RGB")
+            # else:
+            #     rgb_color = ImageColor.getcolor(colors[poly_type % len(colors)], "RGB")
+            # TODO
+            rgb_color = ImageColor.getcolor(colors[poly_type % len(colors)], "RGB")
+            bgr_color = (rgb_color[2], rgb_color[1], rgb_color[0])
+
+            
+            cv2.fillPoly(overlay, [points], color=bgr_color)
+        else:
+            # Use light gray for rooms in BW mode
+            cv2.fillPoly(overlay, [points], color=(240, 240, 240))
+        
+        # # Draw room outline
+        # if room_id > 1:
+        #     # Draw dashed room outline
+        #     for i in range(len(points)):
+        #         pt1 = points[i]
+        #         pt2 = points[(i + 1) % len(points)]  # Wrap around to the first point
+        #         # draw_dashed_line(image, pt1, pt2, color=(0, 0, 0), thickness=line_thickness, dash_length=10)
+        #         draw_dashed_polyline(image, points, color=(0, 0, 0), thickness=line_thickness, dash_length=5, gap_length=5)
+        # else:
+        line_type = cv2.LINE_AA
+        cv2.polylines(image, [points], isClosed=True, 
+                        color=(0, 0, 0), thickness=line_thickness, 
+                        lineType=line_type)
+    
+    # Blend overlay with transparency
+    cv2.addWeighted(overlay, room_alpha, image, 1 - room_alpha, 0, image)
+    
+    # Draw doors with proper styling
+    for points, _ in door_polygons:
+        if len(points) >= 2:
+            # For doors, we can improve by drawing arcs to represent swing
+            # Here we draw them as thick lines with distinctive color
+            door_color = (100, 100, 100) if is_bw else (0, 0, 255)  # Gray for BW, Red for RGB
+            line_type = cv2.LINE_AA
+            cv2.polylines(image, [points], isClosed=False, 
+                         color=door_color, thickness=line_thickness*2,
+                         lineType=line_type)
+    
+    # Draw windows with dashed styling
+    for points, _ in window_polygons:
+        if len(points) >= 2:
+            window_color = (150, 150, 150) if is_bw else (255, 0, 0)  # Gray for BW, Blue for RGB
+            
+            # Create dashed line effect for windows
+            if len(points) == 2:
+                # For a simple line window
+                pt1, pt2 = points[0], points[1]
+                dash_length = 5
+                
+                # Calculate line parameters
+                length = np.sqrt((pt2[0] - pt1[0])**2 + (pt2[1] - pt1[1])**2)
+                if length > 0:
+                    num_dashes = max(2, int(length / (2 * dash_length)))
+                    
+                    for i in range(num_dashes):
+                        start_ratio = i / num_dashes
+                        end_ratio = (i + 0.5) / num_dashes
+                        
+                        start_x = int(pt1[0] + (pt2[0] - pt1[0]) * start_ratio)
+                        start_y = int(pt1[1] + (pt2[1] - pt1[1]) * start_ratio)
+                        end_x = int(pt1[0] + (pt2[0] - pt1[0]) * end_ratio)
+                        end_y = int(pt1[1] + (pt2[1] - pt1[1]) * end_ratio)
+                        
+                        line_type = cv2.LINE_AA
+                        cv2.line(image, (start_x, start_y), (end_x, end_y), 
+                                window_color, thickness=line_thickness,
+                                lineType=line_type)
+            else:
+                # For multi-point windows
+                line_type = cv2.LINE_AA
+                cv2.polylines(image, [points], isClosed=True, 
+                             color=window_color, thickness=line_thickness,
+                             lineType=line_type)
+    
+    if plot_text:
+        # Add room labels
+        for i, (points, poly_type) in enumerate(room_polygons):
+            if i > 1: continue # TODO:test
+            # Calculate the centroid for text placement
+            M = cv2.moments(points)
+            if M["m00"] != 0:  # Avoid division by zero
+                centroid_x = int(M["m10"] / M["m00"])
+                centroid_y = int(M["m01"] / M["m00"])
+                
+                # Get room label
+                label = semantics_label_mapping[poly_type]
+                
+                # Get text size for centering and background
+                text_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 
+                                        font_scale, 1)[0]
+                
+                # Calculate text background rectangle
+                text_x = centroid_x - text_size[0] // 2
+                text_y = centroid_y + text_size[1] // 2
+                
+                # Create background for text
+                rect_top_left = (text_x - text_padding, text_y - text_size[1] - text_padding)
+                rect_bottom_right = (text_x + text_size[0] + text_padding, text_y + text_padding)
+                
+                # Draw semi-transparent white background for text
+                background = image.copy()
+                cv2.rectangle(background, rect_top_left, rect_bottom_right, 
+                            (255, 255, 255), -1)
+                
+                # Blend the background
+                cv2.addWeighted(background, 0.7, image, 0.3, 0, image)
+                
+                # Draw the text
+                cv2.putText(
+                    image,
+                    label,
+                    (text_x, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    (0, 0, 0),  # Black text
+                    1,  # Thickness
+                    cv2.LINE_AA,  # Anti-aliased text
+                )
+    
+    # Add border around the image for better framing
+    # cv2.rectangle(image, (0, 0), (img_w-1, img_h-1), (0, 0, 0), 1, cv2.LINE_AA)
     
     # Save with high quality
     if is_bw:

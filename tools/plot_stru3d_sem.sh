@@ -3,21 +3,30 @@
 # python plot_floor.py --dataset_name=stru3d \
 #                --dataset_root=data/stru3d \
 #                --eval_set=test \
-#                --output_dir=/share/kuleshov/htp26/floorplan_datasets/stru3d_sem_rich/test \
+#                --output_dir=output_gt_s3dpoint \
 #                --semantic_classes=19 \
 #                --input_channels 1 \
-#                --disable_image_transform
+#                --disable_image_transform \
+#                --image_size 256 \
+#                --plot_gt_image \
+#                --crop_white_space \
+#                --image_scale 2 \
 
 python plot_floor.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw/ \
                --eval_set=test \
-               --output_dir=output_gt_s3dbw/ \
-               --semantic_classes=19 \
+               --output_dir=output_gt_s3dbw_wd/ \
+               --semantic_classes=-1 \
                --input_channels 3 \
                --disable_image_transform \
                --poly2seq \
-               --seq_len 1024 \
-               --num_bins 64
-               # --plot_gt \
+               --seq_len 512 \
+               --num_bins 64 \
+               --image_size 256 \
+               --plot_gt \
+               --crop_white_space \
+               --image_scale 2 \
+               --plot_gt_image \
+            #    --one_color
             #    --debug
             #    --plot_polys

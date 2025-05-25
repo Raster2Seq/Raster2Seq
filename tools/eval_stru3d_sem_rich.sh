@@ -9,9 +9,11 @@
 #                --num_polys=70 \
 #                --semantic_classes=19
 
-EXP=s3d_projection_ddp_poly2seq_l512_sem_bs32_coo20_cls2_anchor_deccatsrc_correct_smoothing1e-1_numcls19_pts_finetune_t1
+EXP=s3d_projection_poly2seq_l512_sem1_bs32_coo20_cls2_anchor_deccatsrc_correct_numcls19_pts_finetune_convertv3_t2
+# s3d_projection_ddp_poly2seq_l512_sem_bs32_coo20_cls5_anchor_deccatsrc_correct_smoothing1e-1_numcls19_pts_finetune_t1
+# s3d_projection_ddp_poly2seq_l512_sem_bs32_coo20_cls5_anchor_deccatsrc_correct_smoothing1e-1_numcls19_pts_finetune_convertv2_t2
 # s3d_projection_ddp_poly2seq_l512_sem_bs32_coo20_cls1_anchor_deccatsrc_correct_smoothing1e-1_numcls19_pts_finetune_t1
-EPOCH=1749
+EPOCH=0699
 python eval.py --dataset_name=stru3d \
                --dataset_root=data/stru3d \
                --eval_set=test \

@@ -36,6 +36,11 @@ def get_args_parser():
     parser.add_argument('--use_anchor', action='store_true')
     parser.add_argument('--iou_thres', type=float, default=0.5)
     parser.add_argument('--disable_sem_rich', action='store_true')
+    parser.add_argument('--wd_only', action='store_true')
+    parser.add_argument('--disable_image_transform', action='store_true')
+    parser.add_argument('--num_subset_images', type=int, default=-1)
+    parser.add_argument('--model_version', type=str, default='v1')
+    parser.add_argument('--converter_version', type=str, default='v1')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -146,6 +151,9 @@ def main(args):
         dataset_eval = torch.utils.data.Subset(dataset_eval, [2])
         dataset_eval[0]
 
+    if args.num_subset_images > 0 and args.num_subset_images < len(dataset_eval):
+        dataset_eval = torch.utils.data.Subset(dataset_eval, range(args.num_subset_images))
+        
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
 
     def trivial_batch_collator(batch):

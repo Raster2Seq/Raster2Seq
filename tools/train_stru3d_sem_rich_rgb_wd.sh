@@ -6,9 +6,9 @@
 #SBATCH --mem=32G                  # server memory requested (per node)
 #SBATCH -t 960:00:00                  # Time limit (hh:mm:ss)
 #SBATCH --partition=gpu,elor         # Request partition
-#SBATCH --constraint="[a6000|a5000|a5500|3090|a100]"
+#SBATCH --constraint="[6000ada|a6000|a5000|a5500|3090|a100]"
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:2                # Type/number of GPUs needed
+#SBATCH --gres=gpu:1                # Type/number of GPUs needed
 #SBATCH --cpus-per-gpu=4              # Number of CPU cores per gpu
 #SBATCH --open-mode=append            # Do not overwrite logs
 #SBATCH --requeue                     # Requeue upon pre-emption
@@ -25,7 +25,7 @@ SEQ_LEN=512
 SEM_COEFF=1
 CLS_COEFF=1
 COO_COEFF=20
-JOB=s3d_bw_ddp_poly2seq_l${SEQ_LEN}_sem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_correct_smoothing1e-1_numcls3_pts_finetune_wdonly_t1
+JOB=s3d_bw_ddp_poly2seq_l${SEQ_LEN}_sem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_correct_smoothing1e-1_numcls19_pts_finetune_wdonly_debug
 PRETRAIN=/home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1/checkpoint2349.pth
 NUM_GPUS=1
 
@@ -34,7 +34,7 @@ WANDB_MODE=offline python -m torch.distributed.run --nproc_per_node=${NUM_GPUS} 
                --dataset_root=data/coco_s3d_bw \
                --num_queries=1200 \
                --num_polys=30 \
-               --semantic_classes=3 \
+               --semantic_classes=19 \
                --job_name=${JOB} \
                --batch_size 32 \
                --input_channels=3 \

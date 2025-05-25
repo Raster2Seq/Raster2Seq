@@ -19,10 +19,12 @@ from copy import deepcopy
 from enum import Enum
 
 from datasets.transforms import Resize, ResizeAndPad
-from datasets.discrete_tokenizer import DiscreteTokenizer
+from datasets.discrete_tokenizer import DiscreteTokenizer, DiscreteTokenizerV2
+from datasets.data_utils import sort_polygons, plot_polygons
 
 from detectron2.data.detection_utils import annotations_to_instances, transform_instance_annotations
 from detectron2.structures import BoxMode
+
 
 class TokenType(Enum):
     """0 for <coord>, 1 for <sep>, 2 for <eos>, 3 for <cls>"""
@@ -31,10 +33,15 @@ class TokenType(Enum):
     eos = 2
     cls = 3
 
+WD_INDEX = {
+    'stru3d': [16, 17],
+    'cubicasa': [9, 10],
+    'waffle': []
+}
 
 class MultiPoly(Dataset):
     def __init__(self, img_folder, ann_file, transforms, semantic_classes, dataset_name='', image_norm=False, poly2seq=False, 
-                 **kwargs):
+                 converter_version='v1', **kwargs):
         super(MultiPoly, self).__init__()
 
         self.root = img_folder
@@ -46,9 +53,23 @@ class MultiPoly(Dataset):
         self.ids = list(sorted(self.coco.imgs.keys()))
 
         self.poly2seq = poly2seq
-        self.prepare = ConvertToCocoDict(self.root, self._transforms, image_norm, poly2seq, 
-                                         semantic_classes=semantic_classes, 
-                                         **kwargs)
+        if converter_version == 'v1':
+            self.prepare = ConvertToCocoDict(self.root, self._transforms, image_norm, poly2seq, 
+                                            semantic_classes=semantic_classes, 
+                                            **kwargs)
+        elif converter_version == 'v1.1':
+            self.prepare = ConvertToCocoDictImproved(self.root, self._transforms, image_norm, poly2seq, 
+                                            semantic_classes=semantic_classes, 
+                                            **kwargs)
+        elif converter_version == 'v3':
+            self.prepare = ConvertToCocoDictWithOrder_plus(self.root, self._transforms, image_norm, poly2seq, 
+                                            semantic_classes=semantic_classes, 
+                                            **kwargs)
+        else:
+            self.prepare = ConvertToCocoDictWithOrder(self.root, self._transforms, image_norm, poly2seq, 
+                                            semantic_classes=semantic_classes, 
+                                            dataset_name=dataset_name,
+                                            **kwargs)
 
     def get_image(self, path):
         return Image.open(os.path.join(self.root, path))
@@ -82,11 +103,11 @@ class MultiPoly(Dataset):
         ### Note: here is a hack which assumes door/window have category_id 16, 17 in structured3D
         if self.semantic_classes == -1:
             if self.dataset_name == 'stru3d':
-                target = [t for t in target if t['category_id'] not in [16, 17]]
-            elif self.dataset_name == 'rplan':
-                target = [t for t in target if t['category_id'] not in [9, 11]]
+                target = [t for t in target if t['category_id'] not in WD_INDEX['stru3d']]
+            # elif self.dataset_name == 'rplan':
+            #     target = [t for t in target if t['category_id'] not in [9, 11]]
             elif self.dataset_name == 'cubicasa':
-                target = [t for t in target if t['category_id'] not in [9, 10]]
+                target = [t for t in target if t['category_id'] not in WD_INDEX['cubicasa']]
 
         path = coco.loadImgs(img_id)[0]['file_name']
 
@@ -211,8 +232,13 @@ class ConvertToCocoDict(object):
 
         # convert polygons to sequences
         if self.poly2seq:
-            polygons = [np.clip(np.array(inst).reshape(-1, 2) / (w - 1), 0, 1) for inst in record['instances'].gt_masks.polygons]
-            polygons_label = [inst.item() for inst in record['instances'].gt_classes]
+            # only happend for wdonly
+            if not hasattr(record['instances'], 'gt_masks'):
+                polygons = [np.array([[0.,0.]])]
+                polygons_label = [self.semantic_classes-1] # dummy class
+            else:
+                polygons = [np.clip(np.array(inst).reshape(-1, 2) / (w - 1), 0, 1) for inst in record['instances'].gt_masks.polygons]
+                polygons_label = [inst.item() for inst in record['instances'].gt_classes]
             record.update(self._get_bilinear_interpolation_coeffs(polygons, polygons_label, self.add_cls_token, self.per_token_class))
             
         return record
@@ -250,7 +276,8 @@ class ConvertToCocoDict(object):
             target_seq.append([0, 0]) # padding for sep/end token
             count_polys += 1
         # remove last separator token
-        token_labels[-1] = TokenType.eos.value
+        if len(token_labels) > 0:
+            token_labels[-1] = TokenType.eos.value
         mask = torch.ones(self.tokenizer.seq_len, dtype=torch.bool)
         if len(token_labels) < self.tokenizer.seq_len:
             mask[len(token_labels):] = 0
@@ -308,11 +335,24 @@ class ConvertToCocoDict(object):
 
 
 class ConvertToCocoDictWithOrder(ConvertToCocoDict):
+    def __init__(self, root, augmentations, image_norm, poly2seq=False, semantic_classes=-1, add_cls_token=False, per_token_class=False, 
+                 mask_format='polygon', dataset_name='stru3d', **kwargs):
+        super().__init__(root, augmentations, image_norm, poly2seq, semantic_classes, add_cls_token, per_token_class, mask_format, **kwargs)
+        self.dataset_name = dataset_name
+        self.tokenizer = DiscreteTokenizerV2(add_cls=add_cls_token, **kwargs)
+
     def _get_bilinear_interpolation_coeffs(self, polygons, polygons_label, add_cls_token=False, per_token_class=False):
         num_bins = self.tokenizer.num_bins
+
+        room_indices = [poly_idx for poly_idx, poly_label in enumerate(polygons_label) if poly_label not in WD_INDEX[self.dataset_name]]
+        wd_indices = [poly_idx for poly_idx, poly_label in enumerate(polygons_label) if poly_label in WD_INDEX[self.dataset_name]]
+        combined_indices = room_indices + wd_indices # room first
+        
+        polygons = [polygons[i] for i in combined_indices]
+        polygons_label = [polygons_label[i] for i in combined_indices]
+
         quant_poly = [poly * (num_bins - 1) for poly in polygons]
-        wd_mask = [poly_label in [16, 17] for poly_label in polygons_label]
-        index11 = [[math.floor(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly, poly_label in zip(quant_poly,polygons_label) if poly_label]
+        index11 = [[math.floor(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly in quant_poly]
         index21 = [[math.ceil(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly in quant_poly]
         index12 = [[math.floor(p[0])*num_bins + math.ceil(p[1]) for p in poly] for poly in quant_poly]
         index22 = [[math.ceil(p[0])*num_bins + math.ceil(p[1]) for p in poly] for poly in quant_poly]
@@ -320,28 +360,27 @@ class ConvertToCocoDictWithOrder(ConvertToCocoDict):
         seq11 = self.tokenizer(index11, add_bos=True, add_eos=False, dtype=torch.long)
         seq21 = self.tokenizer(index21, add_bos=True, add_eos=False, dtype=torch.long)
         seq12 = self.tokenizer(index12, add_bos=True, add_eos=False, dtype=torch.long)
-        seq22 = self.tokenizer(index22, add_bos=True, add_eos=False, dtype=torch.long)
+        seq22, poly_indices = self.tokenizer(index22, add_bos=True, add_eos=False, dtype=torch.long, return_indices=True)
         
         # in real values insteads
         target_seq = []                      
         token_labels = [] # 0 for <coord>, 1 for <sep>, 2 for <eos>, 3 for <cls>
         num_extra = 1 if not add_cls_token else 2 # cls and sep
-        count_polys = 0
-        poly_indices = []
+        count_polys = len(poly_indices)
 
-        for i, poly in enumerate(polygons):
-            cur_len = len(token_labels)
-            if cur_len + len(poly) + num_extra > self.tokenizer.seq_len:
-                continue
-            token_labels.extend([TokenType.coord.value] * len(poly))
+        # for poly in polygons:
+        for i in poly_indices:
+            # cur_len = len(token_labels)
+            # if cur_len + len(poly) + num_extra > self.tokenizer.seq_len:
+            #     continue
+            token_labels.extend([TokenType.coord.value] * len(polygons[i]))
             if add_cls_token:
                 token_labels.append(TokenType.cls.value) # cls token
             token_labels.append(TokenType.sep.value) # separator token
-            target_seq.extend(poly)
+            target_seq.extend(polygons[i])
             if add_cls_token:
                 target_seq.append([0, 0]) # padding for cls token
             target_seq.append([0, 0]) # padding for sep/end token
-            count_polys += 1
         # remove last separator token
         token_labels[-1] = TokenType.eos.value
 
@@ -352,7 +391,9 @@ class ConvertToCocoDictWithOrder(ConvertToCocoDict):
         token_labels = self.tokenizer._padding(token_labels, -1, dtype=torch.long)
 
         delta_x1 = [0] # [0] for bos token
-        for polygon in quant_poly[:count_polys]:
+        # for polygon in quant_poly[:count_polys]:
+        for i in poly_indices:
+            polygon = quant_poly[i]
             delta = [poly_point[0] - math.floor(poly_point[0]) for poly_point in polygon]
             delta_x1.extend(delta)
             if add_cls_token:
@@ -363,7 +404,9 @@ class ConvertToCocoDictWithOrder(ConvertToCocoDict):
         delta_x2 = 1 - delta_x1
 
         delta_y1 = [0] # [0] for bos token
-        for polygon in quant_poly[:count_polys]:
+        # for polygon in quant_poly[:count_polys]:
+        for i in poly_indices:
+            polygon = quant_poly[i]
             delta = [poly_point[1] - math.floor(poly_point[1]) for poly_point in polygon]
             delta_y1.extend(delta)
             if add_cls_token:
@@ -374,10 +417,232 @@ class ConvertToCocoDictWithOrder(ConvertToCocoDict):
         delta_y2 = 1 - delta_y1
 
         if not per_token_class:
-            target_polygon_labels = polygons_label[:count_polys]
+            target_polygon_labels = [polygons_label[i] for i in poly_indices] # polygons_label[:count_polys]
         else:
             target_polygon_labels = []
-            for poly, poly_label in zip(quant_poly[:count_polys], polygons_label[:count_polys]):
+            # for poly, poly_label in zip(quant_poly[:count_polys], polygons_label[:count_polys]):
+            for i in poly_indices:
+                poly, poly_label = quant_poly[i], polygons_label[i]
+                target_polygon_labels.extend([poly_label] * len(poly))
+                target_polygon_labels.append(self.semantic_classes-1)  # undefined class for <sep> and <eos> token
+
+        max_label_length = self.tokenizer.seq_len
+        if len(polygons_label) < max_label_length:
+            target_polygon_labels.extend([-1] * (max_label_length - len(target_polygon_labels)))
+
+        target_polygon_labels = torch.tensor(target_polygon_labels, dtype=torch.long)
+
+        return {'delta_x1': delta_x1, 
+                'delta_x2': delta_x2, 
+                'delta_y1': delta_y1, 
+                'delta_y2': delta_y2,
+                'seq11': seq11,
+                'seq21': seq21,
+                'seq12': seq12,
+                'seq22': seq22,
+                'target_seq': target_seq,
+                'token_labels': token_labels,
+                'mask': mask,
+                'target_polygon_labels': target_polygon_labels}
+
+
+class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
+    def __init__(self, root, augmentations, image_norm, poly2seq=False, semantic_classes=-1, add_cls_token=False, per_token_class=False, 
+                 mask_format='polygon', dataset_name='stru3d', **kwargs):
+        super().__init__(root, augmentations, image_norm, poly2seq, semantic_classes, add_cls_token, per_token_class, mask_format, **kwargs)
+        self.dataset_name = dataset_name
+        self.tokenizer = DiscreteTokenizerV2(add_cls=add_cls_token, **kwargs)
+
+    def _get_bilinear_interpolation_coeffs(self, polygons, polygons_label, add_cls_token=False, per_token_class=False):
+        num_bins = self.tokenizer.num_bins
+        room_indices = [poly_idx for poly_idx, poly_label in enumerate(polygons_label) if poly_label not in WD_INDEX[self.dataset_name]]
+        wd_indices = [poly_idx for poly_idx, poly_label in enumerate(polygons_label) if poly_label in WD_INDEX[self.dataset_name]]
+
+        _, room_sorted_indices = sort_polygons([polygons[poly_idx] for poly_idx in room_indices])
+        _, wd_sorted_indices = sort_polygons([polygons[poly_idx] for poly_idx in wd_indices])
+        room_indices = [room_indices[_idx] for _idx in room_sorted_indices]
+        wd_indices = [wd_indices[_idx] for _idx in wd_sorted_indices]
+
+        combined_indices = room_indices + wd_indices # room first
+        polygons = [polygons[i] for i in combined_indices]
+        polygons_label = [polygons_label[i] for i in combined_indices]
+
+        quant_poly = [poly * (num_bins - 1) for poly in polygons]
+        index11 = [[math.floor(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly in quant_poly]
+        index21 = [[math.ceil(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly in quant_poly]
+        index12 = [[math.floor(p[0])*num_bins + math.ceil(p[1]) for p in poly] for poly in quant_poly]
+        index22 = [[math.ceil(p[0])*num_bins + math.ceil(p[1]) for p in poly] for poly in quant_poly]
+
+        seq11 = self.tokenizer(index11, add_bos=True, add_eos=False, dtype=torch.long)
+        seq21 = self.tokenizer(index21, add_bos=True, add_eos=False, dtype=torch.long)
+        seq12 = self.tokenizer(index12, add_bos=True, add_eos=False, dtype=torch.long)
+        seq22, poly_indices = self.tokenizer(index22, add_bos=True, add_eos=False, dtype=torch.long, return_indices=True)
+        
+        # in real values insteads
+        target_seq = []                      
+        token_labels = [] # 0 for <coord>, 1 for <sep>, 2 for <eos>, 3 for <cls>
+        num_extra = 1 if not add_cls_token else 2 # cls and sep
+        count_polys = len(poly_indices)
+
+        # for poly in polygons:
+        for i in poly_indices:
+            # cur_len = len(token_labels)
+            # if cur_len + len(poly) + num_extra > self.tokenizer.seq_len:
+            #     continue
+            token_labels.extend([TokenType.coord.value] * len(polygons[i]))
+            if add_cls_token:
+                token_labels.append(TokenType.cls.value) # cls token
+            token_labels.append(TokenType.sep.value) # separator token
+            target_seq.extend(polygons[i])
+            if add_cls_token:
+                target_seq.append([0, 0]) # padding for cls token
+            target_seq.append([0, 0]) # padding for sep/end token
+        # remove last separator token
+        token_labels[-1] = TokenType.eos.value
+
+        mask = torch.ones(self.tokenizer.seq_len, dtype=torch.bool)
+        if len(token_labels) < self.tokenizer.seq_len:
+            mask[len(token_labels):] = 0
+        target_seq = self.tokenizer._padding(target_seq, [0, 0], dtype=torch.float32)
+        token_labels = self.tokenizer._padding(token_labels, -1, dtype=torch.long)
+
+        delta_x1 = [0] # [0] for bos token
+        # for polygon in quant_poly[:count_polys]:
+        for i in poly_indices:
+            polygon = quant_poly[i]
+            delta = [poly_point[0] - math.floor(poly_point[0]) for poly_point in polygon]
+            delta_x1.extend(delta)
+            if add_cls_token:
+                delta_x1.extend([0])  # for cls token
+            delta_x1.extend([0])  # for separator token
+        delta_x1 = delta_x1[:-1]  # there is no separator token in the end
+        delta_x1 = self.tokenizer._padding(delta_x1, 0, dtype=torch.float32)
+        delta_x2 = 1 - delta_x1
+
+        delta_y1 = [0] # [0] for bos token
+        # for polygon in quant_poly[:count_polys]:
+        for i in poly_indices:
+            polygon = quant_poly[i]
+            delta = [poly_point[1] - math.floor(poly_point[1]) for poly_point in polygon]
+            delta_y1.extend(delta)
+            if add_cls_token:
+                delta_y1.extend([0])  # for cls token
+            delta_y1.extend([0])  # for separator token
+        delta_y1 = delta_y1[:-1]  # there is no separator token in the end
+        delta_y1 = self.tokenizer._padding(delta_y1, 0, dtype=torch.float32)
+        delta_y2 = 1 - delta_y1
+
+        if not per_token_class:
+            target_polygon_labels = [polygons_label[i] for i in poly_indices] # polygons_label[:count_polys]
+        else:
+            target_polygon_labels = []
+            # for poly, poly_label in zip(quant_poly[:count_polys], polygons_label[:count_polys]):
+            for i in poly_indices:
+                poly, poly_label = quant_poly[i], polygons_label[i]
+                target_polygon_labels.extend([poly_label] * len(poly))
+                target_polygon_labels.append(self.semantic_classes-1)  # undefined class for <sep> and <eos> token
+
+        max_label_length = self.tokenizer.seq_len
+        if len(polygons_label) < max_label_length:
+            target_polygon_labels.extend([-1] * (max_label_length - len(target_polygon_labels)))
+
+        target_polygon_labels = torch.tensor(target_polygon_labels, dtype=torch.long)
+
+        return {'delta_x1': delta_x1, 
+                'delta_x2': delta_x2, 
+                'delta_y1': delta_y1, 
+                'delta_y2': delta_y2,
+                'seq11': seq11,
+                'seq21': seq21,
+                'seq12': seq12,
+                'seq22': seq22,
+                'target_seq': target_seq,
+                'token_labels': token_labels,
+                'mask': mask,
+                'target_polygon_labels': target_polygon_labels}
+
+
+
+class ConvertToCocoDictImproved(ConvertToCocoDict):
+    def __init__(self, root, augmentations, image_norm, poly2seq=False, semantic_classes=-1, add_cls_token=False, per_token_class=False, 
+                 mask_format='polygon', **kwargs):
+        super().__init__(root, augmentations, image_norm, poly2seq, semantic_classes, add_cls_token, per_token_class, mask_format, **kwargs)
+        self.tokenizer = DiscreteTokenizerV2(add_cls=add_cls_token, **kwargs)
+
+    def _get_bilinear_interpolation_coeffs(self, polygons, polygons_label, add_cls_token=False, per_token_class=False):
+        num_bins = self.tokenizer.num_bins
+        quant_poly = [poly * (num_bins - 1) for poly in polygons]
+        index11 = [[math.floor(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly in quant_poly]
+        index21 = [[math.ceil(p[0])*num_bins + math.floor(p[1]) for p in poly] for poly in quant_poly]
+        index12 = [[math.floor(p[0])*num_bins + math.ceil(p[1]) for p in poly] for poly in quant_poly]
+        index22 = [[math.ceil(p[0])*num_bins + math.ceil(p[1]) for p in poly] for poly in quant_poly]
+
+        seq11 = self.tokenizer(index11, add_bos=True, add_eos=False, dtype=torch.long)
+        seq21 = self.tokenizer(index21, add_bos=True, add_eos=False, dtype=torch.long)
+        seq12 = self.tokenizer(index12, add_bos=True, add_eos=False, dtype=torch.long)
+        seq22, poly_indices = self.tokenizer(index22, add_bos=True, add_eos=False, dtype=torch.long, return_indices=True)
+        
+        # in real values insteads
+        target_seq = []                      
+        token_labels = [] # 0 for <coord>, 1 for <sep>, 2 for <eos>, 3 for <cls>
+        num_extra = 1 if not add_cls_token else 2 # cls and sep
+        count_polys = len(poly_indices)
+
+        # for poly in polygons:
+        for i in poly_indices:
+            # cur_len = len(token_labels)
+            # if cur_len + len(poly) + num_extra > self.tokenizer.seq_len:
+            #     continue
+            token_labels.extend([TokenType.coord.value] * len(polygons[i]))
+            if add_cls_token:
+                token_labels.append(TokenType.cls.value) # cls token
+            token_labels.append(TokenType.sep.value) # separator token
+            target_seq.extend(polygons[i])
+            if add_cls_token:
+                target_seq.append([0, 0]) # padding for cls token
+            target_seq.append([0, 0]) # padding for sep/end token
+        # remove last separator token
+        token_labels[-1] = TokenType.eos.value
+
+        mask = torch.ones(self.tokenizer.seq_len, dtype=torch.bool)
+        if len(token_labels) < self.tokenizer.seq_len:
+            mask[len(token_labels):] = 0
+        target_seq = self.tokenizer._padding(target_seq, [0, 0], dtype=torch.float32)
+        token_labels = self.tokenizer._padding(token_labels, -1, dtype=torch.long)
+
+        delta_x1 = [0] # [0] for bos token
+        # for polygon in quant_poly[:count_polys]:
+        for i in poly_indices:
+            polygon = quant_poly[i]
+            delta = [poly_point[0] - math.floor(poly_point[0]) for poly_point in polygon]
+            delta_x1.extend(delta)
+            if add_cls_token:
+                delta_x1.extend([0])  # for cls token
+            delta_x1.extend([0])  # for separator token
+        delta_x1 = delta_x1[:-1]  # there is no separator token in the end
+        delta_x1 = self.tokenizer._padding(delta_x1, 0, dtype=torch.float32)
+        delta_x2 = 1 - delta_x1
+
+        delta_y1 = [0] # [0] for bos token
+        # for polygon in quant_poly[:count_polys]:
+        for i in poly_indices:
+            polygon = quant_poly[i]
+            delta = [poly_point[1] - math.floor(poly_point[1]) for poly_point in polygon]
+            delta_y1.extend(delta)
+            if add_cls_token:
+                delta_y1.extend([0])  # for cls token
+            delta_y1.extend([0])  # for separator token
+        delta_y1 = delta_y1[:-1]  # there is no separator token in the end
+        delta_y1 = self.tokenizer._padding(delta_y1, 0, dtype=torch.float32)
+        delta_y2 = 1 - delta_y1
+
+        if not per_token_class:
+            target_polygon_labels = [polygons_label[i] for i in poly_indices] # polygons_label[:count_polys]
+        else:
+            target_polygon_labels = []
+            # for poly, poly_label in zip(quant_poly[:count_polys], polygons_label[:count_polys]):
+            for i in poly_indices:
+                poly, poly_label = quant_poly[i], polygons_label[i]
                 target_polygon_labels.extend([poly_label] * len(poly))
                 target_polygon_labels.append(self.semantic_classes-1)  # undefined class for <sep> and <eos> token
 
@@ -462,6 +727,7 @@ def build(image_set, args):
                             add_cls_token=args.add_cls_token,
                             per_token_class=args.per_token_sem_loss,
                             mask_format=getattr(args, 'mask_format', 'polygon'),
+                            converter_version=getattr(args, 'converter_version', 'v1'),
                             )
     
     return dataset

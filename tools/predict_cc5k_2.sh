@@ -13,47 +13,48 @@
 #             #    --ema4eval \
 #             #    --save_pred \
 
-DATA=data/waffle/data/original_size_images/
-FOLDER=00000 # missing_images
-# DATA=data/waffle_benchmark_processed/
-# FOLDER=test
+DATA=data/coco_cubicasa5k_nowalls_v4-1_refined/
+FOLDER=test 
 
 # python predict.py \
+#                --dataset_name=cubicasa \
 #                --dataset_root=${DATA}/${FOLDER} \
 #                --checkpoint=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_queries56x50_sem_v1/checkpoint0499.pth \
-#                --output_dir=waffle_raster${FOLDER}_preds \
+#                --output_dir=cc5k_${FOLDER}_preds_wd \
 #                --num_queries=2800 \
 #                --num_polys=50 \
 #                --semantic_classes=12 \
 #                --input_channels 3 \
-#                --drop_wd \
-#                --one_color \
+#                --save_pred \
 #                --image_scale 2 \
 #                --crop_white_space \
-#             #    --save_pred \
+#                # --drop_wd \
+#                # --plot_text \
 
-# CKPT=output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv2_t1/checkpoint1899.pth
-# CKPT=/home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnoorder_t1/checkpoint0499.pth
-CKPT=output/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnorder499_t1/checkpoint0499.pth
-
+# EXP=cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv2_t1
+# EXP=cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnoorder_t1
+EXP=cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnorder499_t1
+# s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_nopolyrefine_predecPE_deccatsrc_v1
+EPOCH=0499
 python predict.py \
+               --dataset_name=cubicasa \
                --dataset_root=${DATA}/${FOLDER} \
-               --checkpoint=${CKPT} \
-               --output_dir=waffle_raster${FOLDER}_preds \
+               --checkpoint=/home/htp26/RoomFormerTest/output/${EXP}/checkpoint${EPOCH}.pth \
+               --output_dir=cc5k_${FOLDER}_preds \
                --semantic_classes=12 \
                --input_channels 3 \
                --poly2seq \
                --seq_len 512 \
                --num_bins 32 \
                --disable_poly_refine \
-               --dec_attn_concat_src \
                --use_anchor \
                --ema4eval \
                --per_token_sem_loss \
-               --drop_wd \
                --save_pred \
-               --one_color \
                --image_scale 2 \
                --crop_white_space \
+               --drop_wd \
+               --dec_attn_concat_src \
+               # --plot_text \
             #    --pre_decoder_pos_embed \
                # --debug \

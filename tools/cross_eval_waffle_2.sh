@@ -1,0 +1,5 @@
+python clipseg_eval_script.py clipseg_eval/config.yaml 0 \
+    slurm_scripts3/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnorder499_t1_iou0.25/jsons
+
+# slurm_scripts3/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnoorder_t1_iou0.25/jsons/
+# slurm_scripts3/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv2_t1_iou0.25/jsons/

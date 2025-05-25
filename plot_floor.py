@@ -18,9 +18,13 @@ from models import build_model
 import cv2
 
 from datasets import get_dataset_class_labels
+from datasets.data_utils import sort_polygons, plot_polygons
 
 from util.poly_ops import pad_gt_polys
 from util.plot_utils import plot_room_map, plot_score_map, plot_floorplan_with_regions, plot_semantic_rich_floorplan, plot_semantic_rich_floorplan_tight, plot_semantic_rich_floorplan_nicely
+from util.plot_utils import plot_semantic_rich_floorplan_opencv, plot_semantic_rich_floorplan_opencv_figure
+from util.plot_utils import S3D_LABEL, CC5K_LABEL, auto_crop_whitespace
+
 
 def unnormalize_image(x):
     mean = np.array([0.485, 0.456, 0.406])
@@ -28,9 +32,21 @@ def unnormalize_image(x):
     return (x * std + mean)
 
 
-def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=False):
+def plot_gt_floor(args, data_loader, device, output_dir, plot_gt=True, semantic_rich=False, dataset_name='cubicasa', 
+                  crop_white_space=False):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
+    semantics_label_mapping = None
+    if args.dataset_name == 'stru3d':
+        door_window_index = [16, 17]
+        semantics_label_mapping = S3D_LABEL
+    elif args.dataset_name == 'cubicasa':
+        door_window_index = [10, 9]
+        semantics_label_mapping = CC5K_LABEL
+    elif args.dataset_name == 'waffle':
+        door_window_index = [1, 2]
+    else:
+        door_window_index = []
 
     for batched_inputs, _ in data_loader:
 
@@ -41,13 +57,14 @@ def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=F
         # draw GT map
         if plot_gt:
             for i, gt_inst in enumerate(gt_instances):
+                image = np.transpose((samples[i] * 255).cpu().numpy(), [1, 2, 0])
                 if not semantic_rich:
                     # plot regular room floorplan
                     gt_polys = []
                     density_map = np.transpose((samples[i] * 255).cpu().numpy(), [1, 2, 0])
                     density_map = np.repeat(density_map, 3, axis=2)
 
-                    gt_corner_map = np.zeros([256, 256, 3])
+                    gt_corner_map = np.zeros([args.image_size, args.image_size, 3])
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
                         corners = poly[0].reshape(-1, 2)
                         if len(corners) < 3:
@@ -55,26 +72,82 @@ def plot_gt_floor(data_loader, device, output_dir, plot_gt=True, semantic_rich=F
                         gt_polys.append(corners)
                         
                     gt_room_polys = [np.array(r) for r in gt_polys]
-                    gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
-                    cv2.imwrite(os.path.join(output_dir, '{}_floor_nosem.png'.format(scene_ids[i])), gt_floorplan_map)
+                    # gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=512)
+                    # if crop_white_space:
+                    #     image, cropped_box = auto_crop_whitespace(image)
+                    #     x,y,w,h = cropped_box
+                    #     gt_floorplan_map = gt_floorplan_map[y:y+h, x:x+w].copy()
+                    # cv2.imwrite(os.path.join(output_dir, '{}_floor_nosem.png'.format(scene_ids[i])), gt_floorplan_map)
+
+                    # gt_room_polys, sorted_indices = sort_polygons(gt_room_polys)
+                    # plot_room_polys = []
+                    # for poly in gt_room_polys:
+                    #     poly_cp = poly.copy()
+                    #     poly_cp[:,1] = 255 - poly_cp[:,1]
+                    #     plot_room_polys.append(poly_cp)
+                    # plot_polygons(plot_room_polys, save_path=f"{output_dir}/{scene_ids[i]}_sorted_polygons.png")
+                    
+                    gt_polygons_labels = gt_inst.gt_classes.cpu().numpy()
+                    # gt_polygons_labels = [gt_polygons_labels[_idx] for _idx in sorted_indices]
+                    gt_sem_rich_path = os.path.join(output_dir, '{}_floor.png'.format(str(scene_ids[i]).zfill(5)))
+                    gt_sem_rich = []
+                    for poly, poly_type in zip(gt_room_polys, gt_polygons_labels):
+                        gt_sem_rich.append([poly, poly_type])
+                    gt_floorplan_map = plot_semantic_rich_floorplan_opencv(gt_sem_rich, None,
+                                                       door_window_index=door_window_index, 
+                                                       img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
+                                                       semantics_label_mapping=semantics_label_mapping,
+                                                       plot_text=False,
+                                                       scale=args.image_scale, is_sem=True,
+                                                       one_color=args.one_color)
+                    if crop_white_space:
+                        image, cropped_box = auto_crop_whitespace(image)
+                        _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
+                        gt_floorplan_map = gt_floorplan_map[_y:_y+_h, _x:_x+_w].copy()
+                    cv2.imwrite(gt_sem_rich_path, gt_floorplan_map, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+                    # plot_semantic_rich_floorplan_opencv_figure(gt_sem_rich, gt_sem_rich_path,
+                    #                                    door_window_index=door_window_index, 
+                    #                                    img_w=512, img_h=512,
+                    #                                    semantics_label_mapping=semantics_label_mapping,
+                    #                                    scale=2,
+                    #                                    plot_text=False)
                 else:
                     # plot semantically-rich floorplan
+                    gt_polygons_labels = gt_inst.gt_classes.cpu().numpy()
+                    gt_polygons = gt_inst.gt_masks.polygons
+
+                    gt_polygons, sorted_indices = sort_polygons(gt_polygons)
+                    gt_polygons_labels = [gt_polygons_labels[_idx] for _idx in sorted_indices]
+
                     gt_sem_rich = []
-                    for j, poly in enumerate(gt_inst.gt_masks.polygons):
+                    for j, (poly, poly_label) in enumerate(zip(gt_polygons, gt_polygons_labels)):
                         # if gt_inst.gt_classes.cpu().numpy()[j] not in [1, 9, 11]:
                         #     continue
                         corners = poly[0].reshape(-1, 2).astype(np.int32)
-                        corners_flip_y = corners.copy()
-                        corners_flip_y[:,1] = 255 - corners_flip_y[:,1]
-                        corners = corners_flip_y
-                        gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
-
+                        # corners_flip_y = corners.copy()
+                        # corners_flip_y[:,1] = 255 - corners_flip_y[:,1]
+                        # corners = corners_flip_y
+                        gt_sem_rich.append([corners, poly_label])
+                    
                     gt_sem_rich_path = os.path.join(output_dir, '{}_floor.png'.format(str(scene_ids[i]).zfill(5)))
-                    plot_semantic_rich_floorplan_nicely(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False, is_bw=False,
-                                                       door_window_index=[10, 9], 
-                                                       img_w=samples[i].shape[2], 
-                                                       img_h=samples[i].shape[1],
-                                                       semantics_label_mapping=get_dataset_class_labels(args.dataset_name))
+                    # plot_semantic_rich_floorplan_nicely(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False, is_bw=False,
+                    #                                    door_window_index=[10, 9], 
+                    #                                    img_w=samples[i].shape[2], 
+                    #                                    img_h=samples[i].shape[1],
+                    #                                    semantics_label_mapping=get_dataset_class_labels(args.dataset_name))
+
+                    gt_floorplan_map = plot_semantic_rich_floorplan_opencv(gt_sem_rich, None,
+                                                       door_window_index=door_window_index, 
+                                                       semantics_label_mapping=semantics_label_mapping,
+                                                       scale=args.image_scale, img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
+                                                       plot_text=False, one_color=args.one_color)
+
+                    if crop_white_space:
+                        image, cropped_box = auto_crop_whitespace(image)
+                        _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
+                        gt_floorplan_map = gt_floorplan_map[_y:_y+_h, _x:_x+_w].copy()
+                        
+                    cv2.imwrite(gt_sem_rich_path, gt_floorplan_map, [cv2.IMWRITE_PNG_COMPRESSION, 0])
 
 
 def plot_polys(data_loader, device, output_dir):
@@ -111,7 +184,7 @@ def plot_polys(data_loader, device, output_dir):
             cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), pred_room_map)
 
 
-def plot_gt_image(data_loader, device, output_dir):
+def plot_gt_image(data_loader, device, output_dir, crop_white_space=False):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
@@ -128,62 +201,70 @@ def plot_gt_image(data_loader, device, output_dir):
                 density_map = density_map * 255
             else:
                 density_map = np.repeat(density_map, 3, axis=2) * 255
+            
+            if crop_white_space:
+                density_map, _ = auto_crop_whitespace(image=density_map, color_invert=True)
 
             # # plot predicted polygon overlaid on the density map
             # pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
             cv2.imwrite(os.path.join(output_dir, '{}_gt_image.png'.format(scene_ids[i])), density_map)
 
 
-def plot_histogram(count_dict, title, output_path):
-    # Plot the histogram using Plotly
-    keys = list(count_dict.keys())
-    values = list(count_dict.values())
+def plot_histogram(count_dict, title, output_path, bin_size=10):
+    # Group keys into bins based on the bin_size
+    binned_count_dict = {}
+    for key, value in count_dict.items():
+        bin_key = (key // bin_size) * bin_size  # Determine the bin for the key
+        binned_count_dict[bin_key] = binned_count_dict.get(bin_key, 0) + value
+
+    # Sort the bins
+    binned_keys = sorted(binned_count_dict.keys())
+    binned_values = [binned_count_dict[key] for key in binned_keys]
 
     # Determine the maximum value for the y-axis
-    max_y = max(values)
+    max_y = max(binned_values)
     # Adjust y-axis ticks dynamically for large ranges
     tick_interval = max(1, max_y // 10)  # Divide the range into 10 intervals
     tickvals_y = list(range(0, max_y + tick_interval, tick_interval))
 
     # Determine tick values for x-axis dynamically
-    tickvals_x = keys  # Use the keys (number of points in polygons) as tick values
+    tickvals_x = binned_keys  # Use the binned keys as tick values
 
     fig = go.Figure(data=[
-        go.Bar(x=keys, y=values, 
-               text=values, textposition='outside', marker=dict(color='blue'), 
-               width=0.5)
-    ])
+            go.Bar(x=binned_keys, y=binned_values, 
+                text=binned_values, textposition='outside', marker=dict(color='blue'), 
+                width=0.5)
+        ])
 
     fig.update_layout(
         title={
             'text': f'Histogram of {title}',
-            'font': {'size': 24},  # Increase title font size
+            'font': {'size': 30},  # Increase title font size
             'x': 0.5,  # Center the title
         },
         xaxis_title={
             'text': f'Number of {title}',
-            'font': {'size': 18}  # Increase x-axis label font size
+            'font': {'size': 24}  # Increase x-axis label font size
         },
         yaxis_title={
             'text': 'Frequency',
-            'font': {'size': 18}  # Increase y-axis label font size
+            'font': {'size': 24}  # Increase y-axis label font size
         },
         xaxis=dict(
             tickmode='array',  # Use custom tick values
-            tickvals=tickvals_x,  # Set custom tick values
-            ticktext=[str(val) for val in tickvals_x],  # Set custom tick labels
-            tickfont=dict(size=10),  # Increase x-axis tick font size
-            tickangle=45,
+            tickvals=tickvals_x,
+            ticktext=[f'{x}-{x + bin_size - 1}' for x in binned_keys],
+            tickfont=dict(size=20),  # Increase x-axis tick font size
         ),
         yaxis=dict(
             tickvals=tickvals_y,  # Set custom tick values
             ticktext=[str(val) for val in tickvals_y],  # Set custom tick labels
-            tickfont=dict(size=14),  # Increase y-axis tick font size
+            tickfont=dict(size=20),  # Increase y-axis tick font size
         ),
         template='plotly_white',
-        bargap=0.5,  # Add gap between bars (0.5 = 50% of bar width)
+        # bargap=0.5,  # Add gap between bars (0.5 = 50% of bar width)
         # Increase figure width for a long x-axis
-        width=max(600, 30 * len(keys)),  # Dynamic width based on number of bars
+        width=max(600, 30 * len(binned_keys)),  # Dynamic width based on number of bars
     )
     # Save the figure as an image
     fig.write_image(output_path, scale=3)
@@ -207,7 +288,8 @@ def loop_data(data_loader, eval_set, device, output_dir):
 
         for i in range(len(samples)):
             if batched_extras is not None:
-                t = batched_extras['mask'][i].sum().item()
+                # t = batched_extras['mask'][i].sum().item()
+                t = (batched_extras['token_labels'][i] == 0).sum().item()
                 count_length_dict[t] += 1
             room_polys = gt_instances[i].gt_masks.polygons
             room_ids = gt_instances[i].gt_classes.detach().cpu().numpy()
@@ -222,9 +304,9 @@ def loop_data(data_loader, eval_set, device, output_dir):
         
     print(f"Max pts: {max_num_points}, Max polys: {max_num_polys}")
 
-    plot_histogram(count_pts_dict, "Points in Polygons", os.path.join(output_dir, f"{eval_set}_polygon_histogram.png"))
-    plot_histogram(count_room_dict, "Rooms in Floorplan", os.path.join(output_dir, f"{eval_set}_room_histogram.png"))
-    plot_histogram(count_length_dict, "Sequence Length", os.path.join(output_dir, f"{eval_set}_seqlen_histogram.png"))
+    plot_histogram(count_pts_dict, "Points in Polygons", os.path.join(output_dir, f"{eval_set}_polygon_histogram.png"), bin_size=5)
+    plot_histogram(count_room_dict, "Rooms in Floorplan image", os.path.join(output_dir, f"{eval_set}_room_histogram.png"), bin_size=5)
+    plot_histogram(count_length_dict, "Corners in Floorplan image", os.path.join(output_dir, f"{eval_set}_seqlen_histogram.png"), bin_size=30)
 
 
 def get_args_parser():
@@ -236,6 +318,11 @@ def get_args_parser():
     parser.add_argument('--image_size', type=int, default=256)
     parser.add_argument('--add_cls_token', action='store_true')
     parser.add_argument('--per_token_sem_loss', action='store_true')
+    parser.add_argument('--wd_only', action='store_true')
+    parser.add_argument('--drop_wd', action='store_true')
+    parser.add_argument('--crop_white_space', action='store_true')
+    parser.add_argument('--image_scale', type=int, default=2)
+    parser.add_argument('--one_color', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -342,7 +429,7 @@ def main(args):
     dataset_eval = build_dataset(image_set=args.eval_set, args=args)
     # for test
     if args.debug:
-        dataset_eval = torch.utils.data.Subset(dataset_eval, list(range(0, args.batch_size, 1)))
+        dataset_eval = torch.utils.data.Subset(dataset_eval, [7]) # list(range(0, args.batch_size, 1))
     sampler_eval = torch.utils.data.SequentialSampler(dataset_eval)
 
     def trivial_batch_collator(batch):
@@ -416,17 +503,20 @@ def main(args):
 
     if args.plot_gt:
         plot_gt_floor(
-                    data_loader_eval, 
+                    args, data_loader_eval, 
                     device, save_dir, 
                     plot_gt=args.plot_gt,
-                    semantic_rich=args.semantic_classes>0
+                    semantic_rich=args.semantic_classes>0,
+                    crop_white_space=args.crop_white_space
                     )
     
     if args.plot_density:
         plot_polys(data_loader_eval, device, save_dir)
 
     if args.plot_gt_image:
-        plot_gt_image(data_loader_eval, device, save_dir)
+        plot_gt_image(data_loader_eval, device, save_dir,
+                    crop_white_space=args.crop_white_space
+                      )
 
     loop_data(data_loader_eval, args.eval_set, device, save_dir)
 

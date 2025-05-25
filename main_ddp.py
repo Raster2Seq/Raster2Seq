@@ -14,6 +14,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from torch.nn import functional as F
 import util.misc as utils
 from datasets import build_dataset
 from engine import evaluate, train_one_epoch, evaluate_v2
@@ -53,6 +54,9 @@ def get_args_parser():
     parser.add_argument('--use_anchor', action='store_true')
     parser.add_argument('--disable_wd_as_line', action='store_true')
     parser.add_argument('--wd_only', action='store_true')
+    parser.add_argument('--converter_version', type=str, default='v1')
+    parser.add_argument('--model_version', type=str, default='v1')
+    parser.add_argument('--freeze_anchor', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -169,7 +173,8 @@ def main(args):
     # setup wandb for logging
     if rank == 0:
         utils.setup_wandb()
-        wandb.init(project="RoomFormer", resume="allow", id=args.run_name)
+        wandb.init(project="RoomFormer", resume="allow", id=args.run_name,
+                   dir='./wandb')
         # wandb.run.name = args.run_name
 
 
@@ -188,6 +193,9 @@ def main(args):
     if args.debug:
         dataset_val = torch.utils.data.Subset(copy.deepcopy(dataset_val), [0])
         dataset_train = copy.deepcopy(dataset_val)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
+
+        # dataset_train = torch.utils.data.Subset(copy.deepcopy(dataset_train), [2371])
+        # dataset_val = copy.deepcopy(dataset_train)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
         dataset_val[0]
 
     sampler_train = DistributedSampler(dataset_train, num_replicas=dist.get_world_size(), rank=rank, shuffle=True, seed=args.seed)
@@ -374,7 +382,7 @@ def main(args):
         # if checkpoint['model']['module.backbone.0.body.conv1.weight'].size(1) != args.input_channels:
         #     checkpoint['model']['module.backbone.0.body.conv1.weight'] = checkpoint['model']['module.backbone.0.body.conv1.weight'].repeat(1, args.input_channels, 1, 1)
         for key, value in checkpoint.items():
-            if 'class_embed' in key :
+            if key.startswith('class_embed'):
                 if checkpoint[key].size(0) != model.module.num_classes:
                     if 'weight' in key:
                         checkpoint[key] = torch.cat([checkpoint[key], torch.zeros((1, checkpoint[key].size(1)), dtype=torch.float)], dim=0)
@@ -387,6 +395,13 @@ def main(args):
                 checkpoint[key] = model.module.transformer.pos_embed
             elif 'attention_mask' in key and checkpoint[key].shape[0] != model.module.attention_mask.shape[0]:
                 checkpoint[key] = model.module.attention_mask
+            elif key.startswith('input_proj') and key.endswith('weight'):
+                # only modify the conv layer
+                lidx, sub_lidx = int(key.split('.')[1]), int(key.split('.')[2])
+                if sub_lidx != 0: continue
+                tgt_size = model.module.input_proj[lidx][0].weight.size(2)
+                if tgt_size != checkpoint[key].size(2):
+                    checkpoint[key] = F.interpolate(checkpoint[key], size=(tgt_size, tgt_size), mode='bilinear', align_corners=False)
 
         missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint, strict=False)
         unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]

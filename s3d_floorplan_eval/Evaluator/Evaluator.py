@@ -169,7 +169,6 @@ class Evaluator():
                          dataset_type="s3d"):
         def get_room_metric():
             pred_overlaps = [False] * len(pred_room_map_list)
-
             if not self.disable_overlapping_filter:
                 for pred_ind1 in range(len(pred_room_map_list) - 1):
                     pred_map1 = pred_room_map_list[pred_ind1]
@@ -488,7 +487,6 @@ class Evaluator():
             pred2gt_exists_wd = [True if pred_ind in gt2pred_indices_wd else False for pred_ind, _ in enumerate(pred_window_doors)]
             pred2gt_indices_wd = [gt2pred_indices_wd.index(pred_ind) if pred_ind in gt2pred_indices_wd else -1 for pred_ind, _ in enumerate(pred_window_doors)]
         
-        
         # print(gt2pred_indices)
         # print(pred2gt_indices)
         # assert False
@@ -496,8 +494,6 @@ class Evaluator():
         # import pdb; pdb.set_trace()
 
         room_metric, room_sem_metric = get_room_metric()
-
-
         ###### metric for room WITHOUT considering type ######
         if len(pred_polys) == 0:
             room_metric_prec = 0
