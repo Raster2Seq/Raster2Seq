@@ -99,7 +99,13 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=False, output_dir=None, epoch=None, poly2seq: bool = False):
     model.eval()
     criterion.eval()
-    door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
+
+    if dataset_name == 'stru3d':
+        door_window_index = [16, 17]
+    elif dataset_name == 'cubicasa':
+        door_window_index = [10, 9]
+    else:
+        door_window_index = []
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -151,7 +157,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 gt_window_doors = []
                 gt_window_doors_types = []
                 evaluator = Evaluator_RPlan()
-            elif dataset_name == 'cubicasa':
+            elif dataset_name in ['cubicasa', 'r2g']:
                 gt_polys, gt_polys_types = [], []
                 gt_window_doors = []
                 gt_window_doors_types = []
@@ -215,7 +221,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
 
-            elif dataset_name in ['rplan', 'cubicasa']:
+            elif dataset_name in ['rplan', 'cubicasa', 'r2g']:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
@@ -268,7 +274,12 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
                 per_token_sem_loss=False, wd_as_line=True):
     model.eval()
     criterion.eval()
-    door_window_index = [16, 17] if dataset_name != 'cubicasa' else [10, 9]
+    if dataset_name == 'stru3d':
+        door_window_index = [16, 17]
+    elif dataset_name == 'cubicasa':
+        door_window_index = [10, 9]
+    else:
+        door_window_index = []
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -337,7 +348,7 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
                 gt_window_doors = []
                 gt_window_doors_types = []
                 evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
-            elif dataset_name == 'cubicasa':
+            elif dataset_name in ['cubicasa', 'r2g']:
                 evaluator = Evaluator_RPlan(disable_overlapping_filter=True,
                                             wd_as_line=wd_as_line)
             
@@ -436,7 +447,7 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
 
-            elif dataset_name in ['rplan', 'cubicasa']:
+            elif dataset_name in ['rplan', 'cubicasa', 'r2g']:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
@@ -586,7 +597,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
                 gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
                 evaluator = Evaluator_RPlan()
-            elif dataset_name in ['cubicasa', 'waffle']:
+            elif dataset_name in ['cubicasa', 'waffle', 'r2g']:
                 evaluator = Evaluator_RPlan(iou_thres=iou_thres)
 
             print("Running Evaluation for scene %s" % scene_ids[i])
@@ -640,7 +651,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
     
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
-            elif dataset_name in ['rplan', 'cubicasa', 'waffle']:
+            elif dataset_name in ['rplan', 'cubicasa', 'waffle', 'r2g']:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
@@ -844,7 +855,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                 gt_polys = [x[0].reshape(-1,2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
                 gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
                 evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
-            elif dataset_name in ['cubicasa', 'waffle']:
+            elif dataset_name in ['cubicasa', 'waffle', 'r2g']:
                 evaluator = Evaluator_RPlan(disable_overlapping_filter=True, iou_thres=iou_thres,
                                             wd_as_line=wd_as_line)
 
@@ -951,7 +962,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
 
-            elif dataset_name in ['rplan', 'cubicasa', 'waffle']:
+            elif dataset_name in ['rplan', 'cubicasa', 'waffle', 'r2g']:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
@@ -1011,9 +1022,10 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
 
 
                 if semantic_rich:
+                    _, ID2CLASS_LABEL = get_dataset_class_labels(dataset_name)
                     floorplan_map = plot_semantic_rich_floorplan_opencv(zip(room_polys+window_doors, room_types+window_doors_types), 
                         os.path.join(output_dir, '{}_pred_floorplan_sem.png'.format(scene_ids[i])), door_window_index=door_window_index,
-                        semantics_label_mapping=CC5K_LABEL if dataset_name == 'cubicasa' else S3D_LABEL,
+                        semantics_label_mapping=ID2CLASS_LABEL,
                         plot_text=False)
 
             if save_pred:

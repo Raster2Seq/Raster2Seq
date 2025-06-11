@@ -7,7 +7,8 @@ def build_dataset(image_set, args):
     if args.semantic_classes > 0:
         # assert args.dataset_name == 'stru3d', "Semantically-rich floorplans only support Structured3D"
         pass
-    if args.dataset_name in ['stru3d', 'scenecad', 'rplan', 'cubicasa', 'waffle']:
+    if args.dataset_name in ['stru3d', 'scenecad', 'rplan', 'cubicasa', 'waffle', 'r2g']:
+        print(f"Build {args.dataset_name} {image_set} dataset")
         return build_poly(image_set, args)
     raise ValueError(f'dataset {args.dataset_name} not supported')
 
@@ -49,7 +50,11 @@ def get_dataset_class_labels(dataset_name):
             "Window": 9,
             "Door": 10,
         }
+    elif dataset_name == 'r2g':
+        semantics_label = {'unknown': 0, 'living_room': 1, 'kitchen': 2, 'bedroom': 3, 'bathroom': 4, 'restroom': 5, 'balcony': 6, 'closet': 7, 'corridor': 8, 'washing_room': 9, 'PS': 10, 'outside': 11}
     
-    return semantics_label
+    id2class = {v: k for k, v in semantics_label.items()} if semantics_label else None
+    
+    return semantics_label, id2class
 
     

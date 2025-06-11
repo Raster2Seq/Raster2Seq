@@ -36,7 +36,8 @@ class TokenType(Enum):
 WD_INDEX = {
     'stru3d': [16, 17],
     'cubicasa': [9, 10],
-    'waffle': []
+    'waffle': [],
+    'r2g': [],
 }
 
 class MultiPoly(Dataset):
@@ -669,7 +670,7 @@ class ConvertToCocoDictImproved(ConvertToCocoDict):
 def make_poly_transforms(dataset_name, image_set, image_size=256, disable_image_transform=False):
     
     trans_list = []
-    if dataset_name in ['cubicasa', 'waffle']:
+    if dataset_name in ['cubicasa', 'waffle'] or (dataset_name == 'r2g' and image_size != 512):
         trans_list = [ResizeAndPad((image_size, image_size), pad_value=255)]
 
     if image_set == 'train':

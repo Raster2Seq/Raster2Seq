@@ -57,6 +57,7 @@ def get_args_parser():
     parser.add_argument('--converter_version', type=str, default='v1')
     parser.add_argument('--model_version', type=str, default='v1')
     parser.add_argument('--freeze_anchor', action='store_true')
+    parser.add_argument('--learned_class_emb', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
