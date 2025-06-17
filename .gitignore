@@ -1,5 +1,4 @@
-__pycache__
-.pyc
+# built
 diff_rass
 diff_ras/build/
 diff_ras/native_rasterizer.cpython-38-x86_64-linux-gnu.so
@@ -7,25 +6,28 @@ diff_ras/rasterizer.egg-info/PKG-INFO
 
 models/ops
 
+# pycache
+__pycache__
+.pyc
+
+# data
 data/
 data2/
-
+s3d_floorplan_eval/montefloor_data
 *.html
 
 # test script
 slurm_scripts*
+
+# outputs
 output
 output*
-
 wandb
 wandb_keys
 watch_folder
-
 *.json
 *.png
 *.csv
 *.log
 *.svg
 *.zip
-
-s3d_floorplan_eval/montefloor_data
