@@ -139,7 +139,7 @@ def auto_crop_whitespace(image, color_invert=True):
     return cropped_image, [x,y,w,h] # shifted_polygons
 
 
-def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256, matching_labels=None,
+def plot_floorplan_with_regions(regions, corners=None, edges=None, base_scale=256, scale=256, matching_labels=None,
                                 regions_type=None, plot_text=False, semantics_label_mapping=None):
     """Draw floorplan map where different colors indicate different rooms
     """
@@ -151,7 +151,7 @@ def plot_floorplan_with_regions(regions, corners=None, edges=None, scale=256, ma
     # colors = [to_rgb(x) for x in colors]
     gray_color = tuple(c / 255.0 for c in (255,255,255,255))
 
-    regions = [(region * scale / 256).round().astype(np.int32) for region in regions]
+    regions = [(region * scale / base_scale).round().astype(np.int32) for region in regions]
 
     # Ensure room_colors contains valid hex strings
     if matching_labels is None:
@@ -827,7 +827,7 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
     room_polygons = []
     door_polygons = []
     window_polygons = []
-    
+
     # Sort polygons by type
     for poly, poly_type in polygons:
         if len(poly) < 2:  # Skip invalid polygons
@@ -835,9 +835,9 @@ def plot_semantic_rich_floorplan_opencv(polygons, file_name, img_w=256, img_h=25
             
         points = np.array(poly, dtype=np.int32)
         
-        if poly_type == door_window_index[0]:  # Door
+        if door_window_index and poly_type == door_window_index[0]:  # Door
             door_polygons.append((points, poly_type))
-        elif poly_type == door_window_index[1]:  # Window
+        elif door_window_index and poly_type == door_window_index[1]:  # Window
             window_polygons.append((points, poly_type))
         else:  # Room
             room_polygons.append((points, poly_type))

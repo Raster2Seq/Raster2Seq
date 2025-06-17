@@ -27,7 +27,7 @@ class RoomFormerV2(nn.Module):
     """ This is the RoomFormer module that performs floorplan reconstruction """
     def __init__(self, backbone, transformer, num_classes, num_queries, num_polys, num_feature_levels,
                  aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1, seq_len=1024, tokenizer=None,
-                 use_anchor=False, patch_size=1, freeze_anchor=False,
+                 use_anchor=False, patch_size=1, freeze_anchor=False, inject_cls_embed=False,
                  ):
         """ Initializes the model.
         Parameters:
@@ -56,6 +56,7 @@ class RoomFormerV2(nn.Module):
         self.tokenizer = tokenizer
         self.seq_len = seq_len
         self.patch_size = patch_size
+        self.inject_cls_embed = inject_cls_embed
 
         # self.tgt_embed = nn.Embedding(num_queries, hidden_dim)
         if num_feature_levels > 1:
@@ -123,7 +124,8 @@ class RoomFormerV2(nn.Module):
         self.room_class_embed = None
         if semantic_classes > 0:
             self.room_class_embed = nn.Linear(hidden_dim, semantic_classes)
-
+            if self.inject_cls_embed:
+                self.transformer.decoder.room_class_embed = self.room_class_embed
 
         # self.num_queries_per_poly = num_queries // num_polys
 
@@ -225,11 +227,16 @@ class RoomFormerV2(nn.Module):
         delta_y2 = [[1] for _ in range(b)]
 
         gen_out = [[] for _ in range(b)]
+        
+        if self.inject_cls_embed:
+            input_polygon_labels = [[self.semantic_classes-1] for _ in range(b)]
+        else:
+            input_polygon_labels = [[-1] for _ in range(b)] # dummies values, not used in inference
 
         return (
             prev_output_token_11, prev_output_token_12, prev_output_token_21, prev_output_token_22,
             delta_x1, delta_x2, delta_y1, delta_y2,
-            gen_out
+            gen_out, input_polygon_labels
         )
 
     def forward_inference(self, samples: NestedTensor, use_cache=True):
@@ -285,7 +292,7 @@ class RoomFormerV2(nn.Module):
 
         (prev_output_token_11, prev_output_token_12, prev_output_token_21, prev_output_token_22,
             delta_x1, delta_x2, delta_y1, delta_y2,
-            gen_out) = self._prepare_sequences(bs)
+            gen_out, input_polygon_labels) = self._prepare_sequences(bs)
 
         query_embeds = None if self.query_embed is None else self.query_embed.weight
         # tgt_embeds = self.tgt_embed.weight
@@ -310,7 +317,7 @@ class RoomFormerV2(nn.Module):
             delta_x2_tensor = torch.tensor(np.array(delta_x2)[:, i:i+1], dtype=torch.float32).to(device)
             delta_y1_tensor = torch.tensor(np.array(delta_y1)[:, i:i+1], dtype=torch.float32).to(device)
             delta_y2_tensor = torch.tensor(np.array(delta_y2)[:, i:i+1], dtype=torch.float32).to(device)
-
+            input_polygon_labels_tensor = torch.tensor(np.array(input_polygon_labels)[:, i:i+1], dtype=torch.long).to(device)
 
             seq_kwargs = {
                 'seq11': prev_output_tokens_11_tensor,
@@ -321,6 +328,7 @@ class RoomFormerV2(nn.Module):
                 'delta_x2': delta_x2_tensor,
                 'delta_y1': delta_y1_tensor,
                 'delta_y2': delta_y2_tensor,
+                'input_polygon_labels': input_polygon_labels_tensor
             }
 
             if not use_cache:
@@ -369,6 +377,7 @@ class RoomFormerV2(nn.Module):
                         prev_output_token_12[j].append(self.tokenizer.sep)
                         prev_output_token_21[j].append(self.tokenizer.sep)
                         prev_output_token_22[j].append(self.tokenizer.sep)
+
                         delta_x = 0
                         delta_y = 0
 
@@ -691,7 +700,8 @@ def build(args, train=True, tokenizer=None):
             tokenizer=tokenizer,
             use_anchor=args.use_anchor,
             patch_size=[1, 2][args.image_size == 512], # 1 for 256x256, 2 for 512x512
-            freeze_anchor=getattr(args, 'freeze_anchor', False)
+            freeze_anchor=getattr(args, 'freeze_anchor', False),
+            inject_cls_embed=getattr(args, 'inject_cls_embed', False),
         )
     else:
         model = Raster2Seq(

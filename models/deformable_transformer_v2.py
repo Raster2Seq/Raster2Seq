@@ -59,13 +59,14 @@ class DeformableTransformer(nn.Module):
                  num_feature_levels=4, dec_n_points=4, enc_n_points=4, query_pos_type="none", 
                  vocab_size=None, seq_len=1024, pre_decoder_pos_embed=False, learnable_dec_pe=False,
                  dec_attn_concat_src=False, dec_qkv_proj=True, dec_layer_type='v1',
-                 pad_idx=None, use_anchor=False):
+                 pad_idx=None, use_anchor=False, inject_cls_embed=False):
         super().__init__()
 
         self.d_model = d_model
         self.nhead = nhead
         self.poly_refine = poly_refine
         self.use_anchor = use_anchor
+        self.inject_cls_embed = inject_cls_embed
 
         encoder_layer = DeformableTransformerEncoderLayer(d_model, dim_feedforward,
                                                           dropout, activation,
@@ -137,6 +138,10 @@ class DeformableTransformer(nn.Module):
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         self.dec_attn_concat_src = dec_attn_concat_src
+
+        if self.inject_cls_embed:
+            self.decoder.room_class_trans = nn.Sequential(nn.Linear(d_model, d_model, bias=False),
+                                                            nn.LayerNorm(d_model))
 
         self._reset_parameters()
 
@@ -908,7 +913,7 @@ class TransformerDecoder(nn.Module):
                  query_pos_type='none', 
                  vocab_size=None,
                  pad_idx=None,
-                 use_anchor=None):
+                 use_anchor=None,):
         super().__init__()
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
@@ -923,11 +928,14 @@ class TransformerDecoder(nn.Module):
         self.pos_trans_norm = None
         self.use_anchor = use_anchor
 
+        self.room_class_embed = None
+        self.room_class_trans = None
+
         self.token_embed = Embedding(vocab_size, 
                                      self.layers[0].d_model, 
                                      padding_idx=pad_idx,
                                      zero_init=False)
-
+                        
 
     def _seq_embed(self, seq11, seq12, seq21, seq22, delta_x1, delta_x2, delta_y1, delta_y2):
         # embedding [B, L, D]
@@ -943,6 +951,12 @@ class TransformerDecoder(nn.Module):
             e22 * delta_x1[...,None] * delta_y1[...,None]
 
         return out
+    
+    def _add_cls_embed(self, x, input_cls_seq):
+        # Suppose class_labels is of shape [batch, seq_len] with integer class indices
+        one_hot = F.one_hot(input_cls_seq, num_classes=self.room_class_embed.out_features).float()
+        x = x + self.room_class_trans(self.room_class_embed[-1](one_hot))
+        return x
 
     def get_query_pos_embed(self, ref_points):
         num_pos_feats = 128
@@ -991,6 +1005,10 @@ class TransformerDecoder(nn.Module):
                 query_pos = self.pos_trans_norm(self.pos_trans(self.get_query_pos_embed(reference_points)))
             output = self.with_pos_embed(output, query_pos)
             query_pos = None
+        
+        if self.room_class_trans is not None:
+            # add class embedding
+            output = self._add_cls_embed(output, seq_kwargs['input_polygon_labels'])
 
         intermediate = []
         intermediate_reference_points = []
@@ -1098,6 +1116,7 @@ def build_deforamble_transformer(args, pad_idx=None):
         dec_layer_type=args.dec_layer_type,
         pad_idx=pad_idx,
         use_anchor=args.use_anchor,
+        inject_cls_embed=args.inject_cls_embed,
         )
 
 

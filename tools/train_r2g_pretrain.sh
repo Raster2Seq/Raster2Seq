@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J r2g_pretrain              # Job name
+#SBATCH -J r2g_pretrain_2              # Job name
 #SBATCH -o watch_folder/%x_%j.out     # output file (%j expands to jobID)
 #SBATCH -N 1                          # Total number of nodes requested
 #SBATCH --get-user-env                # retrieve the users login environment
@@ -14,15 +14,15 @@
 #SBATCH --requeue                     # Requeue upon pre-emption
 
 export NCCL_P2P_LEVEL=NVL
-MASTER_PORT=24159
-NUM_GPUS=1
+MASTER_PORT=24259
+NUM_GPUS=2
  
 CLS_COEFF=5
 COO_COEFF=20
 SEQ_LEN=512
 NUM_BINS=32
 CONVERTER=v3
-JOB=r2g_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_ignorewd_smoothing_convert${CONVERTER}_fromckpt_t1
+JOB=r2g_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_ignorewd_smoothing_convert${CONVERTER}_e1d6p20_fromckpt_t1
 # PRETRAIN=/home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1/checkpoint2449.pth
 PRETRAIN=output/s3d_bw_ddp_poly2seq_l512_bin32_nosem_bs32_coo20_cls1_anchor_deccatsrc_converterv3_t1/checkpoint1399.pth
 
@@ -32,7 +32,7 @@ WANDB_MODE=online torchrun --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PO
                --num_polys=50 \
                --semantic_classes=-1 \
                --job_name=${JOB} \
-               --batch_size 56 \
+               --batch_size 64 \
                --input_channels=3 \
                --output_dir /share/elor/htp26/roomformer/output \
                --poly2seq \
@@ -50,8 +50,10 @@ WANDB_MODE=online torchrun --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PO
                --ema4eval \
                --resume output/${JOB}/checkpoint.pth \
                --use_anchor \
-               --start_from_checkpoint ${PRETRAIN} \
                --converter_version ${CONVERTER} \
+               --dec_n_points 20 --enc_n_points 20 --enc_layers 1 \
+               --start_from_checkpoint ${PRETRAIN} \
+
                # --increase_cls_loss_coef_epoch_ratio 0.6 --increase_cls_loss_coef 5. \
                # --start_from_checkpoint /home/htp26/RoomFormerTest/output/s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1/checkpoint2449.pth
                # /home/htp26/RoomFormerTest/output/cubi_v4-1refined_poly2seq_l512_bin32_nosem_coo20_cls1_anchor_deccatsrc_fromckpt2450_ignorewd_smoothing_clscoeffx5@6e-1_t1/checkpoint1199.pth \

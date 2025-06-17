@@ -191,7 +191,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 pred_corners_per_room = pred_corners_per_scene[j]
                 valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
                 if len(valid_corners_per_room)>0:
-                    corners = (valid_corners_per_room * 255).cpu().numpy()
+                    corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
                     corners = np.around(corners).astype(np.int32)
 
                     if not semantic_rich:
@@ -225,12 +225,15 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
+                                                                img_size=(image_size, image_size),
                                                                     )
                 else:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=room_types, gt_polys_types=gt_polys_types,
                                                                 window_door_lines=window_doors, gt_window_doors_list=gt_window_doors,
-                                                                window_door_lines_types=window_doors_types, gt_window_doors_type_list=gt_window_doors_types)
+                                                                window_door_lines_types=window_doors_types, gt_window_doors_type_list=gt_window_doors_types,
+                                                                img_size=(image_size, image_size),
+                                                                )
 
             if 'room_iou' in quant_result_dict_scene:
                 metric_logger.update(room_iou=quant_result_dict_scene['room_iou'])
@@ -632,7 +635,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                             room_polys.append(corners)
                             room_types.append(pred_room_label_per_scene[j])
                         # window / door
-                        elif len(corners)==2:
+                        elif len(corners)==2 and dataset_name != 'r2g':
                             window_doors.append(corners)
                             window_doors_types.append(pred_room_label_per_scene[j])
             
@@ -655,12 +658,15 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
+                                                                img_size=(image_size, image_size),
                                                                     )
                 else:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=room_types, gt_polys_types=gt_polys_types,
                                                                 window_door_lines=window_doors, gt_window_doors_list=gt_window_doors,
-                                                                window_door_lines_types=window_doors_types, gt_window_doors_type_list=gt_window_doors_types)
+                                                                window_door_lines_types=window_doors_types, gt_window_doors_type_list=gt_window_doors_types,
+                                                                img_size=(image_size, image_size),
+                                                                )
 
 
             if quant_result_dict is None:
@@ -697,8 +703,8 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
             }
 
             if plot_pred:
-                gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000, matching_labels=gt_mask)
-                floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000, matching_labels=pred_mask)
+                gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, matching_labels=gt_mask, base_scale=image_size, scale=1024)
+                floorplan_map = plot_floorplan_with_regions(room_polys, matching_labels=pred_mask, base_scale=image_size, scale=1024)
 
                 concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
                 cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), concatenated_map)
@@ -748,8 +754,6 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
 
     with open(os.path.join(output_dir, 'results.txt'), 'w') as file:
         file.write(json.dumps(quant_result_dict))
-
-
 
 
 @torch.no_grad()
@@ -922,11 +926,11 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
 
                     if wd_as_line:
                         # regular rooms
-                        if len(corners)>=3 and Polygon(corners).area >= 100:
+                        if (len(corners)>=3 and Polygon(corners).area >= 100):
                             room_polys.append(corners)
                             room_types.append(pred_class)
                         # window / door
-                        elif len(corners)==2:
+                        elif len(corners)==2 and dataset_name != 'r2g':
                             window_doors.append(corners)
                             if pred_class not in door_window_index:
                                 wd_prob = np_softmax(pred_logit[:, door_window_index].sum(0))
@@ -1011,8 +1015,8 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
             }
 
             if plot_pred:
-                gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000, matching_labels=gt_mask)
-                floorplan_map = plot_floorplan_with_regions(room_polys, scale=1000, matching_labels=pred_mask)
+                gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, matching_labels=gt_mask, base_scale=image_size, scale=1024)
+                floorplan_map = plot_floorplan_with_regions(room_polys, matching_labels=pred_mask, base_scale=image_size, scale=1024)
                 if merge:
                     concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
                     cv2.imwrite(os.path.join(output_dir, '{}_pred_floorplan.png'.format(scene_ids[i])), concatenated_map)
@@ -1025,7 +1029,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                     _, ID2CLASS_LABEL = get_dataset_class_labels(dataset_name)
                     floorplan_map = plot_semantic_rich_floorplan_opencv(zip(room_polys+window_doors, room_types+window_doors_types), 
                         os.path.join(output_dir, '{}_pred_floorplan_sem.png'.format(scene_ids[i])), door_window_index=door_window_index,
-                        semantics_label_mapping=ID2CLASS_LABEL,
+                        semantics_label_mapping=ID2CLASS_LABEL, img_w=image_size, img_h=image_size, scale=1,
                         plot_text=False)
 
             if save_pred:

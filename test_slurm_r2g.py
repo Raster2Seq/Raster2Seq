@@ -7,12 +7,15 @@ import pandas as pd
 
 
 ###### ARGS
-exp = "r2g_poly2seq_l512_bin32_nosem_coo20_cls5_anchor_deccatsrc_ignorewd_smoothing_convertv3_fromckpt_t1"
+# exp = "r2g_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls13_convertv3_from849_t1"
+exp = "r2g_res512_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls13_convertv3_frompretrainckpt_t1"
 device = "0"
-num_classes = -1
+num_classes = 13
+image_size = 512
 
 config = pd.DataFrame({
-    "epochs": ['0649', '0699', '0749', '0799', '0849', '1149', '1199', '1249'],
+    # "epochs": ['0549', '0649', '0749', '0949'],
+    "epochs": ['0749'],
 })
 print(config)
 
@@ -44,6 +47,7 @@ if num_classes > 0:
                 --ema4eval \
                 --use_anchor \
                 --per_token_sem_loss \
+                --image_size={image_size} \
                 # --pre_decoder_pos_embed \
 
     """
@@ -73,6 +77,7 @@ else:
                 --dec_attn_concat_src \
                 --ema4eval \
                 --use_anchor \
+                --image_size={image_size} \
                 #    --per_token_sem_loss \
                 # --pre_decoder_pos_embed \
 
@@ -90,6 +95,7 @@ for idx, row in config.iterrows():
         slurm_output=slurm_output,
         device=device,
         num_classes=num_classes,
+        image_size=image_size,
     )
     mode = "w" if idx == 0 else "a"
     with open(slurm_file_path, mode) as f:

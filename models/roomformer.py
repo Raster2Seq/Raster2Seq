@@ -22,7 +22,7 @@ def _get_clones(module, N):
 class RoomFormer(nn.Module):
     """ This is the RoomFormer module that performs floorplan reconstruction """
     def __init__(self, backbone, transformer, num_classes, num_queries, num_polys, num_feature_levels,
-                 aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1):
+                 aux_loss=True, with_poly_refine=False, masked_attn=False, semantic_classes=-1, patch_size=1):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -38,12 +38,14 @@ class RoomFormer(nn.Module):
         super().__init__()
         self.num_queries = num_queries
         self.num_polys = num_polys
+        self.num_classes = num_classes
         assert  num_queries % num_polys == 0
         self.transformer = transformer
         hidden_dim = transformer.d_model
         self.class_embed = nn.Linear(hidden_dim, num_classes)
         self.coords_embed = MLP(hidden_dim, hidden_dim, 2, 3)
         self.num_feature_levels = num_feature_levels
+        self.patch_size = patch_size
 
         self.query_embed = nn.Embedding(num_queries, 2)
         self.tgt_embed = nn.Embedding(num_queries, hidden_dim)
@@ -53,14 +55,20 @@ class RoomFormer(nn.Module):
             for _ in range(num_backbone_outs):
                 in_channels = backbone.num_channels[_]
                 input_proj_list.append(nn.Sequential(
-                    nn.Conv2d(in_channels, hidden_dim, kernel_size=1),
+                    nn.Conv2d(in_channels, hidden_dim, kernel_size=patch_size, stride=patch_size, padding=0),
                     nn.GroupNorm(32, hidden_dim),
                 ))
             for _ in range(num_feature_levels - num_backbone_outs):
-                input_proj_list.append(nn.Sequential(
-                    nn.Conv2d(in_channels, hidden_dim, kernel_size=3, stride=2, padding=1),
-                    nn.GroupNorm(32, hidden_dim),
-                ))
+                if patch_size == 1:
+                    input_proj_list.append(nn.Sequential(
+                        nn.Conv2d(in_channels, hidden_dim, kernel_size=3, stride=2, padding=1),
+                        nn.GroupNorm(32, hidden_dim),
+                    ))
+                else:
+                    input_proj_list.append(nn.Sequential(
+                        nn.Conv2d(in_channels, hidden_dim, kernel_size=2*patch_size, stride=2*patch_size, padding=0),
+                        nn.GroupNorm(32, hidden_dim),
+                    ))
                 in_channels = hidden_dim
             self.input_proj = nn.ModuleList(input_proj_list)
         else:
@@ -136,7 +144,11 @@ class RoomFormer(nn.Module):
         masks = []
         for l, feat in enumerate(features):
             src, mask = feat.decompose()
-            srcs.append(self.input_proj[l](src))
+            src = self.input_proj[l](src)
+            srcs.append(src)
+            if self.patch_size != 1:
+                mask = F.interpolate(mask[None].float(), size=src.shape[-2:]).to(torch.bool)[0]
+                pos[l] = self.backbone[1](NestedTensor(src, mask)).to(src.dtype)
             masks.append(mask)
             assert mask is not None
         if self.num_feature_levels > len(srcs):
@@ -374,6 +386,7 @@ def build(args, train=True):
         with_poly_refine=args.with_poly_refine,
         masked_attn=args.masked_attn,
         semantic_classes=args.semantic_classes,
+        patch_size=[1, 2][args.image_size == 512], # 1 for 256x256, 2 for 512x512
     )
 
     if not train:

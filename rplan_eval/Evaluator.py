@@ -436,6 +436,7 @@ class Evaluator_RPlan():
             #     plt.figure()
             #     plt.imshow(gt_map)
             #     plt.show()
+        
             
         ### match predicted window/door to ground truth window/door
         if pred_window_doors_types is not None:

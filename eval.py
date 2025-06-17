@@ -41,6 +41,7 @@ def get_args_parser():
     parser.add_argument('--num_subset_images', type=int, default=-1)
     parser.add_argument('--model_version', type=str, default='v1')
     parser.add_argument('--converter_version', type=str, default='v1')
+    parser.add_argument('--inject_cls_embed', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')

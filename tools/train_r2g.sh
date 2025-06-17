@@ -43,7 +43,7 @@ JOB=r2g_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_sem${SEM_COEFF}_coo${COO_COEFF}_cls$
 
 PRETRAIN=output/r2g_poly2seq_l512_bin32_nosem_coo20_cls5_anchor_deccatsrc_ignorewd_smoothing_convertv3_fromckpt_t1/checkpoint0849.pth
 
-WANDB_MODE=online torchrun --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT main_ddp.py --dataset_name=r2g \
+WANDB_MODE=offline torchrun --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT main_ddp.py --dataset_name=r2g \
                --dataset_root=${DATA} \
                --num_queries=2800 \
                --num_polys=50 \

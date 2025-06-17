@@ -535,6 +535,7 @@ class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
 
         if not per_token_class:
             target_polygon_labels = [polygons_label[i] for i in poly_indices] # polygons_label[:count_polys]
+            input_polygon_labels = torch.tensor(target_polygon_labels.copy(), dtype=torch.long)
         else:
             target_polygon_labels = []
             # for poly, poly_label in zip(quant_poly[:count_polys], polygons_label[:count_polys]):
@@ -542,6 +543,7 @@ class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
                 poly, poly_label = quant_poly[i], polygons_label[i]
                 target_polygon_labels.extend([poly_label] * len(poly))
                 target_polygon_labels.append(self.semantic_classes-1)  # undefined class for <sep> and <eos> token
+            input_polygon_labels = torch.tensor([self.semantic_classes-1] + target_polygon_labels.copy()[:-1], dtype=torch.long) # right shift by one: <bos>, ..., <coord>
 
         max_label_length = self.tokenizer.seq_len
         if len(polygons_label) < max_label_length:
@@ -560,8 +562,8 @@ class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
                 'target_seq': target_seq,
                 'token_labels': token_labels,
                 'mask': mask,
-                'target_polygon_labels': target_polygon_labels}
-
+                'target_polygon_labels': target_polygon_labels,
+                'input_polygon_labels': input_polygon_labels}
 
 
 class ConvertToCocoDictImproved(ConvertToCocoDict):

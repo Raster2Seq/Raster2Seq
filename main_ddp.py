@@ -57,7 +57,7 @@ def get_args_parser():
     parser.add_argument('--converter_version', type=str, default='v1')
     parser.add_argument('--model_version', type=str, default='v1')
     parser.add_argument('--freeze_anchor', action='store_true')
-    parser.add_argument('--learned_class_emb', action='store_true')
+    parser.add_argument('--inject_cls_embed', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -220,6 +220,7 @@ def main(args):
             token_labels = torch.stack([item['token_labels'] for item in batch], dim=0)
             mask = torch.stack([item['mask'] for item in batch], dim=0)
             target_polygon_labels = torch.stack([item['target_polygon_labels'] for item in batch], dim=0)
+            # input_polygon_labels = torch.stack([item['input_polygon_labels'] for item in batch], dim=0)
 
             # Delete the keys from the batch
             for item in batch:
@@ -235,6 +236,7 @@ def main(args):
                 del item['token_labels']
                 del item['mask']
                 del item['target_polygon_labels']
+                # del item['input_polygon_labels']
 
             # Return the concatenated batch
             return batch, {
@@ -250,6 +252,7 @@ def main(args):
                 'token_labels': token_labels,
                 'mask': mask,
                 'target_polygon_labels': target_polygon_labels,
+                # 'input_polygon_labels': input_polygon_labels,
             }
             
         return batch, None
@@ -403,6 +406,20 @@ def main(args):
                 tgt_size = model.module.input_proj[lidx][0].weight.size(2)
                 if tgt_size != checkpoint[key].size(2):
                     checkpoint[key] = F.interpolate(checkpoint[key], size=(tgt_size, tgt_size), mode='bilinear', align_corners=False)
+            elif 'sampling_offsets' in key:
+                diff_scale = model.module.transformer.encoder.layers[0].self_attn.sampling_offsets.weight.size(0) // checkpoint[key].size(0) 
+                if diff_scale > 1:
+                    if '.weight' in key:
+                        checkpoint[key] = checkpoint[key].repeat((diff_scale, 1))
+                    else:
+                        checkpoint[key] = checkpoint[key].repeat((diff_scale,))
+            elif 'attention_weights' in key:
+                diff_scale = model.module.transformer.encoder.layers[0].self_attn.attention_weights.weight.size(0) // checkpoint[key].size(0) 
+                if diff_scale > 1:
+                    if '.weight' in key:
+                        checkpoint[key] = checkpoint[key].repeat((diff_scale, 1))
+                    else:
+                        checkpoint[key] = checkpoint[key].repeat((diff_scale,))
 
         missing_keys, unexpected_keys = model.module.load_state_dict(checkpoint, strict=False)
         unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]
