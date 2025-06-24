@@ -89,6 +89,7 @@ def get_args_parser():
     parser.add_argument('--eval_set', default='test', type=str)
     parser.add_argument('--image_size', default=256, type=int)
     parser.add_argument('--crop_white_space', action='store_true')
+    parser.add_argument('--one_color', action='store_true')
 
     parser.add_argument('--json_root', default='test', type=str)
     parser.add_argument('--save_dir', default='vis_from_json', type=str)
@@ -149,9 +150,9 @@ if __name__ == "__main__":
         floorplan_map = plot_semantic_rich_floorplan_opencv(zip(room_polys, room_ids), 
             None, door_window_index=door_window_index,
             semantics_label_mapping=semantics_label_mapping, 
-            plot_text=False, one_color=True,
+            plot_text=False, one_color=args.one_color,
             img_h=image_size,
-            img_w=image_size)
+            img_w=image_size, scale=2)
 
         if args.crop_white_space:
             image, cropped_box = auto_crop_whitespace(image)

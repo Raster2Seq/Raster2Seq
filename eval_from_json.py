@@ -220,8 +220,13 @@ def evaluate_floor(json_root, dataset_name, data_loader, device, output_dir, plo
                 window_doors = []
                 window_doors_types = []
 
-
-            with open(os.path.join(json_root, str(scene_ids[i]).zfill(6)) + '.json', 'r') as f:
+            if dataset_name == 'r2g':
+                pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(6)) + '.json'
+            else:
+                pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(5)) + '.json'
+            if not os.path.exists(pred_path):
+                continue
+            with open(pred_path, 'r') as f:
                 pred_data = json.load(f)
                 pred_corners = [np.around(np.array(x['segmentation'])).astype(np.int32).reshape(-1, 2) for x in pred_data]
                 pred_room_label_per_scene = np.array([x['category_id'] for x in pred_data])
@@ -246,7 +251,8 @@ def evaluate_floor(json_root, dataset_name, data_loader, device, output_dir, plo
                         window_doors_types.append(pred_class_id)
             
             if not semantic_rich:
-                pred_room_label_per_scene = len(room_polys) * [-1]
+                room_types = len(room_polys) * [-1]
+                
             
             if dataset_name == 'stru3d':
                 if not semantic_rich:

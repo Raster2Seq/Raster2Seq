@@ -1116,7 +1116,7 @@ def build_deforamble_transformer(args, pad_idx=None):
         dec_layer_type=args.dec_layer_type,
         pad_idx=pad_idx,
         use_anchor=args.use_anchor,
-        inject_cls_embed=args.inject_cls_embed,
+        inject_cls_embed=getattr(args, 'inject_cls_embed', False),
         )
 
 

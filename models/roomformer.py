@@ -229,6 +229,7 @@ class SetCriterion(nn.Module):
         src_logits = outputs['pred_logits']
         bs = src_logits.shape[0]
 
+        breakpoint()
         idx = self._get_src_permutation_idx(indices)
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
         target_classes = torch.full(src_logits.shape, self.num_classes-1,
