@@ -33,12 +33,6 @@
       <a href="#training">Training</a>
     </li>
     <li>
-      <a href="#semantically-rich-floorplan">Semantically-rich Floorplan</a>
-    </li>
-    <li>
-      <a href="#citation">Citation</a>
-    </li>
-    <li>
       <a href="#acknowledgment">Acknowledgment</a>
     </li>
   </ol>
