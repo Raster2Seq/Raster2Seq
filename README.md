@@ -1,7 +1,7 @@
 <div align="center">
 <h1 align="center">Raster2Seq: Polygon Sequence Generation for Floorplan Reconstruction</h1>
   <a href="https://hao-pt.github.io/" target="_blank">Hao&nbsp;Phung</a> &emsp;
-  <a href="https://quandao10.github.io/" target="_blank">Hadar&nbsp;Elor</a> &emsp;
+  <a href="https://www.hadarelor.com/" target="_blank">Hadar&nbsp;Elor</a> &emsp;
   <br>
   Cornell University
   <br> <br>
