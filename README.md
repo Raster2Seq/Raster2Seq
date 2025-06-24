@@ -82,11 +82,9 @@ Given a rasterized floorplan image (left), our approach converts it into vectori
 
 ## Data Preparation
 
-We use COCO-style format for all experiments. Data preprocessing are detailed in [data_preprocess](data_preprocess). Simply put, input data is RGB images and output is the 2D coordinate vectors of room regions which are represented as close-loop segmentation.
+We use COCO-style formatting for all experiments. Data preprocessing are detailed in [data_preprocess](data_preprocess). Simply put, input data is RGB images and output is the 2D coordinate vectors of room regions which are represented as close-loop segmentation.
 
-### Structured3D Dataset
-The 
-The RGB-D version can be found at [this link](https://polybox.ethz.ch/index.php/s/wKYWFsQOXHnkwcG).
+Data tree generally has this following structure:
 ```
 code_root/
 └── data/
@@ -98,12 +96,8 @@ code_root/
             ├── train.json
             ├── val.json
             └── test.json
+
 ```
-
-### CubiCasa5K Dataset
-
-### Raster2Graph Dataset
-
 
 ### Checkpoints
 
