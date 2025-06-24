@@ -152,7 +152,7 @@ Raster2Seq involves two training stages: (1) Pretraining without semantic room c
 | Raster2Graph  | `tools/pretrain_r2g.sh`    |
 
 
-### Finetuning
+### Finetuning:
 
 | Dataset       | Bash Script                  |
 |---------------|----------------------------------|
