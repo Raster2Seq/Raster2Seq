@@ -5,7 +5,7 @@
 #SBATCH --get-user-env                # retrieve the users login environment
 #SBATCH --mem=32G                  # server memory requested (per node)
 #SBATCH -t 960:00:00                  # Time limit (hh:mm:ss)
-#SBATCH --partition=elor         # Request partition
+#SBATCH --partition=elor,gpu         # Request partition
 #SBATCH --constraint="[a6000|a100|6000ada]"
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:2                # Type/number of GPUs needed
@@ -15,21 +15,20 @@
 
 export NCCL_P2P_LEVEL=NVL
 MASTER_PORT=25157
-NUM_GPUS=1
+NUM_GPUS=2
 
-WANDB_MODE=offline python -m torch.distributed.run --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT  main_ddp.py --dataset_name=r2g \
+WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT  main_ddp.py --dataset_name=r2g \
                --dataset_root=data/R2G_hr_dataset_processed_v1 \
                --num_queries=2800 \
-               --num_polys=50 \
+               --num_polys=70 \
                --semantic_classes=13 \
-               --job_name=r2g_queries56x50_sem13_debug \
+               --job_name=r2g_queries70x40_sem13 \
                --batch_size 6 \
                --input_channels=3 \
                --output_dir /share/elor/htp26/roomformer/output \
                --eval_every_epoch=20 \
                --ckpt_every_epoch=20 \
                --epochs 800 \
-               --debug
             #    --start_from_checkpoint output/s3d_sem_rgb_ddp_queries40x30/checkpoint0499.pth
                # --resume output/cubi_queries60x30_sem_debug_t3/checkpoint.pth
 
