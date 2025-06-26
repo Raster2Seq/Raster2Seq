@@ -52,7 +52,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         # print("Max #polys: ", max([len(gt_instances[i].gt_masks.polygons) for i in range(len(gt_instances))]))
         # print("Max #corners: ", max([gt_instances[i].gt_masks.polygons for i in range(gt_instances)]))
         if not poly2seq:
-            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], device)
             outputs = model(samples)
         else:
             for key in batched_extras.keys():
@@ -116,7 +116,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
         if not poly2seq:
-            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], device)
             outputs = model(samples)
         else:
             room_targets = batched_extras
@@ -293,7 +293,7 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
         if not poly2seq:
-            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], device)
             outputs = model(samples)
         else:
             for key in batched_extras.keys():
