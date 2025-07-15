@@ -58,6 +58,7 @@ def get_args_parser():
     parser.add_argument('--model_version', type=str, default='v1')
     parser.add_argument('--freeze_anchor', action='store_true')
     parser.add_argument('--inject_cls_embed', action='store_true')
+    parser.add_argument('--random_drop_rate', type=float, default=0.0, help='randomly drop some polygons during training')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')

@@ -24,7 +24,7 @@ def get_top_left(polygon):
 #     return [poly for _, _, poly in indexed_polygons]
 
 
-def sort_polygons(polygons, tolerance=20):
+def sort_polygons(polygons, tolerance=20, reverse=False):
     # Step 1: Get top-left corner and original index
     indexed = [(i, get_top_left(p), p) for i, p in enumerate(polygons)]
 
@@ -50,7 +50,10 @@ def sort_polygons(polygons, tolerance=20):
 
     # Step 5: Flatten and return indices
     sorted_indices = [idx for row in rows for idx, _, _ in row]
+    if reverse:
+        sorted_indices = sorted_indices[::-1]
     sorted_polygons = [polygons[idx] for idx in sorted_indices]
+
     return sorted_polygons, sorted_indices
 
 

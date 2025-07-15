@@ -28,15 +28,27 @@
 #                --device cpu \
 #                --image_size 256 \
 
-EXP=heat_r2g_256_best
+# EXP=heat_r2g_256_best
+# python eval_from_json.py --dataset_name=r2g \
+#                --dataset_root=data/R2G_hr_dataset_processed_v1 \
+#                --eval_set=test \
+#                --output_dir=slurm_scripts4/${EXP}/eval \
+#                --semantic_classes=-1 \
+#                --input_channels 3 \
+#                --input_json_dir /home/htp26/heat/results/npy_heat_r2g_best_256/test \
+#                --num_workers 0 \
+#                --device cpu \
+#                --image_size 256 \
+
+
+EXP=heat_r2g_512_best
 python eval_from_json.py --dataset_name=r2g \
                --dataset_root=data/R2G_hr_dataset_processed_v1 \
                --eval_set=test \
                --output_dir=slurm_scripts4/${EXP}/eval \
                --semantic_classes=-1 \
                --input_channels 3 \
-               --input_json_dir /home/htp26/heat/results/npy_heat_r2g_best_256/test \
+               --input_json_dir /home/htp26/heat/results/npy_heat_r2g_best_512/test \
                --num_workers 0 \
                --device cpu \
-               --image_size 256 \
-
+               --image_size 512 \

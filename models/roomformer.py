@@ -385,7 +385,7 @@ def build(args, train=True):
         with_poly_refine=args.with_poly_refine,
         masked_attn=args.masked_attn,
         semantic_classes=args.semantic_classes,
-        patch_size=[1, 2][args.image_size == 512], # 1 for 256x256, 2 for 512x512
+        patch_size=1, # [1, 2][args.image_size == 512], # 1 for 256x256, 2 for 512x512
     )
 
     if not train:

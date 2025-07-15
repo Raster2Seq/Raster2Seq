@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J s3d_flip              # Job name
+#SBATCH -J s3d_drop              # Job name
 #SBATCH -o watch_folder/%x_%j.out     # output file (%j expands to jobID)
 #SBATCH -N 1                          # Total number of nodes requested
 #SBATCH --get-user-env                # retrieve the users login environment
@@ -38,13 +38,13 @@
 #             # --set_cost_coords=20 \
 #             # --resume=/share/kuleshov/htp26/roomformer/output/stru3d_bs10_org_ddp/checkpoint.pth
 
-MASTER_PORT=13475
+MASTER_PORT=13575
 CLS_COEFF=1
 COO_COEFF=20
 SEQ_LEN=512
 NUM_BINS=32
-CONVERTER=v3_flipped
-JOB=s3d_bw_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_freezedanchor_deccatsrc_converter${CONVERTER}_t1
+CONVERTER=v3
+JOB=s3d_bw_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_converter${CONVERTER}_drop0.1_t1
 
 WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
@@ -73,6 +73,7 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --dec_attn_concat_src \
                --converter_version ${CONVERTER} \
                --use_anchor \
+               --random_drop_rate 0.1 \
                # --freeze_anchor \
                # --pre_decoder_pos_embed \
                # --wd_only \

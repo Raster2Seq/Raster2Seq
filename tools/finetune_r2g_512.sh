@@ -17,12 +17,13 @@ export NCCL_P2P_LEVEL=NVL
 MASTER_PORT=24160
 NUM_GPUS=2
 
+EXP=r2g_res512_queries50x56_sem13_fromckpt
 WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT  main_ddp.py --dataset_name=r2g \
                --dataset_root=data/R2G_hr_dataset_processed_v1 \
                --num_queries=2800 \
                --num_polys=50 \
                --semantic_classes=13 \
-               --job_name=r2g_res512_queries50x56_sem13_patch2_fromckpt \
+               --job_name=${EXP} \
                --batch_size 6 \
                --input_channels=3 \
                --output_dir /share/elor/htp26/roomformer/output \
@@ -31,8 +32,8 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=${NUM_GPUS} -
                --epochs 800 \
                --image_size 512 \
                --num_workers 0 \
+               --resume output/${EXP}/checkpoint.pth \
                --start_from_checkpoint output/r2g_queries56x50_sem13/checkpoint0799.pth \
-               --resume output/r2g_res512_queries50x56_sem13_patch2_fromckpt/checkpoint.pth
             #    --dec_n_points 20 --enc_n_points 20 --enc_layers 1 \
 
 # CLS_COEFF=5

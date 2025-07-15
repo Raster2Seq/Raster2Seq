@@ -42,7 +42,7 @@ WD_INDEX = {
 
 class MultiPoly(Dataset):
     def __init__(self, img_folder, ann_file, transforms, semantic_classes, dataset_name='', image_norm=False, poly2seq=False, 
-                 converter_version='v1', **kwargs):
+                 converter_version='v1', random_drop_rate=0., **kwargs):
         super(MultiPoly, self).__init__()
 
         self.root = img_folder
@@ -62,9 +62,10 @@ class MultiPoly(Dataset):
             self.prepare = ConvertToCocoDictImproved(self.root, self._transforms, image_norm, poly2seq, 
                                             semantic_classes=semantic_classes, 
                                             **kwargs)
-        elif converter_version == 'v3':
+        elif converter_version in ['v3', 'v3_flipped']:
             self.prepare = ConvertToCocoDictWithOrder_plus(self.root, self._transforms, image_norm, poly2seq, 
-                                            semantic_classes=semantic_classes, 
+                                            semantic_classes=semantic_classes, order_type=['l2r', 'r2l'][converter_version == 'v3_flipped'],
+                                            random_drop_rate=random_drop_rate,
                                             **kwargs)
         else:
             self.prepare = ConvertToCocoDictWithOrder(self.root, self._transforms, image_norm, poly2seq, 
@@ -449,9 +450,11 @@ class ConvertToCocoDictWithOrder(ConvertToCocoDict):
 
 class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
     def __init__(self, root, augmentations, image_norm, poly2seq=False, semantic_classes=-1, add_cls_token=False, per_token_class=False, 
-                 mask_format='polygon', dataset_name='stru3d', **kwargs):
+                 mask_format='polygon', dataset_name='stru3d', order_type='l2r', random_drop_rate=0., **kwargs):
         super().__init__(root, augmentations, image_norm, poly2seq, semantic_classes, add_cls_token, per_token_class, mask_format, **kwargs)
         self.dataset_name = dataset_name
+        self.order_type = order_type # l2r, r2l
+        self.random_drop_rate = random_drop_rate
         self.tokenizer = DiscreteTokenizerV2(add_cls=add_cls_token, **kwargs)
 
     def _get_bilinear_interpolation_coeffs(self, polygons, polygons_label, add_cls_token=False, per_token_class=False):
@@ -459,12 +462,18 @@ class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
         room_indices = [poly_idx for poly_idx, poly_label in enumerate(polygons_label) if poly_label not in WD_INDEX[self.dataset_name]]
         wd_indices = [poly_idx for poly_idx, poly_label in enumerate(polygons_label) if poly_label in WD_INDEX[self.dataset_name]]
 
-        _, room_sorted_indices = sort_polygons([polygons[poly_idx] for poly_idx in room_indices])
-        _, wd_sorted_indices = sort_polygons([polygons[poly_idx] for poly_idx in wd_indices])
+        _, room_sorted_indices = sort_polygons([polygons[poly_idx] for poly_idx in room_indices], reverse=(self.order_type == 'r2l'))
+        _, wd_sorted_indices = sort_polygons([polygons[poly_idx] for poly_idx in wd_indices], reverse=(self.order_type == 'r2l'))
         room_indices = [room_indices[_idx] for _idx in room_sorted_indices]
         wd_indices = [wd_indices[_idx] for _idx in wd_sorted_indices]
 
+        #### NEW ####
         combined_indices = room_indices + wd_indices # room first
+        if self.random_drop_rate > 0 and len(combined_indices) > 2:
+            keep_indices = np.where(np.random.rand(len(combined_indices)) >= self.random_drop_rate)[0].tolist()
+            combined_indices = [combined_indices[i] for i in keep_indices]
+        #### NEW ####
+
         polygons = [polygons[i] for i in combined_indices]
         polygons_label = [polygons_label[i] for i in combined_indices]
 
@@ -731,6 +740,7 @@ def build(image_set, args):
                             per_token_class=args.per_token_sem_loss,
                             mask_format=getattr(args, 'mask_format', 'polygon'),
                             converter_version=getattr(args, 'converter_version', 'v1'),
+                            random_drop_rate=getattr(args, 'random_drop_rate', 0.),
                             )
     
     return dataset
