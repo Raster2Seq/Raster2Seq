@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J s3d_org              # Job name
+#SBATCH -J s3d_org_drop              # Job name
 #SBATCH -o watch_folder/%x_%j.out     # output file (%j expands to jobID)
 #SBATCH -N 1                          # Total number of nodes requested
 #SBATCH --get-user-env                # retrieve the users login environment
@@ -28,7 +28,7 @@ COO_COEFF=20
 SEQ_LEN=512
 NUM_BINS=32
 CONVERTER=v3
-JOB=s3d_projection_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_converter${CONVERTER}_t1
+JOB=s3d_projection_ddp_poly2seq_l${SEQ_LEN}_bin${NUM_BINS}_nosem_bs32_coo${COO_COEFF}_cls${CLS_COEFF}_anchor_deccatsrc_converter${CONVERTER}_drop0.2_t1
 
 WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \
                --dataset_root=data/stru3d \
@@ -47,7 +47,7 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --lr 2e-4 \
                --lr_backbone 2e-5 \
                --label_smoothing 0.0 \
-               --epochs 1400 \
+               --epochs 500 \
                --lr_drop '1950' \
                --cls_loss_coef ${CLS_COEFF} \
                --coords_loss_coef ${COO_COEFF} \
@@ -57,6 +57,7 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=1 --master_po
                --dec_attn_concat_src \
                --use_anchor \
                --converter_version ${CONVERTER} \
+               --random_drop_rate 0.2 \
             #    --pre_decoder_pos_embed \
             #    --increase_cls_loss_coef_epoch_ratio 0.6 --increase_cls_loss_coef 5. \
                # --debug \

@@ -485,7 +485,7 @@ class SetCriterion(nn.Module):
         2) we supervise each pair of matched ground-truth / prediction (supervise class and coords)
     """
     def __init__(self, num_classes, semantic_classes, matcher, weight_dict, losses, label_smoothing=0.,
-                 per_token_sem_loss=False):
+                 per_token_sem_loss=False, ):
         """ Create the criterion.
         Parameters:
             num_classes: number of classes for corner validity (binary)
@@ -503,7 +503,8 @@ class SetCriterion(nn.Module):
         self.label_smoothing = label_smoothing
         self.per_token_sem_loss = per_token_sem_loss
 
-        # self.raster_loss = MaskRasterizationLoss(None)
+        if 'loss_raster' in self.weight_dict:
+            self.raster_loss = MaskRasterizationLoss(None)
     
     def _update_ce_coeff(self, loss_ce_coeff):
         self.weight_dict['loss_ce'] = loss_ce_coeff
@@ -565,6 +566,42 @@ class SetCriterion(nn.Module):
         losses = {'cardinality_error': 0.}
         return losses
 
+    def _extract_polygons(self, sequence, token_labels):
+        # sequence: [B, N, 2], token_labels: [B, N]
+        B, N = token_labels.shape
+        polygons = []
+        
+        for b in range(B):
+            labels = token_labels[b]  # [N]
+            coords = sequence[b]      # [N, 2]
+            
+            # Find separator and EOS positions
+            sep_eos_mask = (labels == 1) | (labels == 2)
+            split_indices = torch.nonzero(sep_eos_mask, as_tuple=False).squeeze(-1)
+            
+            # Handle empty case
+            if len(split_indices) == 0:
+                # No separators found, treat entire sequence as one polygon
+                corner_mask = (labels == 0)
+                if corner_mask.any():
+                    polygons.append(coords[corner_mask])
+                continue
+            
+            # Create start and end indices
+            device = labels.device
+            starts = torch.cat([torch.tensor([0], device=device), split_indices[:-1] + 1])
+            ends = split_indices
+            
+            # Extract polygons between separators
+            for s, e in zip(starts, ends):
+                if s < e:  # Valid range
+                    segment_labels = labels[s:e]
+                    segment_coords = coords[s:e]
+                    corner_mask = (segment_labels == 0)
+                    if corner_mask.any():
+                        polygons.append(segment_coords[corner_mask])
+        
+        return polygons
 
     def loss_polys(self, outputs, targets, indices):
         """Compute the losses related to the polygons:
@@ -590,10 +627,12 @@ class SetCriterion(nn.Module):
         losses = {}
         losses['loss_coords'] = loss_coords
 
-        # # omit the rasterization loss for semantically-rich floorplan
-        # if self.semantic_classes == -1:
-        #     loss_raster_mask = self.raster_loss(src_polys.flatten(1,2), target_polys, target_len)
-        #     losses['loss_raster'] = loss_raster_mask
+        # omit the rasterization loss for semantically-rich floorplan
+        if self.weight_dict.get('loss_raster', 0) > 0:
+            pred_poly_list = self._extract_polygons(src_poly, token_labels)
+            target_poly_list = self._extract_polygons(target_polys, token_labels)
+            loss_raster_mask = self.raster_loss(pred_poly_list, target_poly_list, [len(x) for x in target_poly_list],)
+            losses['loss_raster'] = loss_raster_mask
 
         return losses
 
@@ -729,8 +768,9 @@ def build(args, train=True, tokenizer=None):
                     'loss_ce': args.cls_loss_coef, 
                     'loss_ce_room': args.room_cls_loss_coef,
                     'loss_coords': args.coords_loss_coef,
-                    # 'loss_raster': args.raster_loss_coef
                     }
+    if args.raster_loss_coef > 0:
+        weight_dict['loss_raster'] = args.raster_loss_coef
     weight_dict['loss_dir'] = 1
 
     enc_weight_dict = {}

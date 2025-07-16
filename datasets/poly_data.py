@@ -471,7 +471,8 @@ class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
         combined_indices = room_indices + wd_indices # room first
         if self.random_drop_rate > 0 and len(combined_indices) > 2:
             keep_indices = np.where(np.random.rand(len(combined_indices)) >= self.random_drop_rate)[0].tolist()
-            combined_indices = [combined_indices[i] for i in keep_indices]
+            if len(keep_indices) > 0:  # Only apply drop if we have something left
+                combined_indices = [combined_indices[i] for i in keep_indices]
         #### NEW ####
 
         polygons = [polygons[i] for i in combined_indices]

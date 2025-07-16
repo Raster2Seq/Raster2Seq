@@ -8,12 +8,13 @@ from pathlib import Path
 import copy
 from tqdm import trange
 
+from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 import util.misc as utils
 from datasets import build_dataset
-from engine import evaluate_floor, evaluate_floor_v2, generate
+from engine import evaluate_floor, evaluate_floor_v2, generate, generate_v2
 from models import build_model
 
 
@@ -200,20 +201,39 @@ def main(args):
         param.requires_grad = False
 
     if args.measure_time:
-        images = torch.rand(args.batch_size, 3, args.image_size, args.image_size).to(device)
+        # images = torch.rand(args.batch_size, 3, args.image_size, args.image_size).to(device)
+        images = torch.from_numpy(np.array(Image.open("data/coco_s3d_bw/val/03006.png").convert('RGB'))).permute(2, 0, 1).unsqueeze(0).to(device) / 255.0
         # INIT LOGGERS
         starter, ender = torch.cuda.Event(
             enable_timing=True), torch.cuda.Event(enable_timing=True)
         repetitions = 50
         timings = np.zeros((repetitions, 1))
+        if args.poly2seq:
+            model = torch.compile(model) # compile model is not compatible with RoomFormer
         # GPU-WARM-UP
         for _ in trange(10, desc="GPU-WARM-UP"):
-            _ = generate(model, images, semantic_rich=args.semantic_classes>0, use_cache=True)
+            if not args.poly2seq:
+                _ = model(images)
+            else:
+                _ = model.forward_inference(images)
         # MEASURE PERFORMANCE
         with torch.no_grad():
             for rep in trange(repetitions):
                 starter.record()
-                outputs = generate(model, images, semantic_rich=args.semantic_classes>0, use_cache=not args.disable_sampling_cache)
+                if not args.poly2seq:
+                    outputs = generate(model,
+                            images,
+                            semantic_rich=args.semantic_classes>0, 
+                            drop_wd=False,
+                            )
+                else:
+                    outputs = generate_v2(model,
+                            images,
+                            semantic_rich=args.semantic_classes>0, 
+                            use_cache=True,
+                            per_token_sem_loss=args.per_token_sem_loss,
+                            drop_wd=False,
+                            )
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()

@@ -9,12 +9,12 @@
 #                --num_polys=20 \
 #                --semantic_classes=-1 
 
-EXP=s3d_bw_ddp_poly2seq_l512_bin32_nosem_bs32_coo20_cls1_freezedanchor_deccatsrc_converterv1_t1
+EXP=s3d_bw_ddp_poly2seq_l512_bin32_nosem_bs32_coo20_cls1_anchor_deccatsrc_converterv3_flipped_t1
 python eval.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
                --eval_set=test \
-               --checkpoint=output/${EXP}/checkpoint0499.pth \
-               --output_dir=slurm_scripts/${EXP}_epoch0499 \
+               --checkpoint=output/${EXP}/checkpoint1349.pth \
+               --output_dir=slurm_scripts/${EXP}_epoch1349 \
                --num_queries=1200 \
                --num_polys=30 \
                --semantic_classes=-1 \
@@ -26,7 +26,7 @@ python eval.py --dataset_name=stru3d \
                --dec_attn_concat_src \
                --ema4eval \
                --use_anchor \
-               --converter_version v1
+               --converter_version v3_flipped
                # --pre_decoder_pos_embed \
                # --dec_layer_type='v5' \
             # #    --batch_size 1 \

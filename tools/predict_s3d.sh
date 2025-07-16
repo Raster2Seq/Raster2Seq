@@ -50,16 +50,16 @@ FOLDER=test
 #             #    --pre_decoder_pos_embed \
 #                # --debug \
 
-EXP=s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_nopolyrefine_predecPE_ema4eval_v1/
+# EXP=s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_nopolyrefine_predecPE_ema4eval_v1/
 # EXP=s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_nopolyrefine_predecPE_deccatsrc_v1
 # EXP=s3d_bw_ddp_poly2seq_l512_nosem_bs32_coo20_cls1_anchor_deccatsrc_correct_t1
-# EXP=s3d_bw_ddp_poly2seq_l512_bin32_nosem_bs32_coo20_cls1_anchor_deccatsrc_converterv3_t1
+EXP=s3d_bw_ddp_poly2seq_l512_bin32_nosem_bs32_coo20_cls1_anchor_deccatsrc_converterv3_t1
 
 python predict.py \
                --dataset_name=stru3d \
                --dataset_root=${DATA}/${FOLDER} \
                --checkpoint=/home/htp26/RoomFormerTest/output/${EXP}/checkpoint1349.pth \
-               --output_dir=s3d_${FOLDER}_preds_abl \
+               --output_dir=s3d_${FOLDER}_speed \
                --semantic_classes=-1 \
                --input_channels 3 \
                --poly2seq \

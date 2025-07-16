@@ -144,10 +144,12 @@ class MaskRasterizationLoss(nn.Module):
 
         target_masks = []
         pred_masks = []
-        for i in range(targets.shape[0]):
+        for i in range(len(targets)):
 
-            tgt_poly_single = targets[i, :target_len[i]].view(-1, 2).unsqueeze(0)
-            pred_poly_single = preds[i, :target_len[i]].view(-1, 2).unsqueeze(0)
+            # tgt_poly_single = targets[i, :target_len[i]].view(-1, 2).unsqueeze(0)
+            # pred_poly_single = preds[i, :target_len[i]].view(-1, 2).unsqueeze(0)
+            tgt_poly_single = targets[i][:target_len[i]].view(-1, 2).unsqueeze(0)
+            pred_poly_single = preds[i][:target_len[i]].view(-1, 2).unsqueeze(0)
 
             tgt_mask = self.gt_rasterizer(tgt_poly_single * float(resolution[1].item()), resolution[1].item(), resolution[0].item(), 1.0)
             tgt_mask = (tgt_mask + 1)/2

@@ -278,7 +278,24 @@ def main(args):
     else:
         door_window_index = []
 
+    if args.measure_time:
+        images = torch.rand(args.batch_size, 3, args.image_size, args.image_size).to(device)
+        if args.poly2seq:
+            model = torch.compile(model) # compile model is not compatible with RoomFormer
+        # GPU-WARM-UP
+        for _ in trange(10, desc="GPU-WARM-UP"):
+            if not args.poly2seq:
+                _ = model(images)
+            else:
+                _ = model.forward_inference(images)
+
+    # INIT LOGGERS
+    starter, ender = torch.cuda.Event(
+        enable_timing=True), torch.cuda.Event(enable_timing=True)
+
+    total_time = 0.
     for batch_images in tqdm(data_loader_eval):
+        starter.record()
         x = batch_images['image'].to(device)
         filenames = batch_images['file_name']
         if not args.poly2seq:
@@ -295,6 +312,10 @@ def main(args):
                     per_token_sem_loss=args.per_token_sem_loss,
                     drop_wd=args.drop_wd,
                     )
+        ender.record()
+        torch.cuda.synchronize()
+        total_time += starter.elapsed_time(ender) / len(data_loader_eval)
+
         pred_rooms = outputs['room']
         pred_labels = outputs['labels']
 
@@ -365,6 +386,7 @@ def main(args):
                 with open(json_path, 'w') as json_file:
                     json.dump(output_json, json_file)
 
+    print(f"Total inference time: {total_time:.2f} ms")
 
 
 if __name__ == '__main__':

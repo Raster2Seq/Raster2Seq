@@ -135,7 +135,7 @@ def get_args_parser():
     parser.add_argument('--cls_loss_coef', default=2, type=float)
     parser.add_argument('--room_cls_loss_coef', default=0.2, type=float)
     parser.add_argument('--coords_loss_coef', default=5, type=float)
-    parser.add_argument('--raster_loss_coef', default=1, type=float)
+    parser.add_argument('--raster_loss_coef', default=0, type=float)
 
     # dataset parameters
     parser.add_argument('--dataset_name', default='stru3d')
