@@ -30,7 +30,7 @@ from models import build_model
 
 
 class ImageDataset(Dataset):
-    def __init__(self, image_paths, transform=None):
+    def __init__(self, image_paths, num_image_channels=3, transform=None):
         """
         Args:
             image_paths (list): List of image file paths.
@@ -38,6 +38,7 @@ class ImageDataset(Dataset):
         """
         self.image_paths = image_paths
         self.transform = transform
+        self.num_image_channels = num_image_channels
 
     def __len__(self):
         return len(self.image_paths)
@@ -58,7 +59,10 @@ class ImageDataset(Dataset):
             torch.Tensor: Transformed image tensor.
         """
         img_path = self.image_paths[idx]
-        image = np.array(Image.open(img_path).convert("RGB"))  # Ensure 3-channel RGB
+        if self.num_image_channels == 3:
+            image = np.array(Image.open(img_path).convert("RGB"))  # Ensure 3-channel RGB
+        else:
+            image = np.array(Image.open(img_path))  # Ensure 1-channel RGB
         if self.transform:
             aug_input = T.AugInput(image)
             _ = self.transform(aug_input)
@@ -93,6 +97,7 @@ def get_args_parser():
     parser.add_argument('--image_scale', type=int, default=2)
     parser.add_argument('--one_color', action='store_true')
     parser.add_argument('--crop_white_space', action='store_true')
+    parser.add_argument('--save_anchors', action='store_true')
 
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
@@ -216,7 +221,7 @@ def main(args):
     data_transform = T.AugmentationList([
         ResizeAndPad((args.image_size, args.image_size), pad_value=255),
     ])
-    dataset_eval = ImageDataset(image_paths, transform=data_transform)
+    dataset_eval = ImageDataset(image_paths, num_image_channels=args.input_channels, transform=data_transform)
 
     tokenizer = None
     if args.poly2seq:
@@ -311,6 +316,7 @@ def main(args):
                     use_cache=True,
                     per_token_sem_loss=args.per_token_sem_loss,
                     drop_wd=args.drop_wd,
+                    return_anchors=args.save_anchors,
                     )
         ender.record()
         torch.cuda.synchronize()
@@ -371,20 +377,37 @@ def main(args):
 
             if args.save_pred:
                 # Save room_polys as JSON
-                json_path = os.path.join(save_dir, 'jsons', '{}_pred.json'.format(fn))
+                json_path = os.path.join(save_dir, 'jsons', '{}.json'.format(fn))
+                npy_path = os.path.join(save_dir, 'npy', '{}.npy'.format(fn))
                 os.makedirs(os.path.dirname(json_path), exist_ok=True)
+                os.makedirs(os.path.dirname(npy_path), exist_ok=True)
                 polys_list = [poly.astype(float).tolist() for poly in pred_rm]
                 types_list = pred_cls
                 # else:
                 #     types_list = [-1] * len(polys_list)
                 
-                output_json = [{'image_id': fn, 
-                                'segmentation': polys_list[instance_id],
-                                'category_id': int(types_list[instance_id]),
-                                'id': instance_id,
-                                } for instance_id in range(len(polys_list))]
+                if not args.save_anchors:
+                    output_json = [{'image_id': fn, 
+                                    'segmentation': polys_list[instance_id],
+                                    'category_id': int(types_list[instance_id]),
+                                    'id': instance_id,
+                                    } for instance_id in range(len(polys_list))]
+                else:
+                    image_anchors = outputs['anchors'][j]
+                    output_json = [{'image_id': fn, 
+                                    'segmentation': polys_list[instance_id],
+                                    'category_id': int(types_list[instance_id]),
+                                    'id': instance_id,
+                                    'anchors': image_anchors[instance_id],
+                                    } for instance_id in range(len(polys_list))]
+                
                 with open(json_path, 'w') as json_file:
                     json.dump(output_json, json_file)
+
+                polys_list = [np.array(poly).reshape(-1,2) for poly in polys_list]
+                np.save(npy_path, np.array(polys_list, dtype=object))
+
+                
 
     print(f"Total inference time: {total_time:.2f} ms")
 

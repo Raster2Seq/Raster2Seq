@@ -16,14 +16,26 @@
 #             #    --debug \
 
 
-EXP=cc5k_heat_256_ckpt
+# EXP=cc5k_heat_256_ckpt
+# python eval_from_json.py --dataset_name=cubicasa \
+#                --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
+#                --eval_set=test \
+#                --output_dir=slurm_scripts4/${EXP}/eval \
+#                --semantic_classes=-1 \
+#                --input_channels 3 \
+#                --input_json_dir /home/htp26/heat/results/npy_heat_cc5k_256/test \
+#                --num_workers 0 \
+#                --device cpu \
+#                --image_size 256 \
+
+EXP=cc5k_frinet_nowd_256_ckpt
 python eval_from_json.py --dataset_name=cubicasa \
                --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
                --eval_set=test \
                --output_dir=slurm_scripts4/${EXP}/eval \
                --semantic_classes=-1 \
                --input_channels 3 \
-               --input_json_dir /home/htp26/heat/results/npy_heat_cc5k_256/test \
+               --input_json_dir /home/htp26/FRI-Net/eval_results/cc5k_frinet_nowd_ckpt_last/json \
                --num_workers 0 \
                --device cpu \
                --image_size 256 \

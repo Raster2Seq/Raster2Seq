@@ -9,7 +9,7 @@
 #                --num_polys=20 \
 #                --semantic_classes=-1 
 
-EXP=s3d_bw_ddp_poly2seq_l512_bin32_nosem_bs32_coo20_cls1_anchor_deccatsrc_converterv3_flipped_t1
+EXP=s3d_bw_ddp_poly2seq_l512_bin32_nosem_bs32_coo20_cls1_raster1_anchor_deccatsrc_converterv3_t1
 python eval.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
                --eval_set=test \
@@ -25,8 +25,8 @@ python eval.py --dataset_name=stru3d \
                --disable_poly_refine \
                --dec_attn_concat_src \
                --ema4eval \
-               --use_anchor \
-               --converter_version v3_flipped
+               --use_anchor
+               # --converter_version v3_flipped
                # --pre_decoder_pos_embed \
                # --dec_layer_type='v5' \
             # #    --batch_size 1 \

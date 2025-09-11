@@ -43,6 +43,7 @@ def get_args_parser():
 
     # new
     parser.add_argument('--input_json_dir', type=str)
+    parser.add_argument('--input_file_type', default='json')
 
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--input_channels', default=1, type=int)
@@ -152,7 +153,7 @@ def get_args_parser():
 
 
 def evaluate_floor(json_root, dataset_name, data_loader, device, output_dir, plot_pred=True, plot_density=True, plot_gt=True, semantic_rich=False,
-                   save_pred=False, iou_thres=0.5):
+                   save_pred=False, iou_thres=0.5, args=None):
     if dataset_name == 'stru3d':
         door_window_index = [16, 17]
     elif dataset_name == 'cubicasa':
@@ -221,19 +222,26 @@ def evaluate_floor(json_root, dataset_name, data_loader, device, output_dir, plo
                 window_doors_types = []
 
             if dataset_name == 'r2g':
-                pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(6)) + '.json'
+                pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(6)) + f'.{args.input_file_type}'
             else:
-                pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(5)) + '.json'
+                pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(5)) + f'.{args.input_file_type}'
             if not os.path.exists(pred_path):
                 continue
-            with open(pred_path, 'r') as f:
-                pred_data = json.load(f)
-                pred_corners = [np.around(np.array(x['segmentation'])).astype(np.int32).reshape(-1, 2) for x in pred_data]
-                pred_room_label_per_scene = np.array([x['category_id'] for x in pred_data])
+            if args.input_file_type == 'npy':
+                data = np.load(pred_path, allow_pickle=True)
+                pred_corners = [np.around(np.array(x, dtype=np.int32)).reshape(-1,2) for x in data]
+                pred_room_label_per_scene = [-1] * len(pred_corners)
+            else:
+                with open(pred_path, 'r') as f:
+                    pred_data = json.load(f)
+                    pred_corners = [np.around(np.array(x['segmentation'])).astype(np.int32).reshape(-1, 2) for x in pred_data]
+                    pred_room_label_per_scene = np.array([x['category_id'] for x in pred_data])
 
             # process per room
             for j in range(len(pred_corners)):
                 corners = pred_corners[j]
+                if np.all(corners[0] == corners[-1]):
+                    corners = corners[:-1]
                 pred_class_id = pred_room_label_per_scene[j]
                 if not semantic_rich:
                     # only regular rooms
@@ -355,7 +363,6 @@ def evaluate_floor(json_root, dataset_name, data_loader, device, output_dir, plo
                 concatenated_map = concat_floorplan_maps(gt_room_map, pred_room_map, plot_statistics)
                 cv2.imwrite(os.path.join(output_dir, '{}_pred_room_map.png'.format(scene_ids[i])), concatenated_map)
 
-
     for k in quant_result_dict.keys():
         quant_result_dict[k] /= float(scene_counter)
     quant_result_dict = compute_f1(quant_result_dict, metric_category)
@@ -418,6 +425,7 @@ def main(args):
                 semantic_rich=(args.semantic_classes>0 and not args.disable_sem_rich),
                 save_pred=args.save_pred,
                 iou_thres=args.iou_thres,
+                args=args
                 )
 
 

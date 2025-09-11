@@ -439,7 +439,8 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(
-            model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm, args.poly2seq, ema_model=ema)
+            model, criterion, data_loader_train, optimizer, device, epoch, args.clip_max_norm, args.poly2seq, ema_model=ema,
+            drop_rate=args.random_drop_rate)
         if lr_scheduler is not None:
             lr_scheduler.step()
 

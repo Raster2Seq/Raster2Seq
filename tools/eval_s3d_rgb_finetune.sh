@@ -3,7 +3,7 @@
 EXP=s3d_bw_ddp_queries40x30
 python eval.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
-               --eval_set=val \
+               --eval_set=test \
                --checkpoint=output/${EXP}/checkpoint0499.pth \
                --output_dir=slurm_scripts/${EXP}/ \
                --num_queries=1200 \

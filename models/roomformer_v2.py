@@ -289,7 +289,7 @@ class RoomFormerV2(nn.Module):
             # kv cache for faster inference
             max_src_len = sum([x.size(2) * x.size(3) for x in srcs]) # 1360
             self._setup_caches(bs, max_src_len)
-
+        
         (prev_output_token_11, prev_output_token_12, prev_output_token_21, prev_output_token_22,
             delta_x1, delta_x2, delta_y1, delta_y2,
             gen_out, input_polygon_labels) = self._prepare_sequences(bs)
@@ -337,7 +337,7 @@ class RoomFormerV2(nn.Module):
                                                                                     enc_cache=None, decode_token_pos=None)
                 output_hs_list.append(hs[:, i:i+1])
             else:
-                decode_token_pos = torch.tensor([i], device=device, dtype=torch.int)
+                decode_token_pos = torch.tensor([i], device=device, dtype=torch.long)
                 hs, _, reg_output, cls_output, enc_cache = self.transformer(srcs, masks, pos, query_embeds, tgt_embeds, None, 
                                                                                     seq_kwargs, force_simple_returns=True, return_enc_cache=use_cache, 
                                                                                     enc_cache=enc_cache, decode_token_pos=decode_token_pos)
@@ -422,7 +422,8 @@ class RoomFormerV2(nn.Module):
             hs = torch.cat(output_hs_list, dim=1)
             outputs_room_class = self.room_class_embed(hs)
             out = {'pred_logits': cls_output, 'pred_coords': reg_output, 
-                   'pred_room_logits': outputs_room_class, 'gen_out': gen_out}
+                   'pred_room_logits': outputs_room_class, 'gen_out': gen_out, 
+                   'anchors': query_embeds.detach()}
 
         return out
 

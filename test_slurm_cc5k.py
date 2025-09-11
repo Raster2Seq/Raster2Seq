@@ -7,12 +7,12 @@ import pandas as pd
 
 
 ###### ARGS
-exp = "cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_convertv3_fromnorder499_t1/"
+exp = "cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_raster1_anchor_deccatsrc_smoothing_cls12_convertv3_fromorder499_t1"
 device = "0"
 num_classes = 12
 
 config = pd.DataFrame({
-    "epochs": ['0449', '0799'],
+    "epochs": ['499'],
 })
 print(config)
 

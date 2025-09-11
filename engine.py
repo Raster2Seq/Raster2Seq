@@ -35,7 +35,7 @@ opts = options.parse()
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, max_norm: float = 0, poly2seq: bool = False, ema_model=None):
+                    device: torch.device, epoch: int, max_norm: float = 0, poly2seq: bool = False, ema_model=None, **kwargs):
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -52,7 +52,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         # print("Max #polys: ", max([len(gt_instances[i].gt_masks.polygons) for i in range(len(gt_instances))]))
         # print("Max #corners: ", max([gt_instances[i].gt_masks.polygons for i in range(gt_instances)]))
         if not poly2seq:
-            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], drop_rate=kwargs.get("drop_rate", 0.), device=device)
             outputs = model(samples)
         else:
             for key in batched_extras.keys():
@@ -116,7 +116,7 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
         if not poly2seq:
-            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], drop_rate=0., device=device)
             outputs = model(samples)
         else:
             room_targets = batched_extras
@@ -208,6 +208,9 @@ def evaluate(model, criterion, dataset_name, data_loader, device, plot_density=F
                         elif len(corners)==2:
                             window_doors.append(corners)
                             window_doors_types.append(pred_room_label_per_scene[j])
+
+            if not semantic_rich:
+                pred_room_label_per_scene = len(room_polys) * [-1]
                     
             if dataset_name == 'stru3d':
                 if not semantic_rich:
@@ -293,7 +296,7 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
         scene_ids = [x["image_id"]for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
         if not poly2seq:
-            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], device)
+            room_targets = pad_gt_polys(gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], drop_rate=0., device=device)
             outputs = model(samples)
         else:
             for key in batched_extras.keys():
@@ -712,7 +715,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
 
             if save_pred:
                 # Save room_polys as JSON
-                json_path = os.path.join(output_dir, 'jsons', '{}_pred.json'.format(str(scene_ids[i]).zfill(5)))
+                json_path = os.path.join(output_dir, 'jsons', '{}.json'.format(str(scene_ids[i]).zfill(5)))
                 os.makedirs(os.path.dirname(json_path), exist_ok=True)
                 polys_list = [poly.astype(float).tolist() for poly in room_polys]
                 if semantic_rich:
@@ -730,7 +733,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
                     json.dump(output_json, json_file)
 
 
-                json_result_path = os.path.join(output_dir, 'result_jsons', '{}_pred.json'.format(str(scene_ids[i]).zfill(5)))
+                json_result_path = os.path.join(output_dir, 'result_jsons', '{}.json'.format(str(scene_ids[i]).zfill(5)))
                 new_quant_result_dict_scene = compute_f1(copy.deepcopy(quant_result_dict_scene), metric_category)
                 os.makedirs(os.path.dirname(json_result_path), exist_ok=True)
                 with open(json_result_path, 'w') as json_file:
@@ -1114,6 +1117,9 @@ def generate(model, samples, semantic_rich=False, drop_wd=False):
             window_doors = []
             window_doors_types = []
             pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
+        else:
+            window_doors = None
+            room_types = None
 
 
         # process per room
@@ -1157,13 +1163,17 @@ def generate(model, samples, semantic_rich=False, drop_wd=False):
     }
 
 
-def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_sem_loss=False, drop_wd=False):
+def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_sem_loss=False, drop_wd=False, return_anchors=False):
     model.eval()
     outputs = model.forward_inference(samples, use_cache)
     pred_corners = outputs['gen_out']
 
     bs = outputs['pred_logits'].shape[0]
     image_size = samples[0].size(2)
+    anchors = outputs.get('anchors', None)
+    if anchors is not None:
+        anchors = (torch.sigmoid(anchors) * image_size).cpu().numpy().astype(np.int32)
+        anchors = anchors.tolist()
 
     if 'pred_room_logits' in outputs:
         prob = torch.nn.functional.softmax(outputs['pred_room_logits'], -1)
@@ -1171,6 +1181,7 @@ def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_s
     
     outputs = []
     output_classes = []
+    output_anchors = []
 
     # process per scene
     for i in range(bs):
@@ -1189,22 +1200,30 @@ def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_s
 
         all_room_polys = []
         tmp = []
+        anchor_tmp = []
         all_length_list = [0]
+        all_anchor_list = []
         for j in range(len(pred_corners_per_scene)):
             if isinstance(pred_corners_per_scene[j], int):
                 if pred_corners_per_scene[j] == 2 and tmp: # sep
                     all_room_polys.append(tmp)
                     all_length_list.append(len(tmp)+1)
+                    all_anchor_list.append(anchor_tmp)
                     tmp = []
+                    anchor_tmp = []
                 continue
             tmp.append(pred_corners_per_scene[j])
+            anchor_tmp.append(anchors[j])
         
         if len(tmp):
             all_room_polys.append(tmp)
             all_length_list.append(len(tmp)+1)
+            all_anchor_list.append(anchor_tmp)
         start_poly_indices = np.cumsum(all_length_list)
 
         final_pred_classes = []
+        pred_room_anchors = []
+        pred_window_anchors = []
         for j, poly in enumerate(all_room_polys):
             if len(poly) < 2:
                 continue
@@ -1216,6 +1235,8 @@ def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_s
                 # only regular rooms
                 if len(corners)>=4 and Polygon(corners).area >= 100:
                     room_polys.append(corners)
+                    if all_anchor_list:
+                        pred_room_anchors.append(all_anchor_list[j])
             else:
                 if per_token_sem_loss:
                     pred_classes, counts = np.unique(pred_room_label_per_scene[start_poly_indices[j]:start_poly_indices[j+1]][:-1], return_counts=True)
@@ -1228,10 +1249,15 @@ def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_s
                 if len(corners)>=3 and Polygon(corners).area >= 100:
                     room_polys.append(corners)
                     room_types.append(pred_class)
+                    if all_anchor_list:
+                        pred_room_anchors.append(all_anchor_list[j])
                 # window / door
                 elif len(corners)==2:
                     window_doors.append(corners)
                     window_doors_types.append(pred_class)
+                    if all_anchor_list:
+                        pred_window_anchors.append(all_anchor_list[j])
+            
             
         if not semantic_rich:
             pred_room_label_per_scene = len(all_room_polys) * [-1]
@@ -1241,15 +1267,20 @@ def generate_v2(model, samples, semantic_rich=False, use_cache=True, per_token_s
         if not drop_wd and window_doors:
             outputs.append(room_polys + window_doors)
             output_classes.append(room_types + window_doors_types)
+            output_anchors.append(pred_room_anchors+pred_window_anchors)
         else:
             outputs.append(room_polys)
             output_classes.append(room_types)
+            output_anchors.append(pred_room_anchors)
     
-    return {
+    out_dict = {
         'room': outputs, 
         'labels': output_classes
     }
+    if return_anchors:
+        out_dict.update({'anchors': output_anchors})
 
+    return out_dict
 
 def concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics={}):
     pad_color = (0,0,0) if gt_floorplan_map.shape[2] == 3 else (0,0,0,0)

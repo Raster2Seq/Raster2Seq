@@ -31,9 +31,10 @@ def get_image_paths_from_directory(directory_path):
 max_samples = 1000
 split = 'test'
 
-path_A = "r2g_res256_vis" # "slurm_scripts4/r2g_res256_ckpt/eval/"
+path_A = "r2g_test_preds/r2g_res256_vis" # "slurm_scripts4/r2g_res256_ckpt/eval/"
 path_B = "r2g_test_preds/r2g_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls13_convertv3_from849_t1/"
 path_C = "r2g_test_preds/r2g_queries56x50_sem13/"
+path_D = "r2g_test_preds/heat_r2g_256_vis/"
 
 data = "output_gt_r2g/test/"
 
@@ -46,6 +47,7 @@ gt_files = [f'{data}/{str(_id)}_floor.png' for _id in ids][:max_samples]
 results_A2 = [f'{path_A}/{str(_id).zfill(6)}_pred_floorplan.png' for _id in ids][:max_samples]
 results_B2 = [f'{path_B}/{str(_id).zfill(6)}_pred_floorplan.png' for _id in ids][:max_samples]
 results_C2 = [f'{path_C}/{str(_id).zfill(6)}_pred_floorplan.png' for _id in ids][:max_samples]
+results_D2 = [f'{path_D}/{str(_id).zfill(6)}_pred_floorplan.png' for _id in ids][:max_samples]
 
 
 # table description
@@ -53,9 +55,9 @@ cols = [
     Col('id1', 'ID', list(range(len(ids)))),                                               # make a column of 1-based indices
     Col('img', 'Input Raster', image_files),     # specify image content for column 3
     Col('img', 'GT', gt_files),     # specify image content for column 3
+    Col('img', 'HEAT', results_D2), # specify image content for column 4
     Col('img', 'RoomFormer', results_C2),     # specify image content for column 3
     Col('img', 'Raster2Graph Map', results_A2),     # specify image content for column 3
-    # Col('img', 'Poly2Seq', results_B), # specify image content for column 4
     Col('img', 'Raster2Seq Map', results_B2),     # specify image content for column 3
 ]
 

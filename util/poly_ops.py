@@ -40,7 +40,7 @@ def get_all_order_corners(corners):
     return all_corners
 
 
-def pad_gt_polys(gt_instances, num_queries_per_poly, image_size, device):
+def pad_gt_polys(gt_instances, num_queries_per_poly, image_size, drop_rate, device=None):
     """Pad the ground truth polygons so that they have a uniform length
     """
 
@@ -72,11 +72,20 @@ def pad_gt_polys(gt_instances, num_queries_per_poly, image_size, device):
             room_corners.append(corners_pad)
             corner_labels.append(labels_pad)
 
+        room_classes = gt_inst.gt_classes
+        if drop_rate > 0.0:
+            keep_indices = np.where(np.random.rand(len(room_corners)) >= drop_rate)[0].tolist()
+            if len(keep_indices) > 0:  # Only apply drop if we have something left
+                room_corners = [room_corners[i] for i in keep_indices]
+                corner_labels = [corner_labels[i] for i in keep_indices]
+                corner_lengths = [corner_lengths[i] for i in keep_indices]
+                room_classes = gt_inst.gt_classes[keep_indices]
+
         room_dict = {
-            'coords': torch.stack(room_corners),
-            'labels': torch.stack(corner_labels),
+            'coords': torch.stack(room_corners).to(device),
+            'labels': torch.stack(corner_labels).to(device),
             'lengths': torch.tensor(corner_lengths, device=device),
-            'room_labels': gt_inst.gt_classes
+            'room_labels': room_classes.to(device),
         }
         room_targets.append(room_dict)
 
