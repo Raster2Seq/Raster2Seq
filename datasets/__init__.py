@@ -51,7 +51,19 @@ def get_dataset_class_labels(dataset_name):
             "Door": 10,
         }
     elif dataset_name == 'r2g':
-        semantics_label = {'unknown': 0, 'living_room': 1, 'kitchen': 2, 'bedroom': 3, 'bathroom': 4, 'restroom': 5, 'balcony': 6, 'closet': 7, 'corridor': 8, 'washing_room': 9, 'PS': 10, 'outside': 11}
+        semantics_label = {
+            'unknown': 0, 
+            'living_room': 1, 
+            'kitchen': 2, 
+            'bedroom': 3, 
+            'bathroom': 4, 
+            'restroom': 5, 
+            'balcony': 6, 
+            'closet': 7, 
+            'corridor': 8, 
+            'washing_room': 9, 
+            'PS': 10, 
+            'outside': 11}
     
     id2class = {v: k for k, v in semantics_label.items()} if semantics_label else None
     

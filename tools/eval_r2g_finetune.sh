@@ -12,7 +12,7 @@ python eval.py --dataset_name=r2g \
                --semantic_classes=13 \
                --input_channels 3 \
                --ema4eval \
-            #    --save_pred \
+               --save_pred \
             #    --debug \
 
 # EXP=r2g_poly2seq_l512_bin32_nosem_coo20_cls5_anchor_deccatsrc_ignorewd_smoothing_convertv3_fromckpt_t1

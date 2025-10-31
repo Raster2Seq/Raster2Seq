@@ -28,14 +28,27 @@
 #                --device cpu \
 #                --image_size 256 \
 
-EXP=cc5k_frinet_nowd_256_ckpt
+EXP=cc5k_frinet_nowd_256_ckpt_test
 python eval_from_json.py --dataset_name=cubicasa \
                --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
                --eval_set=test \
-               --output_dir=slurm_scripts4/${EXP}/eval \
+               --output_dir=slurm_scripts4/${EXP}/test \
                --semantic_classes=-1 \
                --input_channels 3 \
                --input_json_dir /home/htp26/FRI-Net/eval_results/cc5k_frinet_nowd_ckpt_last/json \
                --num_workers 0 \
                --device cpu \
                --image_size 256 \
+               --save_pred \
+
+# EXP=r2g-cc5k_frinet_256_ckpt
+# python eval_from_json.py --dataset_name=cubicasa \
+#                --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
+#                --eval_set=test \
+#                --output_dir=cross_eval_out/${EXP}/eval \
+#                --semantic_classes=-1 \
+#                --input_channels 3 \
+#                --input_json_dir /home/htp26/FRI-Net/eval_results/r2g-cc5k_frinet_ckpt_last/json \
+#                --num_workers 0 \
+#                --device cpu \
+#                --image_size 256 \

@@ -101,8 +101,9 @@ def plot_gt_floor(args, data_loader, device, output_dir, plot_gt=True, semantic_
                                                        scale=args.image_scale, is_sem=True,
                                                        one_color=args.one_color)
                     if crop_white_space:
+                        image = cv2.resize(image, (args.image_scale*args.image_size, args.image_scale*args.image_size), interpolation=cv2.INTER_NEAREST)  
                         image, cropped_box = auto_crop_whitespace(image)
-                        _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
+                        _x,_y,_w,_h = [ele for ele in cropped_box]
                         gt_floorplan_map = gt_floorplan_map[_y:_y+_h, _x:_x+_w].copy()
                     cv2.imwrite(gt_sem_rich_path, gt_floorplan_map, [cv2.IMWRITE_PNG_COMPRESSION, 0])
                     # plot_semantic_rich_floorplan_opencv_figure(gt_sem_rich, gt_sem_rich_path,
@@ -203,6 +204,7 @@ def plot_gt_image(data_loader, device, output_dir, crop_white_space=False):
                 density_map = np.repeat(density_map, 3, axis=2) * 255
             
             if crop_white_space:
+                density_map = cv2.resize(density_map, (args.image_scale*args.image_size, args.image_scale*args.image_size), interpolation=cv2.INTER_NEAREST)  
                 density_map, _ = auto_crop_whitespace(image=density_map, color_invert=True)
 
             # # plot predicted polygon overlaid on the density map

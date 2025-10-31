@@ -15,7 +15,7 @@ image_size = 512
 
 config = pd.DataFrame({
     # "epochs": ['0549', '0649', '0749', '0949'],
-    "epochs": ['0749'],
+    "epochs": ['0549'],
 })
 print(config)
 
@@ -48,6 +48,7 @@ if num_classes > 0:
                 --use_anchor \
                 --per_token_sem_loss \
                 --image_size={image_size} \
+                --save_pred \
                 # --pre_decoder_pos_embed \
 
     """
@@ -78,6 +79,7 @@ else:
                 --ema4eval \
                 --use_anchor \
                 --image_size={image_size} \
+                --save_pred \
                 #    --per_token_sem_loss \
                 # --pre_decoder_pos_embed \
 

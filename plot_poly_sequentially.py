@@ -193,13 +193,13 @@ def plot_polygon_sequence_with_corners(image, room_polys, room_ids, save_dir, sc
         # Create figure with space for colorbar
         fig, ax = plt.subplots(figsize=(10, 10))
         
-        ax.imshow(image)
+        ax.imshow(image, alpha=0.3) # make image transparent
         ax.axis('off')
         ax.set_xlim(0, image.shape[1])
         ax.set_ylim(image.shape[0], 0)
         
         # Draw the polygon outline
-        polygon = Polygon(poly, closed=True, edgecolor='black', facecolor='none', linewidth=3)
+        polygon = Polygon(poly, closed=True, edgecolor='black', facecolor='none', linewidth=10)
         ax.add_patch(polygon)
         
         # Get colors for corners in this room
@@ -218,27 +218,38 @@ def plot_polygon_sequence_with_corners(image, room_polys, room_ids, save_dir, sc
                    path_effects=[patheffects.withStroke(linewidth=3, foreground='black')])
         
         output_path = os.path.join(save_dir, f"{scene_id}_step_{step}_with_corners.png")
-        plt.savefig(output_path, bbox_inches='tight', dpi=150)
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close(fig)
         pred_img_paths.append(output_path)
-
-    # Plot the original image and predictions in a 2x3 grid with colorbar
-    fig = plt.figure(figsize=(18, 10))
     
-    # Create the main grid of subplots
-    gs = fig.add_gridspec(2, 3, hspace=0.1, wspace=0.1)
+    # Calculate dynamic figure size based on grid dimensions
+    num_rows, num_cols = 1, num_rooms + 1
+    
+    # Dynamic figsize calculation
+    base_width_per_col = 4   # Base width per column (adjust as needed)
+    base_height_per_row = 8  # Base height per row (adjust as needed)
+    min_width = 12           # Minimum figure width
+    min_height = 6           # Minimum figure height
+    
+    # Calculate figure dimensions
+    fig_width = max(min_width, num_cols * base_width_per_col)
+    fig_height = max(min_height, num_rows * base_height_per_row)
+    
+    # Plot the original image and predictions with dynamic sizing
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    gs = fig.add_gridspec(num_rows, num_cols, hspace=0.1, wspace=0.1)
     
     # First subplot - Input image
     font_size = 24
     ax0 = fig.add_subplot(gs[0, 0])
     ax0.imshow(image)
-    ax0.set_title("Input", fontsize=font_size, fontweight='bold')
+    ax0.set_title("Rasterized Image", fontsize=font_size, fontweight='bold')
     ax0.axis('off')
     
     # Prediction subplots
     for idx, img_path in enumerate(pred_img_paths):
-        row = (idx + 1) // 3
-        col = (idx + 1) % 3
+        row = (idx + 1) // num_rows if num_rows != 1 else num_rows - 1
+        col = (idx + 1) % num_cols
         ax = fig.add_subplot(gs[row, col])
         pred_img = mpimg.imread(img_path)
         ax.imshow(pred_img)
@@ -246,24 +257,25 @@ def plot_polygon_sequence_with_corners(image, room_polys, room_ids, save_dir, sc
                     fontsize=font_size, fontweight='bold')
         ax.axis('off')
     
-    # Hide any unused subplot
-    if len(pred_img_paths) < 5:
-        fig.add_subplot(gs[1, 2]).axis('off')
+    # # Hide any unused subplot
+    # if len(pred_img_paths) < 5:
+    #     fig.add_subplot(gs[1, 2]).axis('off')
     
-    # Add vertical colorbar on the right side of the entire grid
-    cmap = cm.get_cmap(colormap)
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=1, vmax=num_rooms))
-    sm.set_array([])
+    # # Add vertical colorbar on the right side of the entire grid
+    # cmap = cm.get_cmap(colormap)
+    # sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=1, vmax=num_rooms))
+    # sm.set_array([])
     
-    # Create colorbar on the right side
-    cbar_ax = fig.add_axes([0.9, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
-    cbar = fig.colorbar(sm, cax=cbar_ax, orientation='vertical')
-    cbar.set_label('Room Order', rotation=270, labelpad=20, fontsize=18)
+    # # Create colorbar on the right side
+    # cbar_ax = fig.add_axes([0.9, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+    # cbar = fig.colorbar(sm, cax=cbar_ax, orientation='vertical')
+    # cbar.set_label('Room Order', rotation=270, labelpad=20, fontsize=18)
 
-    # Set integer-only ticks
-    cbar.set_ticks(range(1, num_rooms + 1))
-    cbar.ax.tick_params(labelsize=font_size*0.8)
-    cbar.ax.invert_yaxis() # reverse colorbar: Room 1 at top, last room at bottom
+    # # Set integer-only ticks
+    # cbar.set_ticks(range(1, num_rooms + 1))
+    # cbar.ax.tick_params(labelsize=font_size*0.8)
+    # cbar.ax.invert_yaxis() # reverse colorbar: Room 1 at top, last room at bottom
+
     plt.savefig(os.path.join(save_dir, f"{scene_id}_grid_2x3_with_corners.png"), 
                 bbox_inches='tight', dpi=300)
     plt.close(fig)
@@ -369,38 +381,45 @@ def plot_polygon_sequence(image, room_polys, room_ids, save_dir, scene_id):
     plt.close(fig)
 
 # Main processing logic
-input_json = "/home/htp26/RoomFormerTest/s3d_test_preds/s3d_bw_poly2seq_l512_sem_bs32_coo20_cls1_anchor_deccatsrc_smoothing_numcls19_pts_fromnorder1399_convertv3_t2/jsons/03383_pred.json"
+data_root = "/home/htp26/RoomFormerTest/s3d_test_preds/s3d_bw_poly2seq_l512_sem_bs32_coo20_cls1_anchor_deccatsrc_smoothing_numcls19_pts_fromnorder1399_convertv3_t2/jsons/"
 image_root = "data/coco_s3d_bw/test/"
 image_size = 256
 save_dir = "sequential_plots_2"
+from glob import glob
+json_list = glob(os.path.join(data_root, "*.json"))
+json_list = [f"{data_root}/03383_pred.json"]
 
-with open(input_json, 'r') as f:
-    data = json.load(f)
-    if len(data) == 0:
-        raise ValueError("No data found in the JSON file.")
-    scene_id = data[0]['image_id']
-    room_polys = [np.array(x['segmentation']).reshape(-1, 2) for x in data]
-    room_ids = [x['category_id'] for x in data]
-    sample_path = os.path.join(image_root, str(scene_id).zfill(5) + '.png')
-    image = np.array(Image.open(sample_path))
+for input_json in json_list:
+    # input_json = "03383_pred.json"
+    print(input_json)
 
-    # Ensure the image has 3 channels (RGB)
-    if len(image.shape) == 2:  # Grayscale image
-        image = np.stack([image] * 3, axis=-1)  # Convert to RGB
-    elif image.shape[-1] > 3:  # Drop alpha channel if present
-        image = image[:, :, :3]
-    image = resize_and_pad(image, (image_size, image_size), pad_value=(255, 255, 255))
+    with open(input_json, 'r') as f:
+        data = json.load(f)
+        if len(data) == 0:
+            raise ValueError("No data found in the JSON file.")
+        scene_id = data[0]['image_id']
+        room_polys = [np.array(x['segmentation']).reshape(-1, 2) for x in data]
+        room_ids = [x['category_id'] for x in data]
+        sample_path = os.path.join(image_root, str(scene_id).zfill(5) + '.png')
+        image = np.array(Image.open(sample_path))
 
-    # Plot polygons sequentially with corner visualization
-    print("Generating sequential plots with corner visualization...")
-    plot_polygon_sequence_with_corners(image, room_polys, room_ids, save_dir, scene_id)
-    
-    # # Plot all rooms together with corner visualization
-    # print("Generating combined plot with all rooms and corners...")
-    # plot_all_rooms_with_corners(image, room_polys, room_ids, save_dir, scene_id)
-    
-    # # Original visualization (kept for compatibility)
-    # print("Generating original plots...")
-    # plot_polygon_sequence(image, room_polys, room_ids, save_dir, scene_id)
-    
-    print(f"All visualizations saved to: {save_dir}")
+        # Ensure the image has 3 channels (RGB)
+        if len(image.shape) == 2:  # Grayscale image
+            image = np.stack([image] * 3, axis=-1)  # Convert to RGB
+        elif image.shape[-1] > 3:  # Drop alpha channel if present
+            image = image[:, :, :3]
+        image = resize_and_pad(image, (image_size, image_size), pad_value=(255, 255, 255))
+
+        # Plot polygons sequentially with corner visualization
+        print("Generating sequential plots with corner visualization...")
+        plot_polygon_sequence_with_corners(image, room_polys, room_ids, save_dir, scene_id)
+        
+        # # Plot all rooms together with corner visualization
+        # print("Generating combined plot with all rooms and corners...")
+        # plot_all_rooms_with_corners(image, room_polys, room_ids, save_dir, scene_id)
+        
+        # # Original visualization (kept for compatibility)
+        # print("Generating original plots...")
+        # plot_polygon_sequence(image, room_polys, room_ids, save_dir, scene_id)
+        
+        print(f"All visualizations saved to: {save_dir}")

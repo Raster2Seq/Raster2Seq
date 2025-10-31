@@ -1037,7 +1037,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
 
             if save_pred:
                 # Save room_polys as JSON
-                json_path = os.path.join(output_dir, 'jsons', '{}_pred.json'.format(str(scene_ids[i]).zfill(5)))
+                json_path = os.path.join(output_dir, 'jsons', '{}.json'.format(str(scene_ids[i]).zfill(5)))
                 os.makedirs(os.path.dirname(json_path), exist_ok=True)
                 polys_list = [poly.astype(float).tolist() for poly in room_polys]
                 if semantic_rich:
@@ -1054,7 +1054,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
                 with open(json_path, 'w') as json_file:
                     json.dump(output_json, json_file)
 
-                json_result_path = os.path.join(output_dir, 'result_jsons', '{}_pred.json'.format(str(scene_ids[i]).zfill(5)))
+                json_result_path = os.path.join(output_dir, 'result_jsons', '{}.json'.format(str(scene_ids[i]).zfill(5)))
                 new_quant_result_dict_scene = compute_f1(copy.deepcopy(quant_result_dict_scene), metric_category)
                 os.makedirs(os.path.dirname(json_result_path), exist_ok=True)
                 with open(json_result_path, 'w') as json_file:

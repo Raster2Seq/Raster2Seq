@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 EXP=cubi_v4-1refined_queries56x50_sem_v1
-SPLIT=train
+SPLIT=test
 python eval.py --dataset_name=cubicasa \
                --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined/ \
                --eval_set=${SPLIT} \
@@ -12,10 +12,10 @@ python eval.py --dataset_name=cubicasa \
                --input_channels 3 \
                --save_pred \
                --disable_image_transform \
-               --num_subset_images 1000 \
+               --save_pred \
+               # --num_subset_images 1000 \
                # --debug \
             #    --ema4eval \
-            #    --save_pred \
 
 # EXP=cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_t1
 # SPLIT=train

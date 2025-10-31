@@ -341,6 +341,7 @@ def main(args):
                 plot_text=args.plot_text, one_color=args.one_color,
                 is_sem=args.semantic_classes > 0,
                 img_w=image_size*args.image_scale, img_h=image_size*args.image_scale,
+                # img_w=image_size, img_h=image_size,
                 scale=args.image_scale)
 
             # floorplan_map2 = plot_floorplan_with_regions(pred_rm, scale=image_size*args.image_scale, matching_labels=pred_cls,
@@ -348,11 +349,14 @@ def main(args):
 
             image = x[j].permute(1, 2, 0).cpu().numpy() * 255
             if args.crop_white_space:
+                image = cv2.resize(image, (args.image_scale*args.image_size, args.image_scale*args.image_size), interpolation=cv2.INTER_NEAREST)  
                 image, cropped_box = auto_crop_whitespace(image)
-                _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
+                # _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
+                _x,_y,_w,_h = [ele for ele in cropped_box]
 
                 floorplan_map = floorplan_map[_y:_y+_h, _x:_x+_w].copy()
                 floorplan_map2 = floorplan_map[_y:_y+_h, _x:_x+_w].copy()
+
 
             # Ensure images are not empty before saving
             if pred_room_map is not None and pred_room_map.size > 0:

@@ -225,6 +225,7 @@ def evaluate_floor(json_root, dataset_name, data_loader, device, output_dir, plo
                 pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(6)) + f'.{args.input_file_type}'
             else:
                 pred_path = os.path.join(json_root, str(scene_ids[i]).zfill(5)) + f'.{args.input_file_type}'
+
             if not os.path.exists(pred_path):
                 continue
             if args.input_file_type == 'npy':
@@ -350,7 +351,7 @@ def evaluate_floor(json_root, dataset_name, data_loader, device, output_dir, plo
                     json.dump(output_json, json_file)
 
 
-                json_result_path = os.path.join(output_dir, 'result_jsons', '{}_pred.json'.format(str(scene_ids[i]).zfill(5)))
+                json_result_path = os.path.join(output_dir, 'result_jsons', '{}.json'.format(str(scene_ids[i]).zfill(5)))
                 new_quant_result_dict_scene = compute_f1(copy.deepcopy(quant_result_dict_scene), metric_category)
                 os.makedirs(os.path.dirname(json_result_path), exist_ok=True)
                 with open(json_result_path, 'w') as json_file:

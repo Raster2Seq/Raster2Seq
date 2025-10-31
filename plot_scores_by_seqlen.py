@@ -131,7 +131,7 @@ def plot_gt_image(data_loader, device, output_dir):
             cv2.imwrite(os.path.join(output_dir, '{}_gt_image.png'.format(scene_ids[i])), density_map)
 
 
-def plot_line_graph_combined(cc5k_list, s3d_list, cc5k_bin_sizes, s3d_bin_sizes, output_path=""):
+def plot_line_graph_combined(cc5k_list, s3d_list, cc5k_bin_sizes, s3d_bin_sizes, method_names=['Ours', 'RoomFormer'], output_path=""):
     # Create the figure
     # fig = go.Figure()
     fig = make_subplots(rows=2, cols=2, shared_xaxes=False, shared_yaxes=False,
@@ -141,41 +141,60 @@ def plot_line_graph_combined(cc5k_list, s3d_list, cc5k_bin_sizes, s3d_bin_sizes,
                         )
 
     # x, y, y2
-    def get_line_traces(x, y, y2, bin_size, showlegend=True):
+    def get_line_traces(x, ys_list, bin_size, showlegend=True):
         num_bins = max(x) + 1
         bin_edges = [int(i * bin_size) for i in range(num_bins + 1)]
         bin_labels = [f"{bin_edges[i]}–{bin_edges[i+1]}" for i in range(num_bins)]
 
-        trace1 = go.Scatter(
-            x=bin_labels,
-            y=y,
-            mode='lines+markers',
-            name='Ours',
-            line=dict(shape='linear', color='blue'),
-            showlegend=showlegend,
-        )
+        colors = ['blue', 'red', 'green']
+        trace_list = []
+        for i, name in enumerate(method_names):
+            trace = go.Scatter(
+                x=bin_labels,
+                y=ys_list[i],
+                mode='lines+markers',
+                name=name,
+                line=dict(shape='linear', color=colors[i]),
+                showlegend=showlegend,
+            )
 
-        trace2 = go.Scatter(
-            x=bin_labels,
-            y=y2,
-            mode='lines+markers',
-            name='RoomFormer',
-            line=dict(shape='linear', color='red'),
-            showlegend=showlegend,
-        )
+            trace_list.append(trace)
 
-        return [trace1, trace2]
+        # trace1 = go.Scatter(
+        #     x=bin_labels,
+        #     y=y,
+        #     mode='lines+markers',
+        #     name='Ours',
+        #     line=dict(shape='linear', color='blue'),
+        #     showlegend=showlegend,
+        # )
+
+        # trace2 = go.Scatter(
+        #     x=bin_labels,
+        #     y=y2,
+        #     mode='lines+markers',
+        #     name='RoomFormer',
+        #     line=dict(shape='linear', color='red'),
+        #     showlegend=showlegend,
+        # )
+
+        # return [trace1, trace2]
+        return trace_list
     
     def add_traces_to_row(data_list, bin_sizes, row, showlegend=True):
-        poly_data = extract_xy_list(*data_list[0])
+        poly_data = extract_xy_list(data_list[0])
         poly_traces = get_line_traces(*poly_data, bin_sizes[0], showlegend=False)
-        fig.add_trace(poly_traces[0], row=row, col=1)
-        fig.add_trace(poly_traces[1], row=row, col=1)
+        for i in range(len(poly_traces)):
+            fig.add_trace(poly_traces[i], row=row, col=1)
+        # fig.add_trace(poly_traces[0], row=row, col=1)
+        # fig.add_trace(poly_traces[1], row=row, col=1)
 
-        corner_data = extract_xy_list(*data_list[1])
+        corner_data = extract_xy_list(data_list[1])
         corner_traces = get_line_traces(*corner_data, bin_sizes[1], showlegend=showlegend)
-        fig.add_trace(corner_traces[0], row=row, col=2)
-        fig.add_trace(corner_traces[1], row=row, col=2)
+        for i in range(len(poly_traces)):
+            fig.add_trace(corner_traces[i], row=row, col=2)
+        # fig.add_trace(corner_traces[0], row=row, col=2)
+        # fig.add_trace(corner_traces[1], row=row, col=2)
     
     add_traces_to_row(s3d_list, s3d_bin_sizes, 1, showlegend=False)
     add_traces_to_row(cc5k_list, cc5k_bin_sizes, 2, showlegend=True)
@@ -387,17 +406,25 @@ def plot_histogram(count_dict, title, output_path):
     # fig.show()
 
 
-def extract_xy_list(input_a, input_b):
-    xs = sorted(input_a.keys())
+# def extract_xy_list(input_a, input_b):
+def extract_xy_list(input_list):
+    xs = sorted(input_list[0].keys())
     ys = []
     ys2 = []
+    ys_list = [[] for _ in range(len(input_list))]
+
     for _x in xs:
-        s = np.mean(input_a[_x])
-        s2 = np.mean(input_b[_x])
-        ys.append(s)
-        ys2.append(s2)
+        for i, _input in enumerate(input_list):
+            # s = np.mean(input_a[_x])
+            # s2 = np.mean(input_b[_x])
+            # ys.append(s)
+            # ys2.append(s2)
+
+            s = np.mean(_input[_x])
+            ys_list[i].append(s)
     
-    return xs, ys, ys2
+    # return xs, ys, ys2
+    return xs, ys_list
 
 
 def loop_data(data_loader, eval_set, device, json_dirs, output_dir, is_s3d=True):
@@ -406,26 +433,36 @@ def loop_data(data_loader, eval_set, device, json_dirs, output_dir, is_s3d=True)
     count_pts_dict = defaultdict(lambda: 0)
     count_length_dict = defaultdict(lambda: 0)
 
-    score_by_no_polys_list = [defaultdict(lambda: []), defaultdict(lambda: [])]
-    score_by_no_corners_list = [defaultdict(lambda: []), defaultdict(lambda: [])]
+    score_by_no_polys_list = [defaultdict(lambda: []) for _ in range(len(json_dirs))]
+    score_by_no_corners_list = [defaultdict(lambda: []) for _ in range(len(json_dirs))]
 
     bin_size_list = [5, 15] if is_s3d else [5, 30]
 
-    def read_scores(json_path, json_path2):
-        with open(json_path, 'r') as f:
-            score = json.load(f)['room_f1']
-        with open(json_path2, 'r') as f:
-            score2 = json.load(f)['room_f1']
-        return score, score2
+    def read_scores(json_path_list): # , json_path, json_path2
+        score_list = []
+        for json_path in json_path_list:
+            with open(json_path, 'r') as f:
+                score = json.load(f)['room_f1']
+            score_list.append(score)
+        # with open(json_path2, 'r') as f:
+        #     score2 = json.load(f)['room_f1']
+        # return score, score2
+
+        return score_list
 
     def assign_scores(num_polys, num_corners, score_list, by_poly_dict_list, by_corner_dict_list, bin_size, corner_bin_size):
         # by polys
-        by_poly_dict_list[0][num_polys // bin_size].append(score_list[0])
-        by_poly_dict_list[1][num_polys // bin_size].append(score_list[1])
+        # by_poly_dict_list[0][num_polys // bin_size].append(score_list[0])
+        # by_poly_dict_list[1][num_polys // bin_size].append(score_list[1])
+        for i in range(len(score_list)):
+            by_poly_dict_list[i][num_polys // bin_size].append(score_list[i])
 
         # by corner
-        by_corner_dict_list[0][num_corners // corner_bin_size].append(score_list[0])
-        by_corner_dict_list[1][num_corners // corner_bin_size].append(score_list[1])
+        # by_corner_dict_list[0][num_corners // corner_bin_size].append(score_list[0])
+        # by_corner_dict_list[1][num_corners // corner_bin_size].append(score_list[1])
+        for i in range(len(score_list)):
+            by_corner_dict_list[i][num_corners // corner_bin_size].append(score_list[i])
+
         return by_poly_dict_list, by_corner_dict_list
 
 
@@ -437,9 +474,12 @@ def loop_data(data_loader, eval_set, device, json_dirs, output_dir, is_s3d=True)
         image_filenames = [x["file_name"] for x in batched_inputs]
 
         for i in range(len(samples)):
-            json_path = os.path.join(json_dirs[0], f"{str(scene_ids[i]).zfill(5)}_pred.json")
-            json_path2 = os.path.join(json_dirs[1], f"{str(scene_ids[i]).zfill(5)}_pred.json")
-            scores = read_scores(json_path, json_path2)
+            # json_path = os.path.join(json_dirs[0], f"{str(scene_ids[i]).zfill(5)}_pred.json")
+            # json_path2 = os.path.join(json_dirs[1], f"{str(scene_ids[i]).zfill(5)}_pred.json")
+            # scores = read_scores(json_path, json_path2)
+
+            json_path_list = [os.path.join(jdir, f"{str(scene_ids[i]).zfill(5)}_pred.json")for jdir in json_dirs]
+            scores = read_scores(json_path_list)
 
             if batched_extras is not None:
                 t = batched_extras['mask'][i].sum().item()
@@ -711,20 +751,23 @@ def main(args):
     elif args.eval_set == 'val':
         cc5k_json_dir = "slurm_scripts4/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_t1/val/result_jsons"
         cc5k_json_dir2 = "slurm_scripts4/cubi_v4-1refined_queries56x50_sem_v1/val/result_jsons"
+        cc5k_json_dir3 = "slurm_scripts4/cc5k_frinet_nowd_256_ckpt/eval/result_jsons"
 
         s3d_json_dir = "slurm_scripts/s3d_bw_ddp_poly2seq_l512_sem_bs32_coo20_cls1_anchor_deccatsrc_correct_smoothing1e-1_numcls19_pts_finetune_t3/val/result_jsons/"
         s3d_json_dir2 = "slurm_scripts/s3d_bw_ddp_queries40x30/result_jsons/"
+        s3d_json_dir3 = "slurm_scripts4/s3dbw_frinet_ckpt/eval/result_jsons"
 
     # json_dir = "/home/htp26/RoomFormerTest/slurm_scripts/cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smoothing_cls12_t1/result_jsons"
     # json_dir2 = "/home/htp26/RoomFormerTest/slurm_scripts/cubi_v4-1refined_queries56x50_sem_v1/result_jsons"
 
-    s3d_score_by_no_polys_list, s3d_score_by_no_corners_list, s3d_bin_size_list = loop_data(s3d_data_loader_eval, args.eval_set, device, [s3d_json_dir, s3d_json_dir2], save_dir, is_s3d=True)
-    cc5k_score_by_no_polys_list, cc5k_score_by_no_corners_list, cc5k_bin_size_list = loop_data(cc5k_data_loader_eval, args.eval_set, device, [cc5k_json_dir, cc5k_json_dir2], save_dir, is_s3d=False)
+    s3d_score_by_no_polys_list, s3d_score_by_no_corners_list, s3d_bin_size_list = loop_data(s3d_data_loader_eval, args.eval_set, device, [s3d_json_dir, s3d_json_dir2, s3d_json_dir3], save_dir, is_s3d=True)
+    cc5k_score_by_no_polys_list, cc5k_score_by_no_corners_list, cc5k_bin_size_list = loop_data(cc5k_data_loader_eval, args.eval_set, device, [cc5k_json_dir, cc5k_json_dir2, cc5k_json_dir3], save_dir, is_s3d=False)
 
     plot_line_graph_combined([cc5k_score_by_no_polys_list, cc5k_score_by_no_corners_list], 
                              [s3d_score_by_no_polys_list, s3d_score_by_no_corners_list],
                              cc5k_bin_size_list, 
                              s3d_bin_size_list,
+                             ["Ours", "RoomFormer", "FRI-Net"],
                              os.path.join(output_dir, f"combined_{args.eval_set}_graph.png"))
     
 

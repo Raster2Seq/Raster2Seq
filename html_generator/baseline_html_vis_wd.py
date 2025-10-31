@@ -29,8 +29,7 @@ cols = [
     Col('img', 'GT Map', gt_map_files),     # specify image content for column 3
     # Col('img', 'RoomFormer', results_A),     # specify image content for column 3
     Col('img', 'RoomFormer Map', results_A2),     # specify image content for column 3
-    # Col('img', 'Poly2Seq', results_B), # specify image content for column 4
-    Col('img', 'Poly2Seq Map', results_B2),     # specify image content for column 3
+    Col('img', 'Raster2Seq Map', results_B2),     # specify image content for column 3
 ]
 
 # html table generation

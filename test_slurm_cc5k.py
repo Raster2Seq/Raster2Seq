@@ -44,6 +44,7 @@ if num_classes > 0:
                 --ema4eval \
                 --use_anchor \
                 --per_token_sem_loss \
+                --save_pred \
                 # --pre_decoder_pos_embed \
 
     """
@@ -73,6 +74,7 @@ else:
                 --dec_attn_concat_src \
                 --ema4eval \
                 --use_anchor \
+                --save_pred \
                 #    --per_token_sem_loss \
                 # --pre_decoder_pos_embed \
 

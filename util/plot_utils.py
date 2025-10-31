@@ -97,7 +97,19 @@ CC5K_LABEL = {
     10: "Door",
 }
 
-R2G_LABEL = {0: 'living_room', 1: 'kitchen', 2: 'bedroom', 3: 'bathroom', 4: 'restroom', 5: 'balcony', 6: 'closet', 7: 'corridor', 8: 'washing_room', 9: 'PS', 10: 'outside'}
+R2G_LABEL = {
+    0: 'unknown',
+    1: 'living_room', 
+    2: 'kitchen', 
+    3: 'bedroom', 
+    4: 'bathroom', 
+    5: 'restroom', 
+    6: 'balcony', 
+    7: 'closet', 
+    8: 'corridor', 
+    9: 'washing_room', 
+    10: 'PS', 
+    11: 'outside'}
 
 BLUE = '#6699cc'
 GRAY = '#999999'

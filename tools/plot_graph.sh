@@ -5,7 +5,7 @@ EXP=cubi_v4-1refined_poly2seq_l512_bin32_sem1_coo20_cls5_anchor_deccatsrc_smooth
 python plot_scores_by_seqlen.py --dataset_name=cubicasa \
                --dataset_root=data/coco_cubicasa5k_nowalls_v4-1_refined \
                --eval_set=${SPLIT} \
-               --output_dir=graph_plot/${SPLIT} \
+               --output_dir=graph_plot_new/${SPLIT} \
                --semantic_classes=-1 \
                --input_channels 3 \
                --poly2seq \

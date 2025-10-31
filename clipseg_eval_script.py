@@ -286,7 +286,8 @@ def score(config, train_checkpoint_id, train_config):
                 data_y = data_y[interior_mask][None, ...]
                 data_y = torch.sum(data_y, dim=1, keepdim=True).clamp(0, 1)  # Shape: Bx1xHxW
 
-                pred = read_pred_json(os.path.join(pred_json_root, os.path.basename(image_path).split('.')[0] + "_pred.json"), image_size=(config.image_size, config.image_size), mask_format=config.mask_format)
+                # pred = read_pred_json(os.path.join(pred_json_root, os.path.basename(image_path).split('.')[0] + "_pred.json"), image_size=(config.image_size, config.image_size), mask_format=config.mask_format)
+                pred = read_pred_json(os.path.join(pred_json_root, os.path.basename(image_path).split('.')[0] + ".json"), image_size=(config.image_size, config.image_size), mask_format=config.mask_format)
                 if len(pred) == 0:
                     pred = torch.zeros_like(data_y)
                 else:

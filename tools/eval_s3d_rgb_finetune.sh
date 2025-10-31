@@ -5,14 +5,14 @@ python eval.py --dataset_name=stru3d \
                --dataset_root=data/coco_s3d_bw \
                --eval_set=test \
                --checkpoint=output/${EXP}/checkpoint0499.pth \
-               --output_dir=slurm_scripts/${EXP}/ \
+               --output_dir=slurm_scripts/${EXP}_2/ \
                --num_queries=1200 \
                --num_polys=30 \
                --semantic_classes=19 \
                --input_channels 3 \
-               --measure_time \
-               --batch_size 1
-               # --save_pred \
+               --save_pred \
+               # --measure_time \
+               # --batch_size 1 \
             #    --debug \
 
 # EXP=s3d_bw_poly2seq_onestage_l512_sem_bs32_coo20_cls1_anchor_deccatsrc_smoothing_numcls19_pts_convertv3_t1
