@@ -24,7 +24,7 @@
       <a href="#installation">Installation</a>
     </li>
     <li>
-      <a href="#data-preparation">Data Preparation</a>
+      <a href="#data-structure">Data Structure</a>
     </li>
     <li>
       <a href="#evaluation">Evaluation</a>
@@ -74,11 +74,11 @@ Given a rasterized floorplan image (left), our approach converts it into vectori
   ```
 
 
-## Data Preparation
+## Data Structure
 
-We use COCO-style formatting for all experiments. Data preprocessing are detailed in [data_preprocess](data_preprocess). Simply put, input data is RGB images and output is the 2D coordinate vectors of room regions which are represented as close-loop segmentation.
+We use COCO-style formatting for all experiments. Data preprocessing are detailed in [data_preprocess](data_preprocess/README.md). Simply put, input data is RGB images and output is the 2D coordinate vectors of room regions which are represented as close-loop segmentation.
 
-The data tree structure is as follows:
+The data tree structure of Structured3D, for instance, is as follows:
 ```
 code_root/
 └── data/
@@ -92,6 +92,8 @@ code_root/
             └── test.json
 
 ```
+
+In this code, we experiments with 3 datasets: Structured3D, CubiCasa5K, and Raster2Graph.
 
 ### Checkpoints
 
@@ -107,18 +109,20 @@ Our model checkpoints can be found in table below:
   <tbody>
     <tr>
       <td>Structured3D</td>
-      <td>&lt;path/to/structured3d/checkpoint&gt;</td>
+      <td>https://drive.google.com/file/d/1NLWnEkEgWN5ibOQlk3FVr4w2Nrhnjsmo/view?usp=sharing</td>
     </tr>
     <tr>
       <td>CubiCasa5K</td>
-      <td>&lt;path/to/cubicasa5k/checkpoint&gt;</td>
+      <td>https://drive.google.com/file/d/1_kEbWvmQjS8Xr6lIZox2vMyTi6C6kTpj/view?usp=sharing</td>
     </tr>
     <tr>
       <td>Raster2Graph</td>
-      <td>&lt;path/to/raster2graph/checkpoint&gt;</td>
+      <td>https://drive.google.com/file/d/16wkbt096DkvBT_lDK-qVSGT6kWan15I5/view?usp=sharing</td>
     </tr>
   </tbody>
 </table>
+
+To download, use `gdown --fuzzy path`.
 
 
 ## Evaluation

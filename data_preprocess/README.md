@@ -1,35 +1,27 @@
 ## Data preprocessing
 
-Our data preprocessing code is largely built upon scripts from [Structured3D](https://github.com/bertjiazheng/Structured3D) and scripts provided by the authors of [MonteFloor](https://openaccess.thecvf.com/content/ICCV2021/papers/Stekovic_MonteFloor_Extending_MCTS_for_Reconstructing_Accurate_Large-Scale_Floor_Plans_ICCV_2021_paper.pdf).
-
 ### Structured3D
 
-* Step 1: download and unzip the Structured3D dataset from [here](https://github.com/bertjiazheng/Structured3D). Note only the ```Structured3D_panorama``` folder is required. 
-* Step 2: convert the registered multi-view RGB-D panoramas to point clouds:
-  ```shell
-  python generate_point_cloud_stru3d.py --data_root=Structured3D_panorama
-  ```
-* Step 3: project point cloud to density map and generate coco format annotation:
-  ```shell
-  python generate_coco_stru3d.py --data_root=Structured3D_panorama --output=coco_stru3d
-  ```
+Simply download preprocessed data by RoomFormer at [here](https://polybox.ethz.ch/index.php/s/wKYWFsQOXHnkwcG). For more details, please refer to [RoomFormer's instructions](https://github.com/ywyue/RoomFormer/tree/main/data_preprocess).
 
-### SceneCAD
-* Step 1: download 3D scans (\<scanId\>\_vh_clean_2.ply) from [ScanNet](https://github.com/ScanNet/ScanNet). 
-* Step 2: download scan transformation matrics from [here](https://drive.google.com/file/d/1zq5fDeV45ar8FMAlTffa1f1XeIeXjmw8/view?usp=sharing).
-* Step 3: download 3D layout annotation for ScanNet from [SceneCAD](https://github.com/skanti/SceneCAD).
-* Step 4: extract 2D polygon from the 3D layout annotation:
-  ```shell
-  python extract_2dfloor.py --scannet_planes_path=scannet_planes --scans_transform_path=scans_transform --out_path=2Dfloor_planes
-  ```
-* Step 5: project point cloud to density map and generate coco format annotation:
-  ```shell
-  python generate_coco_scenecad.py --data_root=ScanNet --scannet_floor_path=2Dfloor_planes --scans_transform_path=scans_transform --output=coco_scenecad
-  ```
+### CubiCasa5K
+Step 1: Download and extract [CubiCasa5K](https://zenodo.org/record/2613548) dataset.
 
-*** ***Clarify details for SceneCAD*** ***: 
+Step 2: Run `bash data_preprocess/cubicasa5k/run.sh`.
 
-1. Unlike Structured3D, SceneCAD is dominated by single-room scenes. Due to the extreme data imbalance, we filtered out multi-room scenes (which are rare) in SceneCAD. Another motivation is to make evaluation on Floor-SP easier. When evaluating the sequential room-wise shortest
-path module in Floor-SP, we need to downsample the density map to 64×64 pixels. However, this operation is not proper for multi-room scenes. Please note all methods are benchmarked on the filtered version for a fair comparison.
+### Raster2Graph
+The instruction mainly follows Raster2Graph's instruction.
 
-2. We use slightly different projection methods for Structured3D and SceneCAD. One important difference lies in the quantization operation (see L75-L80 [here](https://github.com/ywyue/RoomFormer/blob/f53cc2d1597836ce935cef1ec7db40b32e695750/data_preprocess/stru3d/PointCloudReaderPanorama.py#L75)) in Structured3D. We directly adopted the code from the authors of MonteFloor and only realized this operation in a late stage and didn't change this. In other words, all methods reported in Tab.1 in the paper are trained and tested on the quantized density maps. For SceneCAD, we didn't apply this quantization operation. However, when performing the cross-data generalization experiments (sec. 4.3 in the paper), we evaluate HEAT and RoomFormer on both the original density map and the quantized ones and report the best metrics.
+Step 1: Due to dataset proprietary restrictions, please apply for access to LIFULL HOME'S Data [here](https://www.nii.ac.jp/dsc/idr/en/lifull/).
+
+Step 2: After obtaining access, download only the "photo-rent-madori-full-00" folder, which contains approximately 300,000 images. 
+
+Step 3: Apply for access to the annotation [here](https://docs.google.com/forms/d/e/1FAIpQLSexqNMjyvPMtPMPN7bSh_1u4Q27LZAT-S9lR_gpipNIMKV5lw/viewform). 
+
+The package has 3 folders:
+- annot_npy, annot_json: the annotations saved in npy and json, respectively.
+- original_vector_boundary: boundary boxes of "LIFULL HOME'S Data" which is used to create centered 512x512 images.
+
+These folders should be saved in the same directory as `photo-rent-madori-full-00`. For example: `data/R2G_hr_dataset/`.
+
+Step 4: Run `bash data_preprocess/raster2graph/run.sh`.
