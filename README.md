@@ -125,6 +125,10 @@ Our model checkpoints can be found in table below:
 To download, use `gdown --fuzzy path`.
 
 
+## Inference
+Use [predict.py](predict.py). To run inference on WAFFLE floorplan images, for instance, run `bash tools/predict_cc5k.sh`
+
+
 ## Evaluation
 
 Evaluate model in  pretraing stage (only structural outputs, no semantic room prediction)
@@ -163,6 +167,7 @@ Raster2Seq involves two training stages: (1) Pretraining without semantic room c
 | Structured3D  | `tools/finetune_s3d_rgb.sh`      |
 | CubiCasa5K    | `tools/finetune_cc5k.sh`   |
 | Raster2Graph  | `tools/finetune_r2g.sh`    |
+
 
 
 ## Acknowledgment
