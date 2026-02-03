@@ -329,6 +329,8 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
             gt_polys, gt_polys_types = [], []
             gt_window_doors = []
             gt_window_doors_types = []
+            if len(gt_instances[i]) == 0:
+                continue
             for gt_poly, gt_id in zip(gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()):
                 gt_poly = gt_poly[0].reshape(-1,2).astype(np.int32)
                 if gt_id in door_window_index:
@@ -354,7 +356,7 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
                 gt_window_doors = []
                 gt_window_doors_types = []
                 evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
-            elif dataset_name in ['cubicasa', 'r2g']:
+            elif dataset_name in ['cubicasa', 'r2g', 'waffle']:
                 evaluator = Evaluator_RPlan(disable_overlapping_filter=True,
                                             wd_as_line=wd_as_line)
             
@@ -453,7 +455,7 @@ def evaluate_v2(model, criterion, dataset_name, data_loader, device, plot_densit
             elif dataset_name == 'scenecad':
                 quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
 
-            elif dataset_name in ['rplan', 'cubicasa', 'r2g']:
+            elif dataset_name in ['rplan', 'cubicasa', 'r2g', 'waffle']:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys,
                                                                 room_types=None, gt_polys_types=gt_polys_types,
@@ -513,7 +515,7 @@ def evaluate_floor(model, dataset_name, data_loader, device, output_dir, plot_pr
     elif dataset_name == 'cubicasa':
         door_window_index = [10, 9]
     elif dataset_name == 'waffle':
-        door_window_index = [1, 2]
+        door_window_index = [] # [1, 2]
     else:
         door_window_index = []
 
@@ -770,7 +772,7 @@ def evaluate_floor_v2(model, dataset_name, data_loader, device, output_dir, plot
     elif dataset_name == 'cubicasa':
         door_window_index = [10, 9]
     elif dataset_name == 'waffle':
-        door_window_index = [1, 2]
+        door_window_index = [] # [1, 2]
     else:
         door_window_index = []
 
