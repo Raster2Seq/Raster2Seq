@@ -89,29 +89,32 @@ def plot_gt_floor(args, data_loader, device, output_dir, plot_gt=True, semantic_
                     
                     gt_polygons_labels = gt_inst.gt_classes.cpu().numpy()
                     # gt_polygons_labels = [gt_polygons_labels[_idx] for _idx in sorted_indices]
-                    gt_sem_rich_path = os.path.join(output_dir, '{}_floor.png'.format(str(scene_ids[i]).zfill(5)))
                     gt_sem_rich = []
                     for poly, poly_type in zip(gt_room_polys, gt_polygons_labels):
                         gt_sem_rich.append([poly, poly_type])
-                    gt_floorplan_map = plot_semantic_rich_floorplan_opencv(gt_sem_rich, None,
-                                                       door_window_index=door_window_index, 
-                                                       img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
-                                                       semantics_label_mapping=semantics_label_mapping,
-                                                       plot_text=False,
-                                                       scale=args.image_scale, is_sem=True,
-                                                       one_color=args.one_color)
-                    if crop_white_space:
-                        image = cv2.resize(image, (args.image_scale*args.image_size, args.image_scale*args.image_size), interpolation=cv2.INTER_NEAREST)  
-                        image, cropped_box = auto_crop_whitespace(image)
-                        _x,_y,_w,_h = [ele for ele in cropped_box]
-                        gt_floorplan_map = gt_floorplan_map[_y:_y+_h, _x:_x+_w].copy()
-                    cv2.imwrite(gt_sem_rich_path, gt_floorplan_map, [cv2.IMWRITE_PNG_COMPRESSION, 0])
-                    # plot_semantic_rich_floorplan_opencv_figure(gt_sem_rich, gt_sem_rich_path,
-                    #                                    door_window_index=door_window_index, 
-                    #                                    img_w=512, img_h=512,
-                    #                                    semantics_label_mapping=semantics_label_mapping,
-                    #                                    scale=2,
-                    #                                    plot_text=False)
+                    
+                    if args.plot_engine == 'opencv':
+                        gt_sem_rich_path: str = os.path.join(output_dir, '{}_floor.png'.format(str(scene_ids[i]).zfill(5)))
+                        gt_floorplan_map = plot_semantic_rich_floorplan_opencv(gt_sem_rich, None,
+                                                        door_window_index=door_window_index, 
+                                                        img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
+                                                        semantics_label_mapping=semantics_label_mapping,
+                                                        plot_text=False,
+                                                        scale=args.image_scale, is_sem=True,
+                                                        one_color=args.one_color, is_bw=args.is_bw)
+                        if crop_white_space:
+                            image = cv2.resize(image, (args.image_scale*args.image_size, args.image_scale*args.image_size), interpolation=cv2.INTER_NEAREST)  
+                            image, cropped_box = auto_crop_whitespace(image)
+                            _x,_y,_w,_h = [ele for ele in cropped_box]
+                            gt_floorplan_map = gt_floorplan_map[_y:_y+_h, _x:_x+_w].copy()
+                        cv2.imwrite(gt_sem_rich_path, gt_floorplan_map, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+                    else:
+                        gt_sem_rich_path = os.path.join(output_dir, '{}.png'.format(str(scene_ids[i]).zfill(5)))
+                        plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, None, None,
+                                                        plot_text=False, is_bw=args.is_bw,
+                                                        door_window_index=door_window_index,
+                                                        img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
+                                                        )
                 else:
                     # plot semantically-rich floorplan
                     gt_polygons_labels = gt_inst.gt_classes.cpu().numpy()
@@ -130,25 +133,27 @@ def plot_gt_floor(args, data_loader, device, output_dir, plot_gt=True, semantic_
                         # corners = corners_flip_y
                         gt_sem_rich.append([corners, poly_label])
                     
-                    gt_sem_rich_path = os.path.join(output_dir, '{}_floor.png'.format(str(scene_ids[i]).zfill(5)))
-                    # plot_semantic_rich_floorplan_nicely(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=False, is_bw=False,
-                    #                                    door_window_index=[10, 9], 
-                    #                                    img_w=samples[i].shape[2], 
-                    #                                    img_h=samples[i].shape[1],
-                    #                                    semantics_label_mapping=get_dataset_class_labels(args.dataset_name))
+                    if args.plot_engine == "opencv":
+                        gt_sem_rich_path = os.path.join(output_dir, '{}_floor.png'.format(str(scene_ids[i]).zfill(5)))
+                        gt_floorplan_map = plot_semantic_rich_floorplan_opencv(gt_sem_rich, None,
+                                                        door_window_index=door_window_index, 
+                                                        semantics_label_mapping=semantics_label_mapping,
+                                                        scale=args.image_scale, img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
+                                                        is_bw=args.is_bw,
+                                                        plot_text=False, one_color=args.one_color)
 
-                    gt_floorplan_map = plot_semantic_rich_floorplan_opencv(gt_sem_rich, None,
-                                                       door_window_index=door_window_index, 
-                                                       semantics_label_mapping=semantics_label_mapping,
-                                                       scale=args.image_scale, img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
-                                                       plot_text=False, one_color=args.one_color)
-
-                    if crop_white_space:
-                        image, cropped_box = auto_crop_whitespace(image)
-                        _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
-                        gt_floorplan_map = gt_floorplan_map[_y:_y+_h, _x:_x+_w].copy()
-                        
-                    cv2.imwrite(gt_sem_rich_path, gt_floorplan_map, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+                        if crop_white_space:
+                            image, cropped_box = auto_crop_whitespace(image)
+                            _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
+                            gt_floorplan_map = gt_floorplan_map[_y:_y+_h, _x:_x+_w].copy()
+                        cv2.imwrite(gt_sem_rich_path, gt_floorplan_map, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+                    else:
+                        gt_sem_rich_path = os.path.join(output_dir, '{}.png'.format(str(scene_ids[i]).zfill(5)))
+                        plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, None, None,
+                                                        plot_text=False, is_bw=args.is_bw,
+                                                        door_window_index=door_window_index,
+                                                        img_w=args.image_size*args.image_scale, img_h=args.image_size*args.image_scale,
+                                                        )
 
 
 def plot_polys(data_loader, device, output_dir):
@@ -315,21 +320,30 @@ def get_args_parser():
     parser = argparse.ArgumentParser('RoomFormer', add_help=False)
     parser.add_argument('--batch_size', default=10, type=int)
 
-    # new
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--image_size', type=int, default=256)
-    parser.add_argument('--add_cls_token', action='store_true')
-    parser.add_argument('--per_token_sem_loss', action='store_true')
     parser.add_argument('--wd_only', action='store_true')
-    parser.add_argument('--drop_wd', action='store_true')
-    parser.add_argument('--crop_white_space', action='store_true')
-    parser.add_argument('--image_scale', type=int, default=2)
-    parser.add_argument('--one_color', action='store_true')
-
+    parser.add_argument('--drop_wd', action='store_true',
+                        help="disable Windor & Door in the plots")
+    parser.add_argument('--crop_white_space', action='store_true',
+                        help="remove redundant whitespace from the rendering")
+    parser.add_argument('--image_scale', type=int, default=1,
+                        help="adjust rendering resolution of the plots")
+    parser.add_argument('--one_color', action='store_true',
+                        help="use single color for every room (i.e. yellow)")
+    parser.add_argument('--is_bw', action='store_true',
+                        help="plot floorplan as binary image")
+    parser.add_argument('--plot_engine', type=str, default='opencv')
+    parser.add_argument('--compute_stats', action='store_true',
+                        help="compute statistics of the dataset (e.g. max_num_pts, max_num_polys) "
+                             "and plot histogram for counting number of Points, Rooms, Corners"
+                        )
     # poly2seq
     parser.add_argument('--poly2seq', action='store_true')
     parser.add_argument('--seq_len', type=int, default=1024)
     parser.add_argument('--num_bins', type=int, default=64)
+    parser.add_argument('--add_cls_token', action='store_true')
+    parser.add_argument('--per_token_sem_loss', action='store_true')
 
     # backbone
     parser.add_argument('--input_channels', default=1, type=int)
@@ -401,10 +415,12 @@ def get_args_parser():
                         help='path where to save result')
 
     # visualization options
-    parser.add_argument('--plot_density', default=False, action='store_true', help="plot predicited room polygons overlaid on the density map")
-    parser.add_argument('--plot_gt', default=False, action='store_true', help="plot ground truth floorplan")
-    parser.add_argument('--plot_gt_image', default=False, action='store_true', help="plot ground truth image")
-
+    parser.add_argument('--plot_density', default=False, action='store_true', 
+                        help="plot predicited room polygons overlaid on the density map")
+    parser.add_argument('--plot_gt', default=False, action='store_true', 
+                        help="plot ground truth floorplan")
+    parser.add_argument('--plot_gt_image', default=False, action='store_true', 
+                        help="plot ground truth image")
 
     return parser
 
@@ -520,7 +536,9 @@ def main(args):
                     crop_white_space=args.crop_white_space
                       )
 
-    loop_data(data_loader_eval, args.eval_set, device, save_dir)
+
+    if args.compute_stats:
+        loop_data(data_loader_eval, args.eval_set, device, save_dir)
 
 
 if __name__ == '__main__':

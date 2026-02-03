@@ -1,15 +1,10 @@
 <div align="center">
 <h1 align="center">Raster2Seq: Polygon Sequence Generation for Floorplan Reconstruction</h1>
-  <a href="https://hao-pt.github.io/" target="_blank">Hao&nbsp;Phung</a> &emsp;
-  <a href="https://www.hadarelor.com/" target="_blank">Hadar&nbsp;Elor</a> &emsp;
-  <br>
-  Cornell University
-  <br> <br>
 </div>
 
 <img src="./imgs/teaser.png" width=100% height=80%>
 
-**TLDR:** We reformulate Raster2Vector conversion as a seq2seq polygon generation.
+**TLDR:** We reformulate Raster2Vector conversion as a seq2seq polygon generation, handling to floorplans of arbitrary length.
 
 <details open="open" style='padding: 10px; border-radius:5px 30px 30px 5px; border-style: solid; border-width: 1px;'>
   <summary>Table of Contents</summary>
@@ -24,7 +19,7 @@
       <a href="#installation">Installation</a>
     </li>
     <li>
-      <a href="#data-structure">Data Structure</a>
+      <a href="#data">Data</a>
     </li>
     <li>
       <a href="#evaluation">Evaluation</a>
@@ -74,7 +69,7 @@ Given a rasterized floorplan image (left), our approach converts it into vectori
   ```
 
 
-## Data Structure
+## Data
 
 We use COCO-style formatting for all experiments. Data preprocessing are detailed in [data_preprocess](data_preprocess/README.md). Simply put, input data is RGB images and output is the 2D coordinate vectors of room regions which are represented as close-loop segmentation.
 
@@ -93,7 +88,7 @@ code_root/
 
 ```
 
-In this code, we experiments with 3 datasets: Structured3D, CubiCasa5K, and Raster2Graph.
+In this code, we experiments with 3 datasets: Structured3D, CubiCasa5K, and Raster2Graph. We also conduct zero-shot evaluation on a WAFFLE subset of 100 samples with provided segmentation annotations.
 
 ### Checkpoints
 
@@ -103,35 +98,52 @@ Our model checkpoints can be found in table below:
   <thead>
     <tr>
       <th>Dataset</th>
-      <th>Checkpoint Path</th>
+      <th>RoomF1</th>
+      <th>Model</th>
+      <th>Semantic Model</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>Structured3D</td>
+      <td>99.6</td>
+      <td></td>
       <td>https://drive.google.com/file/d/1NLWnEkEgWN5ibOQlk3FVr4w2Nrhnjsmo/view?usp=sharing</td>
     </tr>
     <tr>
       <td>CubiCasa5K</td>
+      <td>88.7</td>
+      <td></td>
       <td>https://drive.google.com/file/d/1_kEbWvmQjS8Xr6lIZox2vMyTi6C6kTpj/view?usp=sharing</td>
     </tr>
     <tr>
       <td>Raster2Graph</td>
+      <td>97.0</td>
+      <td></td>
       <td>https://drive.google.com/file/d/16wkbt096DkvBT_lDK-qVSGT6kWan15I5/view?usp=sharing</td>
     </tr>
   </tbody>
 </table>
 
-To download, use `gdown --fuzzy path`.
+To download, use `gdown --fuzzy path` or our provided script [tools/download_checkpoints.sh](tools/download_checkpoints.sh).
 
 
 ## Inference
-Use [predict.py](predict.py). To run inference on WAFFLE floorplan images, for instance, run `bash tools/predict_cc5k.sh`
+To run inference, we have provided these following bash scripts:
 
+| Dataset       | Bash Script                  |
+|---------------|----------------------------------|
+| Structured3D  | `tools/predict_s3d.sh`      |
+| CubiCasa5K    | `tools/predict_cc5k.sh`   |
+| Raster2Graph  | `tools/predict_r2g.sh`    |
+| WAFFLE        | `tools/predict_waffle.sh`|
+
+> For WAFFLE, we use CubiCasa5K pretrained checkpoints for the inference.
 
 ## Evaluation
 
-Evaluate model in  pretraing stage (only structural outputs, no semantic room prediction)
+### Structural floorplan reconstruction
+In pretraining stage, the models are trained to predict only structural outputs, without semantics.
 
 | Dataset       | Bash Script                  |
 |---------------|----------------------------------|
@@ -139,7 +151,8 @@ Evaluate model in  pretraing stage (only structural outputs, no semantic room pr
 | CubiCasa5K    | `tools/eval_cc5k_pretrain.sh`   |
 | Raster2Graph  | `tools/eval_r2g_pretrain.sh`    |
 
-Evaluate model in finetuning stage (structural outputs, along with semantic room prediction)
+### Semantic floorplan reconstruction
+In finetuning stage, the models are trained to predict both structural and semantic outputs. Here, we use checkpoints from semantic models.
 
 | Dataset       | Bash Script                  |
 |---------------|----------------------------------|
@@ -149,7 +162,9 @@ Evaluate model in finetuning stage (structural outputs, along with semantic room
 
 
 ## Training
-Raster2Seq involves two training stages: (1) Pretraining without semantic room class and (2) Finetuning with semantic room class.
+Raster2Seq involves two training stages: 
+- (1) Pretraining without semantic room predictions
+- (2) Finetuning with semantic room predictions.
 
 ### Pretraining:
 
