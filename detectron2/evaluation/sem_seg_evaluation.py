@@ -54,13 +54,9 @@ class SemSegEvaluator(DatasetEvaluator):
         """
         self._logger = logging.getLogger(__name__)
         if num_classes is not None:
-            self._logger.warn(
-                "SemSegEvaluator(num_classes) is deprecated! It should be obtained from metadata."
-            )
+            self._logger.warn("SemSegEvaluator(num_classes) is deprecated! It should be obtained from metadata.")
         if ignore_label is not None:
-            self._logger.warn(
-                "SemSegEvaluator(ignore_label) is deprecated! It should be obtained from metadata."
-            )
+            self._logger.warn("SemSegEvaluator(ignore_label) is deprecated! It should be obtained from metadata.")
         self._dataset_name = dataset_name
         self._distributed = distributed
         self._output_dir = output_dir
@@ -193,7 +189,5 @@ class SemSegEvaluator(DatasetEvaluator):
             mask = (sem_seg == label).astype(np.uint8)
             mask_rle = mask_util.encode(np.array(mask[:, :, None], order="F"))[0]
             mask_rle["counts"] = mask_rle["counts"].decode("utf-8")
-            json_list.append(
-                {"file_name": input_file_name, "category_id": dataset_id, "segmentation": mask_rle}
-            )
+            json_list.append({"file_name": input_file_name, "category_id": dataset_id, "segmentation": mask_rle})
         return json_list

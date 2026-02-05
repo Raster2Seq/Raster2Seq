@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def compute_centroid(polygon):
     """Compute centroid of a polygon given as list of (x, y)."""
     polygon = np.array(polygon)
@@ -8,8 +9,10 @@ def compute_centroid(polygon):
     y = np.mean(polygon[:, 1])
     return (x, y)
 
+
 def get_top_left(polygon):
     return min(polygon, key=lambda p: (p[1], p[0]))  # y ascending, x ascending
+
 
 # def sort_polygons(polygons):
 #     """Sort polygons from top-to-bottom, then left-to-right."""
@@ -61,11 +64,11 @@ def plot_polygons(polygons, save_path):
     plt.figure(figsize=(6, 6))
     for i, poly in enumerate(polygons):
         poly = np.array(poly)
-        plt.fill(poly[:, 0], poly[:, 1], alpha=0.5, label=f'Polygon {i+1}')
+        plt.fill(poly[:, 0], poly[:, 1], alpha=0.5, label=f"Polygon {i+1}")
         centroid = compute_centroid(poly)
-        plt.text(centroid[0], centroid[1], f'C{i+1}', fontsize=10, ha='center')
+        plt.text(centroid[0], centroid[1], f"C{i+1}", fontsize=10, ha="center")
     # plt.title(title)
     # plt.legend()
-    plt.gca().set_aspect('equal', adjustable='box')
+    plt.gca().set_aspect("equal", adjustable="box")
     plt.savefig(save_path)
     # plt.show()

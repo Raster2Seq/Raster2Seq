@@ -15,16 +15,21 @@ import os
 
 from scenecad_utils import get_floor
 
-    
 
 def config():
-    a = argparse.ArgumentParser(description='extract floorplan')
-    a.add_argument('--scannet_planes_path', default='scannet_planes', type=str, help='path to scannet planes folder')
-    a.add_argument('--scans_transform_path', default='scans_transform', type=str, help='path to scans transform matrix (converted to axisAlignment)')
-    a.add_argument('--out_path', default='2Dfloor_planes', type=str, help='path to output floor folder')
-    
+    a = argparse.ArgumentParser(description="extract floorplan")
+    a.add_argument("--scannet_planes_path", default="scannet_planes", type=str, help="path to scannet planes folder")
+    a.add_argument(
+        "--scans_transform_path",
+        default="scans_transform",
+        type=str,
+        help="path to scans transform matrix (converted to axisAlignment)",
+    )
+    a.add_argument("--out_path", default="2Dfloor_planes", type=str, help="path to output floor folder")
+
     args = a.parse_args()
     return args
+
 
 def main(args):
     SCANNET_PLANES_PATH = args.scannet_planes_path
@@ -35,7 +40,7 @@ def main(args):
         os.mkdir(FLOOR_OUT_PATH)
 
     scene_files = os.listdir(SCANNET_PLANES_PATH)
-    scenes = np.unique(np.array([file.split('.')[0] for file in scene_files]))
+    scenes = np.unique(np.array([file.split(".")[0] for file in scene_files]))
 
     ignored_scenes = []
 
@@ -46,5 +51,5 @@ def main(args):
     print(ignored_scenes)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(config())

@@ -20,7 +20,7 @@ class ImageList(object):
             During tracing, it becomes list[Tensor] instead.
     """
 
-    def __init__(self, tensor: torch.Tensor, image_sizes: List[Tuple[int, int]], padding_mask: torch.Tensor=None):
+    def __init__(self, tensor: torch.Tensor, image_sizes: List[Tuple[int, int]], padding_mask: torch.Tensor = None):
         """
         Arguments:
             tensor (Tensor): of shape (N, H, W) or (N, C_1, ..., C_K, H, W) where K >= 1
@@ -50,16 +50,18 @@ class ImageList(object):
     @torch.jit.unused
     def to(self, *args: Any, **kwargs: Any) -> "ImageList":
         cast_tensor = self.tensor.to(*args, **kwargs)
-        return ImageList(cast_tensor, self.image_sizes, padding_mask=(self.padding_mask.to(*args, **kwargs) if self.padding_mask is not None else None))
+        return ImageList(
+            cast_tensor,
+            self.image_sizes,
+            padding_mask=(self.padding_mask.to(*args, **kwargs) if self.padding_mask is not None else None),
+        )
 
     @property
     def device(self) -> device:
         return self.tensor.device
 
     @staticmethod
-    def from_tensors(
-        tensors: List[torch.Tensor], size_divisibility: int = 0, pad_value: float = 0.0
-    ) -> "ImageList":
+    def from_tensors(tensors: List[torch.Tensor], size_divisibility: int = 0, pad_value: float = 0.0) -> "ImageList":
         """
         Args:
             tensors: a tuple or list of `torch.Tensor`, each of shape (Hi, Wi) or
@@ -101,6 +103,6 @@ class ImageList(object):
         batched_masks = tensors[0].new_full([len(tensors)] + list(max_size), 1.0).bool()
         for img, pad_img, m in zip(tensors, batched_imgs, batched_masks):
             pad_img[..., : img.shape[-2], : img.shape[-1]].copy_(img)
-            m[: img.shape[-2], :img.shape[-1]] = False
+            m[: img.shape[-2], : img.shape[-1]] = False
 
         return ImageList(batched_imgs.contiguous(), image_sizes, batched_masks)

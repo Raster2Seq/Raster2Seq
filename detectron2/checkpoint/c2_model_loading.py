@@ -87,9 +87,7 @@ def convert_c2_detectron_names(weights):
     # FPN case
     # In the C2 model, the RPN hidden layer conv is defined for FPN level 2 and then
     # shared for all other levels, hence the appearance of "fpn2"
-    layer_keys = [
-        k.replace("conv.rpn.fpn2", "proposal_generator.rpn_head.conv") for k in layer_keys
-    ]
+    layer_keys = [k.replace("conv.rpn.fpn2", "proposal_generator.rpn_head.conv") for k in layer_keys]
     # Non-FPN case
     layer_keys = [k.replace("conv.rpn", "proposal_generator.rpn_head.conv") for k in layer_keys]
 
@@ -97,22 +95,13 @@ def convert_c2_detectron_names(weights):
     # RPN box transformation conv
     # --------------------------------------------------------------------------
     # FPN case (see note above about "fpn2")
+    layer_keys = [k.replace("rpn.bbox.pred.fpn2", "proposal_generator.rpn_head.anchor_deltas") for k in layer_keys]
     layer_keys = [
-        k.replace("rpn.bbox.pred.fpn2", "proposal_generator.rpn_head.anchor_deltas")
-        for k in layer_keys
-    ]
-    layer_keys = [
-        k.replace("rpn.cls.logits.fpn2", "proposal_generator.rpn_head.objectness_logits")
-        for k in layer_keys
+        k.replace("rpn.cls.logits.fpn2", "proposal_generator.rpn_head.objectness_logits") for k in layer_keys
     ]
     # Non-FPN case
-    layer_keys = [
-        k.replace("rpn.bbox.pred", "proposal_generator.rpn_head.anchor_deltas") for k in layer_keys
-    ]
-    layer_keys = [
-        k.replace("rpn.cls.logits", "proposal_generator.rpn_head.objectness_logits")
-        for k in layer_keys
-    ]
+    layer_keys = [k.replace("rpn.bbox.pred", "proposal_generator.rpn_head.anchor_deltas") for k in layer_keys]
+    layer_keys = [k.replace("rpn.cls.logits", "proposal_generator.rpn_head.objectness_logits") for k in layer_keys]
 
     # --------------------------------------------------------------------------
     # Fast R-CNN box head
@@ -166,9 +155,7 @@ def convert_c2_detectron_names(weights):
     # --------------------------------------------------------------------------
     # interestingly, the keypoint head convs have blob names that are simply "conv_fcnX"
     layer_keys = [k.replace("conv.fcn", "roi_heads.keypoint_head.conv_fcn") for k in layer_keys]
-    layer_keys = [
-        k.replace("kps.score.lowres", "roi_heads.keypoint_head.score_lowres") for k in layer_keys
-    ]
+    layer_keys = [k.replace("kps.score.lowres", "roi_heads.keypoint_head.score_lowres") for k in layer_keys]
     layer_keys = [k.replace("kps.score.", "roi_heads.keypoint_head.score.") for k in layer_keys]
 
     # --------------------------------------------------------------------------
@@ -187,9 +174,7 @@ def convert_c2_detectron_names(weights):
             new_weights[renamed] = weights[orig][new_start_idx:]
             logger.info(
                 "Remove prediction weight for background class in {}. The shape changes from "
-                "{} to {}.".format(
-                    renamed, tuple(weights[orig].shape), tuple(new_weights[renamed].shape)
-                )
+                "{} to {}.".format(renamed, tuple(weights[orig].shape), tuple(new_weights[renamed].shape))
             )
         elif renamed.startswith("cls_score."):
             # move weights of bg class from original index 0 to last index
@@ -268,11 +253,7 @@ def align_and_update_state_dicts(model_state_dict, ckpt_state_dict, c2_conversio
                     key_ckpt, value_ckpt.shape, key_model, shape_in_model
                 )
             )
-            logger.warning(
-                "{} will not be loaded. Please double check and see if this is desired.".format(
-                    key_ckpt
-                )
-            )
+            logger.warning("{} will not be loaded. Please double check and see if this is desired.".format(key_ckpt))
             continue
 
         assert key_model not in result_state_dict
@@ -318,9 +299,7 @@ def align_and_update_state_dicts(model_state_dict, ckpt_state_dict, c2_conversio
             key_checkpoint = original_keys[key_model]
             shape = str(tuple(model_state_dict[key_model].shape))
             table.append((key_model[len(common_prefix) :], key_checkpoint, shape))
-    table_str = tabulate(
-        table, tablefmt="pipe", headers=["Names in Model", "Names in Checkpoint", "Shapes"]
-    )
+    table_str = tabulate(table, tablefmt="pipe", headers=["Names in Model", "Names in Checkpoint", "Shapes"])
     logger.info(
         "Following weights matched with "
         + (f"submodule {common_prefix[:-1]}" if common_prefix else "model")

@@ -2,15 +2,19 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+
 def kl_loss(p, q):
-    p_loss = F.kl_div(p, torch.exp(q), reduction='sum')
-    q_loss = F.kl_div(q, torch.exp(p), reduction='sum')
+    p_loss = F.kl_div(p, torch.exp(q), reduction="sum")
+    q_loss = F.kl_div(q, torch.exp(p), reduction="sum")
     loss = (p_loss + q_loss) / 2
     return loss
 
 
 def label_smoothed_nll_loss(
-        logits, target, epsilon, reduction='sum',
+    logits,
+    target,
+    epsilon,
+    reduction="sum",
 ):
     lprobs = F.log_softmax(logits, dim=-1)
     if target.dim() == lprobs.dim() - 1:
@@ -24,7 +28,7 @@ def label_smoothed_nll_loss(
     nll_loss = nll_loss.sum()
 
     loss = loss.sum()
-    if reduction == 'mean':
+    if reduction == "mean":
         loss /= ntokens
 
-    return loss # nll_loss, ntokens
+    return loss  # nll_loss, ntokens

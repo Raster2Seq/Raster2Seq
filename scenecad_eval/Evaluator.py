@@ -18,10 +18,10 @@ corner_metric_thresh = 20
 angle_metric_thresh = 5
 
 
-
 # colormap_255 = [[i, i, i] for i in range(40)]
 
-class Evaluator_SceneCAD():
+
+class Evaluator_SceneCAD:
     def __init__(self, data_rw=None, options=None, disable_overlapping_filter=False):
         self.data_rw = data_rw
         self.options = options
@@ -62,7 +62,7 @@ class Evaluator_SceneCAD():
         # return approx_tensor
         if return_mask:
             room_filled_map = np.zeros((h, w))
-            cv2.fillPoly(room_filled_map, [approx], color=1.)
+            cv2.fillPoly(room_filled_map, [approx], color=1.0)
 
             return approx, room_filled_map
         else:
@@ -101,35 +101,39 @@ class Evaluator_SceneCAD():
 
         grad_xy = np.zeros_like(room_map)
         grad_xy[1:] = grad_y
-        grad_xy[:, 1:] = np.maximum(grad_x, grad_xy[:,1:])
+        grad_xy[:, 1:] = np.maximum(grad_x, grad_xy[:, 1:])
 
         plt.figure()
         plt.axis("off")
         plt.imshow(grad_xy, cmap="gray")
         # plt.show()
-        plt.savefig("grad.png", bbox_inches='tight')
+        plt.savefig("grad.png", bbox_inches="tight")
 
         plt.figure()
         plt.axis("off")
         plt.imshow(room_map, cmap="gray")
         # plt.show()
-        plt.savefig("joint_mask.png", bbox_inches='tight')
+        plt.savefig("joint_mask.png", bbox_inches="tight")
         assert False
 
     def evaluate_scene(self, room_polys, gt_polys, show=False, name="ours", dataset_type="scenecad"):
 
         gt_polys_list = [np.concatenate([poly, poly[None, 0]]) for poly in gt_polys]
         room_polys = [np.concatenate([poly, poly[None, 0]]) for poly in room_polys]
-        
+
         ignore_mask_region = None
 
         # img_size = (joint_room_map.shape[0], joint_room_map.shape[1])
         img_size = (256, 256)
-        quant_result_dict = self.get_quantitative(gt_polys_list, ignore_mask_region, room_polys, None, img_size, dataset_type=dataset_type)
+        quant_result_dict = self.get_quantitative(
+            gt_polys_list, ignore_mask_region, room_polys, None, img_size, dataset_type=dataset_type
+        )
 
         return quant_result_dict
 
-    def get_quantitative(self, gt_polys, ignore_mask_region, pred_polys=None, masks_list=None, img_size=(256, 256), dataset_type="s3d"):
+    def get_quantitative(
+        self, gt_polys, ignore_mask_region, pred_polys=None, masks_list=None, img_size=(256, 256), dataset_type="s3d"
+    ):
         def get_room_metric():
             pred_overlaps = [False] * len(pred_room_map_list)
             if not self.disable_overlapping_filter:
@@ -166,7 +170,7 @@ class Evaluator_SceneCAD():
 
             room_corners_metric = []
             for pred_poly_ind, gt_poly_ind in enumerate(pred2gt_indices):
-                p_poly = pred_polys[pred_poly_ind][:-1] # Last vertex = First vertex
+                p_poly = pred_polys[pred_poly_ind][:-1]  # Last vertex = First vertex
 
                 p_poly_corner_metrics = [False] * p_poly.shape[0]
                 if not room_metric[pred_poly_ind]:
@@ -183,7 +187,7 @@ class Evaluator_SceneCAD():
                 #     room_corners_metric.append(v_tp)
 
                 for v in gt_poly:
-                    v_dists = np.linalg.norm(v[None,:] - p_poly, axis=1, ord=2)
+                    v_dists = np.linalg.norm(v[None, :] - p_poly, axis=1, ord=2)
                     v_min_dist_ind = np.argmin(v_dists)
                     v_min_dist = v_dists[v_min_dist_ind]
 
@@ -219,8 +223,8 @@ class Evaluator_SceneCAD():
                     v2_vector = v2_vector / (np.linalg.norm(v2_vector, ord=2) + 1e-4)
 
                     orientation = (v_sides[1, 1] - v_sides[0, 1]) * (v_sides[3, 0] - v_sides[1, 0]) - (
-                            v_sides[3, 1] - v_sides[1, 1]) * (
-                                          v_sides[1, 0] - v_sides[0, 0])
+                        v_sides[3, 1] - v_sides[1, 1]
+                    ) * (v_sides[1, 0] - v_sides[0, 0])
 
                     v1_vector_2d = v1_vector[:2] / (v1_vector[2] + 1e-4)
                     v2_vector_2d = v2_vector[:2] / (v2_vector[2] + 1e-4)
@@ -247,11 +251,11 @@ class Evaluator_SceneCAD():
                 v2_vector = v2_vector / (np.linalg.norm(v2_vector, ord=2) + 1e-4)
 
                 orientation = (inp_v_sides[1, 1] - inp_v_sides[0, 1]) * (inp_v_sides[3, 0] - inp_v_sides[1, 0]) - (
-                        inp_v_sides[3, 1] - inp_v_sides[1, 1]) * (
-                                      inp_v_sides[1, 0] - inp_v_sides[0, 0])
+                    inp_v_sides[3, 1] - inp_v_sides[1, 1]
+                ) * (inp_v_sides[1, 0] - inp_v_sides[0, 0])
 
-                v1_vector_2d = v1_vector[:2] / (v1_vector[2]+ 1e-4)
-                v2_vector_2d = v2_vector[:2] / (v2_vector[2]+ 1e-4)
+                v1_vector_2d = v1_vector[:2] / (v1_vector[2] + 1e-4)
+                v2_vector_2d = v2_vector[:2] / (v2_vector[2] + 1e-4)
 
                 v1_vector_2d = v1_vector_2d / (np.linalg.norm(v1_vector_2d, ord=2) + 1e-4)
                 v2_vector_2d = v2_vector_2d / (np.linalg.norm(v2_vector_2d, ord=2) + 1e-4)
@@ -266,7 +270,7 @@ class Evaluator_SceneCAD():
 
             room_angles_metric = []
             for pred_poly_ind, gt_poly_ind in enumerate(pred2gt_indices):
-                p_poly = pred_polys[pred_poly_ind][:-1] # Last vertex = First vertex
+                p_poly = pred_polys[pred_poly_ind][:-1]  # Last vertex = First vertex
 
                 p_poly_angle_metrics = [False] * p_poly.shape[0]
                 if not room_metric[pred_poly_ind]:
@@ -286,7 +290,7 @@ class Evaluator_SceneCAD():
                 p_poly_orient = get_poly_orientation(p_poly)
 
                 for v_gt_ind, v in enumerate(gt_poly):
-                    v_dists = np.linalg.norm(v[None,:] - p_poly, axis=1, ord=2)
+                    v_dists = np.linalg.norm(v[None, :] - p_poly, axis=1, ord=2)
                     v_ind = np.argmin(v_dists)
                     v_min_dist = v_dists[v_ind]
 
@@ -299,7 +303,7 @@ class Evaluator_SceneCAD():
                     else:
                         v_sides = p_poly[[v_ind - 1, v_ind, v_ind, 0], :]
 
-                    v_sides = v_sides.reshape((4,2))
+                    v_sides = v_sides.reshape((4, 2))
                     pred_angle_degree = get_angle_v_sides(v_sides, p_poly_orient)
 
                     # Note: replacing some variables with values from the g.t. poly
@@ -322,11 +326,10 @@ class Evaluator_SceneCAD():
                     #     print(pred_angle_degree, gt_angle_degree)
                     #     input("?")
 
-
                 room_angles_metric += p_poly_angle_metrics
 
             for am, cm in zip(room_angles_metric, corner_metric):
-                assert not (cm == False and am == True), "cm: %d am: %d" %(cm, am)
+                assert not (cm == False and am == True), "cm: %d am: %d" % (cm, am)
 
             return room_angles_metric
 
@@ -338,11 +341,13 @@ class Evaluator_SceneCAD():
         gt_room_map_list = []
         for room_ind, poly in enumerate(gt_polys):
             room_map = np.zeros((h, w))
-            cv2.fillPoly(room_map, [poly], color=1.)
+            cv2.fillPoly(room_map, [poly], color=1.0)
 
             gt_room_map_list.append(room_map)
 
-        gt_polys_sorted_indcs = [i[0] for i in sorted(enumerate(gt_room_map_list), key=poly_map_sort_key, reverse=True)]
+        gt_polys_sorted_indcs = [
+            i[0] for i in sorted(enumerate(gt_room_map_list), key=poly_map_sort_key, reverse=True)
+        ]
 
         gt_polys = [gt_polys[ind] for ind in gt_polys_sorted_indcs]
         gt_room_map_list = [gt_room_map_list[ind] for ind in gt_polys_sorted_indcs]
@@ -351,7 +356,7 @@ class Evaluator_SceneCAD():
             pred_room_map_list = []
             for room_ind, poly in enumerate(pred_polys):
                 room_map = np.zeros((h, w))
-                cv2.fillPoly(room_map, [poly], color=1.)
+                cv2.fillPoly(room_map, [poly], color=1.0)
 
                 pred_room_map_list.append(room_map)
         else:
@@ -362,7 +367,7 @@ class Evaluator_SceneCAD():
 
         for gt_ind, gt_map in enumerate(gt_room_map_list):
 
-            best_iou = 0.
+            best_iou = 0.0
             best_ind = -1
             for pred_ind, pred_map in enumerate(pred_room_map_list):
 
@@ -397,7 +402,10 @@ class Evaluator_SceneCAD():
             #     plt.show()
 
         pred2gt_exists = [True if pred_ind in gt2pred_indices else False for pred_ind, _ in enumerate(pred_polys)]
-        pred2gt_indices = [gt2pred_indices.index(pred_ind) if pred_ind in gt2pred_indices else -1 for pred_ind, _ in enumerate(pred_polys)]
+        pred2gt_indices = [
+            gt2pred_indices.index(pred_ind) if pred_ind in gt2pred_indices else -1
+            for pred_ind, _ in enumerate(pred_polys)
+        ]
 
         # print(gt2pred_indices)
         # print(pred2gt_indices)
@@ -411,7 +419,6 @@ class Evaluator_SceneCAD():
             room_metric_prec = sum(room_metric) / float(len(pred_polys))
         room_metric_rec = sum(room_metric) / float(len(gt_polys))
 
-
         corner_metric = get_corner_metric()
         pred_corners_n = sum([poly.shape[0] - 1 for poly in pred_polys])
         gt_corners_n = sum([poly.shape[0] - 1 for poly in gt_polys])
@@ -421,7 +428,6 @@ class Evaluator_SceneCAD():
         else:
             corner_metric_prec = 0
         corner_metric_rec = sum(corner_metric) / float(gt_corners_n)
-
 
         angles_metric = get_angle_metric()
 
@@ -439,13 +445,13 @@ class Evaluator_SceneCAD():
         assert angles_metric_rec <= 1
 
         result_dict = {
-            'room_iou': best_iou,
-            'room_prec': room_metric_prec,
-            'room_rec': room_metric_rec,
-            'corner_prec': corner_metric_prec,
-            'corner_rec': corner_metric_rec,
-            'angles_prec': angles_metric_prec,
-            'angles_rec': angles_metric_rec,
+            "room_iou": best_iou,
+            "room_prec": room_metric_prec,
+            "room_rec": room_metric_rec,
+            "corner_prec": corner_metric_prec,
+            "corner_rec": corner_metric_rec,
+            "angles_prec": angles_metric_prec,
+            "angles_rec": angles_metric_rec,
         }
 
         return result_dict

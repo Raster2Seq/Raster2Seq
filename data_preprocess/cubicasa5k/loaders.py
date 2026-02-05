@@ -8,49 +8,57 @@ from numpy import genfromtxt
 from house import House
 
 ROOM_NAMES = {
-    0: "Background", 
-    1: "Outdoor", 
-    2: "Wall", 
-    3: "Kitchen", 
+    0: "Background",
+    1: "Outdoor",
+    2: "Wall",
+    3: "Kitchen",
     4: "Living Room",
-    5: "Bed Room", 
-    6: "Bath", 
-    7: "Entry", 
-    8: "Railing", 
-    9: "Storage", 
-    10: "Garage", 
-    11: "Undefined"
+    5: "Bed Room",
+    6: "Bath",
+    7: "Entry",
+    8: "Railing",
+    9: "Storage",
+    10: "Garage",
+    11: "Undefined",
 }
 
 ICON_NAMES = {
-    0: "No Icon", 
-    1: "Window", 
-    2: "Door", 
-    3: "Closet", 
+    0: "No Icon",
+    1: "Window",
+    2: "Door",
+    3: "Closet",
     4: "Electrical Applience",
-    5: "Toilet", 
-    6: "Sink", 
-    7: "Sauna Bench", 
-    8: "Fire Place", 
-    9: "Bathtub", 
-    10: "Chimney"
+    5: "Toilet",
+    6: "Sink",
+    7: "Sauna Bench",
+    8: "Fire Place",
+    9: "Bathtub",
+    10: "Chimney",
 }
 
 
 class FloorplanSVG(Dataset):
-    def __init__(self, data_folder, data_file, is_transform=True,
-                 augmentations=None, img_norm=True, format='txt',
-                 original_size=False, lmdb_folder='cubi_lmdb/'):
+    def __init__(
+        self,
+        data_folder,
+        data_file,
+        is_transform=True,
+        augmentations=None,
+        img_norm=True,
+        format="txt",
+        original_size=False,
+        lmdb_folder="cubi_lmdb/",
+    ):
         self.img_norm = img_norm
         self.is_transform = is_transform
         self.augmentations = augmentations
         self.get_data = None
         self.original_size = original_size
-        self.image_file_name = '/F1_scaled.png'
-        self.org_image_file_name = '/F1_original.png'
-        self.svg_file_name = '/model.svg'
+        self.image_file_name = "/F1_scaled.png"
+        self.org_image_file_name = "/F1_original.png"
+        self.svg_file_name = "/model.svg"
 
-        if format == 'txt':
+        if format == "txt":
             self.get_data = self.get_txt
         # if format == 'lmdb':
         #     self.lmdb = lmdb.open(data_folder+lmdb_folder, readonly=True,
@@ -61,7 +69,7 @@ class FloorplanSVG(Dataset):
 
         self.data_folder = data_folder
         # Load txt file to list
-        self.folders = genfromtxt(data_folder + data_file, dtype='str')
+        self.folders = genfromtxt(data_folder + data_file, dtype="str")
 
     def __len__(self):
         """__len__"""
@@ -72,7 +80,7 @@ class FloorplanSVG(Dataset):
 
         if self.augmentations is not None:
             sample = self.augmentations(sample)
-            
+
         if self.is_transform:
             sample = self.transform(sample)
 
@@ -97,33 +105,37 @@ class FloorplanSVG(Dataset):
             height_org, width_org, nchannel = fplan.shape
             fplan = np.moveaxis(fplan, -1, 0)
             label = label.unsqueeze(0)
-            label = torch.nn.functional.interpolate(label,
-                                                    size=(height_org, width_org),
-                                                    mode='nearest')
+            label = torch.nn.functional.interpolate(label, size=(height_org, width_org), mode="nearest")
             label = label.squeeze(0)
 
             coef_height = float(height_org) / float(height)
             coef_width = float(width_org) / float(width)
             for key, value in heatmaps.items():
-                heatmaps[key] = [(int(round(x*coef_width)), int(round(y*coef_height))) for x, y in value]
+                heatmaps[key] = [(int(round(x * coef_width)), int(round(y * coef_height))) for x, y in value]
 
             new_room_polygons = []
             for poly in room_polygons:
-                new_room_polygons.append([(int(round(x*coef_width)), int(round(y*coef_height))) for x, y in poly])
+                new_room_polygons.append([(int(round(x * coef_width)), int(round(y * coef_height))) for x, y in poly])
             room_polygons = new_room_polygons
 
             new_icon_polygons = []
             for poly in icon_polygons:
-                new_icon_polygons.append([(int(round(x*coef_width)), int(round(y*coef_height))) for x, y in poly])
+                new_icon_polygons.append([(int(round(x * coef_width)), int(round(y * coef_height))) for x, y in poly])
             icon_polygons = new_icon_polygons
 
         img = torch.tensor(fplan.astype(np.float32))
 
-        sample = {'image': img, 'label': label, 'folder': self.folders[index],
-                  'heatmaps': heatmaps, 'scale': coef_width, 
-                  'room_polygon': room_polygons, 'room_type': room_types,
-                  'icon_polygon': icon_polygons, 'icon_type': icon_types,
-                  }
+        sample = {
+            "image": img,
+            "label": label,
+            "folder": self.folders[index],
+            "heatmaps": heatmaps,
+            "scale": coef_width,
+            "room_polygon": room_polygons,
+            "room_type": room_types,
+            "icon_polygon": icon_polygons,
+            "icon_type": icon_types,
+        }
 
         return sample
 
@@ -136,10 +148,10 @@ class FloorplanSVG(Dataset):
         return sample
 
     def transform(self, sample):
-        fplan = sample['image']
+        fplan = sample["image"]
         # Normalization values to range -1 and 1
         fplan = 2 * (fplan / 255.0) - 1
 
-        sample['image'] = fplan
+        sample["image"] = fplan
 
         return sample

@@ -76,9 +76,7 @@ def patch_generalized_rcnn(model):
 
 
 @contextlib.contextmanager
-def mock_fastrcnn_outputs_inference(
-    tensor_mode, check=True, box_predictor_type=FastRCNNOutputLayers
-):
+def mock_fastrcnn_outputs_inference(tensor_mode, check=True, box_predictor_type=FastRCNNOutputLayers):
     with mock.patch.object(
         box_predictor_type,
         "inference",
@@ -139,9 +137,7 @@ class ROIHeadsPatcher:
         ]
         if getattr(self.heads, "keypoint_on", False):
             mock_ctx_managers += [
-                mock_keypoint_rcnn_inference(
-                    tensor_mode, kpt_heads_mod, self.use_heatmap_max_keypoint
-                )
+                mock_keypoint_rcnn_inference(tensor_mode, kpt_heads_mod, self.use_heatmap_max_keypoint)
             ]
         if getattr(self.heads, "mask_on", False):
             mock_ctx_managers += [mock_mask_rcnn_inference(tensor_mode, mask_head_mod)]

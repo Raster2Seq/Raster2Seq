@@ -95,9 +95,7 @@ class Keypoints:
         assert len(keypoints_list) > 0
         assert all(isinstance(keypoints, Keypoints) for keypoints in keypoints_list)
 
-        cat_kpts = type(keypoints_list[0])(
-            torch.cat([kpts.tensor for kpts in keypoints_list], dim=0)
-        )
+        cat_kpts = type(keypoints_list[0])(torch.cat([kpts.tensor for kpts in keypoints_list], dim=0))
         return cat_kpts
 
 
@@ -202,9 +200,7 @@ def heatmaps_to_keypoints(maps: torch.Tensor, rois: torch.Tensor) -> torch.Tenso
 
     for i in range(num_rois):
         outsize = (int(heights_ceil[i]), int(widths_ceil[i]))
-        roi_map = F.interpolate(
-            maps[[i]], size=outsize, mode="bicubic", align_corners=False
-        ).squeeze(
+        roi_map = F.interpolate(maps[[i]], size=outsize, mode="bicubic", align_corners=False).squeeze(
             0
         )  # #keypoints x H x W
 
@@ -223,10 +219,7 @@ def heatmaps_to_keypoints(maps: torch.Tensor, rois: torch.Tensor) -> torch.Tenso
         x_int = pos % w
         y_int = (pos - x_int) // w
 
-        assert (
-            roi_map_scores[keypoints_idx, y_int, x_int]
-            == roi_map_scores.view(num_keypoints, -1).max(1)[0]
-        ).all()
+        assert (roi_map_scores[keypoints_idx, y_int, x_int] == roi_map_scores.view(num_keypoints, -1).max(1)[0]).all()
 
         x = (x_int.float() + 0.5) * width_corrections[i]
         y = (y_int.float() + 0.5) * height_corrections[i]

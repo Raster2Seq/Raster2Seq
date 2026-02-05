@@ -7,16 +7,16 @@ def calculate_AP(valid_results, ground_truths, confidence_final):
     ground_truths_copy = copy.deepcopy(ground_truths)
     all_preds = []
     for image_id, image_pred in valid_results.items():
-        for i in range(len(image_pred['points'])):
+        for i in range(len(image_pred["points"])):
             pred = {}
-            pred['score'] = image_pred['scores'][i].item()
-            pred['point'] = tuple(image_pred['points'][i].tolist())
-            pred['size'] = tuple(image_pred['size'].tolist())
-            pred['image_id'] = image_id.item()
+            pred["score"] = image_pred["scores"][i].item()
+            pred["point"] = tuple(image_pred["points"][i].tolist())
+            pred["size"] = tuple(image_pred["size"].tolist())
+            pred["image_id"] = image_id.item()
             all_preds.append(pred)
-    all_preds = sorted(all_preds, key=lambda x: x['score'], reverse=True)
+    all_preds = sorted(all_preds, key=lambda x: x["score"], reverse=True)
 
-    all_preds = [pred for pred in all_preds if pred['score'] > confidence_final]
+    all_preds = [pred for pred in all_preds if pred["score"] > confidence_final]
 
     all_metrics = []
     for n in range(1, len(all_preds) + 1):
@@ -29,11 +29,11 @@ def calculate_AP(valid_results, ground_truths, confidence_final):
         FP = 0
         FN = 0
         for pred in sub_preds:
-            pred_point = pred['point']
-            img_size = (pred['size'][1], pred['size'][0])
-            img_id = pred['image_id']
+            pred_point = pred["point"]
+            img_size = (pred["size"][1], pred["size"][0])
+            img_id = pred["image_id"]
             dist_threshold = (img_size[0] * 0.01, img_size[1] * 0.01)
-            gt = [tuple(gt_point) for gt_point in ground_truths[img_id]['points'].tolist()]
+            gt = [tuple(gt_point) for gt_point in ground_truths[img_id]["points"].tolist()]
             gt_copy = copy.deepcopy(gt)
             euc_dists = {}
             dists = {}
@@ -50,21 +50,23 @@ def calculate_AP(valid_results, ground_truths, confidence_final):
             nearest_gt_point = euc_dists[0][0]
             min_dist = dists[nearest_gt_point]
             if min_dist[0] < dist_threshold[0] and min_dist[1] < dist_threshold[1]:
-                gtip = ground_truths[img_id]['points']
+                gtip = ground_truths[img_id]["points"]
                 for i, p in enumerate(gtip):
-                    if p[0].item() == nearest_gt_point[0] and \
-                            p[1].item() == nearest_gt_point[1] and \
-                            p[2].item() == nearest_gt_point[2]:
+                    if (
+                        p[0].item() == nearest_gt_point[0]
+                        and p[1].item() == nearest_gt_point[1]
+                        and p[2].item() == nearest_gt_point[2]
+                    ):
                         # print('qqq', p, nearest_gt_point)
                         gtip[i, 2] = 1
                         break
-                ground_truths[img_id]['points'] = gtip
+                ground_truths[img_id]["points"] = gtip
                 # print('rrr', ground_truths[img_id]['points'])
                 TP += 1
                 continue
             FP += 1
         for img_id, points in ground_truths.items():
-            points = points['points']
+            points = points["points"]
             for point in points:
                 if point[2] == 0:
                     FN += 1
@@ -100,16 +102,16 @@ def get_results(best_result):
             last_edges = triplet[1]
             this_edges = triplet[2]
             for this_pred in this_preds:
-                point = tuple(this_pred['points'].int().tolist())
+                point = tuple(this_pred["points"].int().tolist())
                 output_points.append(point)
             for last_edge in last_edges:
-                point1 = tuple(last_edge[0]['points'].int().tolist())
-                point2 = tuple(last_edge[1]['points'].int().tolist())
+                point1 = tuple(last_edge[0]["points"].int().tolist())
+                point2 = tuple(last_edge[1]["points"].int().tolist())
                 edge = (point1, point2)
                 output_edges.append(edge)
             for this_edge in this_edges:
-                point1 = tuple(this_edge[0]['points'].int().tolist())
-                point2 = tuple(this_edge[1]['points'].int().tolist())
+                point1 = tuple(this_edge[0]["points"].int().tolist())
+                point2 = tuple(this_edge[1]["points"].int().tolist())
                 edge = (point1, point2)
                 output_edges.append(edge)
         return output_points, output_edges
@@ -125,19 +127,20 @@ def get_results_visual(best_result):
             last_edges = triplet[1]
             this_edges = triplet[2]
             for this_pred in this_preds:
-                point = tuple(this_pred['points'].int().tolist())
+                point = tuple(this_pred["points"].int().tolist())
                 output_points.append([layer_index, point])
             for last_edge in last_edges:
-                point1 = tuple(last_edge[0]['points'].int().tolist())
-                point2 = tuple(last_edge[1]['points'].int().tolist())
+                point1 = tuple(last_edge[0]["points"].int().tolist())
+                point2 = tuple(last_edge[1]["points"].int().tolist())
                 edge = (point1, point2)
                 output_edges.append([layer_index, edge])
             for this_edge in this_edges:
-                point1 = tuple(this_edge[0]['points'].int().tolist())
-                point2 = tuple(this_edge[1]['points'].int().tolist())
+                point1 = tuple(this_edge[0]["points"].int().tolist())
+                point2 = tuple(this_edge[1]["points"].int().tolist())
                 edge = (point1, point2)
                 output_edges.append([layer_index, edge])
         return output_points, output_edges, len(preds)
+
 
 def get_results_float_with_semantic(best_result):
     preds = best_result[2]
@@ -148,33 +151,60 @@ def get_results_float_with_semantic(best_result):
         last_edges = triplet[1]
         this_edges = triplet[2]
         for this_pred in this_preds:
-            point = (this_pred['points'].tolist()[0], this_pred['points'].tolist()[1],
-                        this_pred['semantic_left_up'].item(), this_pred['semantic_right_up'].item(),
-                        this_pred['semantic_right_down'].item(), this_pred['semantic_left_down'].item())
+            point = (
+                this_pred["points"].tolist()[0],
+                this_pred["points"].tolist()[1],
+                this_pred["semantic_left_up"].item(),
+                this_pred["semantic_right_up"].item(),
+                this_pred["semantic_right_down"].item(),
+                this_pred["semantic_left_down"].item(),
+            )
             output_points.append(point)
         for last_edge in last_edges:
-            point1 = (last_edge[0]['points'].tolist()[0], last_edge[0]['points'].tolist()[1],
-                        last_edge[0]['semantic_left_up'].item(), last_edge[0]['semantic_right_up'].item(),
-                        last_edge[0]['semantic_right_down'].item(), last_edge[0]['semantic_left_down'].item())
-            point2 = (last_edge[1]['points'].tolist()[0], last_edge[1]['points'].tolist()[1],
-                        last_edge[1]['semantic_left_up'].item(), last_edge[1]['semantic_right_up'].item(),
-                        last_edge[1]['semantic_right_down'].item(), last_edge[1]['semantic_left_down'].item())
+            point1 = (
+                last_edge[0]["points"].tolist()[0],
+                last_edge[0]["points"].tolist()[1],
+                last_edge[0]["semantic_left_up"].item(),
+                last_edge[0]["semantic_right_up"].item(),
+                last_edge[0]["semantic_right_down"].item(),
+                last_edge[0]["semantic_left_down"].item(),
+            )
+            point2 = (
+                last_edge[1]["points"].tolist()[0],
+                last_edge[1]["points"].tolist()[1],
+                last_edge[1]["semantic_left_up"].item(),
+                last_edge[1]["semantic_right_up"].item(),
+                last_edge[1]["semantic_right_down"].item(),
+                last_edge[1]["semantic_left_down"].item(),
+            )
             edge = (point1, point2)
             output_edges.append(edge)
         for this_edge in this_edges:
-            point1 = (this_edge[0]['points'].tolist()[0], this_edge[0]['points'].tolist()[1],
-                        this_edge[0]['semantic_left_up'].item(), this_edge[0]['semantic_right_up'].item(),
-                        this_edge[0]['semantic_right_down'].item(), this_edge[0]['semantic_left_down'].item())
-            point2 = (this_edge[1]['points'].tolist()[0], this_edge[1]['points'].tolist()[1],
-                        this_edge[1]['semantic_left_up'].item(), this_edge[1]['semantic_right_up'].item(),
-                        this_edge[1]['semantic_right_down'].item(), this_edge[1]['semantic_left_down'].item())
+            point1 = (
+                this_edge[0]["points"].tolist()[0],
+                this_edge[0]["points"].tolist()[1],
+                this_edge[0]["semantic_left_up"].item(),
+                this_edge[0]["semantic_right_up"].item(),
+                this_edge[0]["semantic_right_down"].item(),
+                this_edge[0]["semantic_left_down"].item(),
+            )
+            point2 = (
+                this_edge[1]["points"].tolist()[0],
+                this_edge[1]["points"].tolist()[1],
+                this_edge[1]["semantic_left_up"].item(),
+                this_edge[1]["semantic_right_up"].item(),
+                this_edge[1]["semantic_right_down"].item(),
+                this_edge[1]["semantic_left_down"].item(),
+            )
             edge = (point1, point2)
             output_edges.append(edge)
 
     return output_points, output_edges
-            
 
-def calculate_single_sample(best_result, graph, target_d_rev, target_simple_cycles, target_results, d_rev, simple_cycles, results):
+
+def calculate_single_sample(
+    best_result, graph, target_d_rev, target_simple_cycles, target_results, d_rev, simple_cycles, results
+):
     output_points, output_edges = get_results(best_result)
     gt_points = [k for k, v in graph.items()]
     gt_edges = []
@@ -201,7 +231,9 @@ def calculate_single_sample(best_result, graph, target_d_rev, target_simple_cycl
                     points_TP += 1
                     dist_error_x += abs(output_point[0] - gt_point[0])
                     dist_error_y += abs(output_point[1] - gt_point[1])
-                    dist_error_l2 += (abs(output_point[0] - gt_point[0]) ** 2 + abs(output_point[1] - gt_point[1]) ** 2) ** 0.5
+                    dist_error_l2 += (
+                        abs(output_point[0] - gt_point[0]) ** 2 + abs(output_point[1] - gt_point[1]) ** 2
+                    ) ** 0.5
                     matched = True
                     gt_points_copy.remove(gt_point)
                     break
@@ -217,10 +249,25 @@ def calculate_single_sample(best_result, graph, target_d_rev, target_simple_cycl
     for output_edge in output_edges:
         matched = False
         for gt_edge in gt_edges:
-            if (((abs(output_edge[0][0] - gt_edge[0][0]) <= threshold) and (abs(output_edge[0][1] - gt_edge[0][1]) <= threshold)) and
-                ((abs(output_edge[1][0] - gt_edge[1][0]) <= threshold) and (abs(output_edge[1][1] - gt_edge[1][1]) <= threshold))) or \
-                    (((abs(output_edge[0][0] - gt_edge[1][0]) <= threshold) and (abs(output_edge[0][1] - gt_edge[1][1]) <= threshold)) and
-                     ((abs(output_edge[1][0] - gt_edge[0][0]) <= threshold) and (abs(output_edge[1][1] - gt_edge[0][1]) <= threshold))):
+            if (
+                (
+                    (abs(output_edge[0][0] - gt_edge[0][0]) <= threshold)
+                    and (abs(output_edge[0][1] - gt_edge[0][1]) <= threshold)
+                )
+                and (
+                    (abs(output_edge[1][0] - gt_edge[1][0]) <= threshold)
+                    and (abs(output_edge[1][1] - gt_edge[1][1]) <= threshold)
+                )
+            ) or (
+                (
+                    (abs(output_edge[0][0] - gt_edge[1][0]) <= threshold)
+                    and (abs(output_edge[0][1] - gt_edge[1][1]) <= threshold)
+                )
+                and (
+                    (abs(output_edge[1][0] - gt_edge[0][0]) <= threshold)
+                    and (abs(output_edge[1][1] - gt_edge[0][1]) <= threshold)
+                )
+            ):
                 if gt_edge in gt_edges_copy:
                     edges_TP += 1
                     matched = True
@@ -229,7 +276,6 @@ def calculate_single_sample(best_result, graph, target_d_rev, target_simple_cycl
         if not matched:
             edges_FP += 1
     edges_FN = len(gt_edges) - edges_TP
-
 
     regions_TP = 0
     regions_FP = 0
@@ -241,13 +287,11 @@ def calculate_single_sample(best_result, graph, target_d_rev, target_simple_cycl
     output_regions = []
 
     for target_simple_cycle in target_simple_cycles:
-        target_polyg = [(point_i[0], point_i[1])
-                 for point_i in target_simple_cycle]
+        target_polyg = [(point_i[0], point_i[1]) for point_i in target_simple_cycle]
         gt_regions.append(target_polyg)
 
     for simple_cycle in simple_cycles:
-        polyg = [(point_i[0], point_i[1])
-                 for point_i in simple_cycle]
+        polyg = [(point_i[0], point_i[1]) for point_i in simple_cycle]
         polyg.pop(-1)
         output_regions.append(polyg)
     gt_regions_copy = copy.deepcopy(gt_regions)
@@ -279,5 +323,18 @@ def calculate_single_sample(best_result, graph, target_d_rev, target_simple_cycl
     dist_error = (0, 0, 0)
     if points_TP > 0:
         dist_error = (dist_error_x, dist_error_y, dist_error_l2)
-    return points_TP, points_FP, points_FN, edges_TP, edges_FP, edges_FN, \
-        dist_error, regions_TP, regions_FP, regions_FN, rooms_TP, rooms_FP, rooms_FN
+    return (
+        points_TP,
+        points_FP,
+        points_FN,
+        edges_TP,
+        edges_FP,
+        edges_FN,
+        dist_error,
+        regions_TP,
+        regions_FP,
+        regions_FN,
+        rooms_TP,
+        rooms_FP,
+        rooms_FN,
+    )

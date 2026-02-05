@@ -15,12 +15,12 @@ def poly_iou(poly1: Polygon, poly2: Polygon):
         return intersection_area / union_area
 
 
-
 def is_clockwise_or_not(points):
     s = 0
     for i in range(0, len(points) - 1):
         s += points[i][0] * points[i + 1][1] - points[i][1] * points[i + 1][0]
     return s > 0
+
 
 def x_axis_angle(y):
     # 以图像坐标系为准，(1,0)方向记为0度，逆时针绕一圈到360度
@@ -40,6 +40,7 @@ def x_axis_angle(y):
     # print(angle, math.degrees(angle))
     # print('-------------')
     return math.degrees(angle) if y_right_hand[1] >= 0 else 360 - math.degrees(angle)
+
 
 def get_quadrant(angle):
     if angle[0] < angle[1]:
@@ -87,11 +88,13 @@ def get_quadrant(angle):
         quadrant = (90 - quadrant_[0], 90 - quadrant_[1], 90 - quadrant_[2], 90 - quadrant_[3])
     return quadrant
 
+
 def find_which_angle_to_counterclockwise_rotate_from(t):
     if t > 270:
         return 630 - t
     else:
         return 270 - t
+
 
 def counter_degree(d):
     if d >= 180:
@@ -99,13 +102,16 @@ def counter_degree(d):
     else:
         return d + 180
 
+
 def rotate_degree_clockwise_from_counter_degree(src_degree, dest_degree):
     delta = src_degree - dest_degree
     return delta if delta >= 0 else 360 + delta
 
+
 def rotate_degree_counterclockwise_from_counter_degree(src_degree, dest_degree):
     delta = dest_degree - src_degree
     return delta if delta >= 0 else 360 + delta
+
 
 def poly_area(points):
     s = 0

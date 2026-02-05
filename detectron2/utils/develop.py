@@ -1,7 +1,8 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
-""" Utilities for developers only.
+"""Utilities for developers only.
 These are not visible to users (not automatically imported). And should not
 appeared in docs."""
+
 # adapted from https://github.com/tensorpack/tensorpack/blob/master/tensorpack/utils/develop.py
 
 

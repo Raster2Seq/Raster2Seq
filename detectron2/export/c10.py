@@ -14,7 +14,6 @@ from detectron2.structures import Boxes, ImageList, Instances, Keypoints
 
 from .shared import alias, to_device
 
-
 """
 This file contains caffe2-compatible implementation of several detectron2 components.
 """
@@ -76,9 +75,9 @@ class InstancesList(object):
     def set(self, name, value):
         data_len = len(value)
         if len(self.batch_extra_fields):
-            assert (
-                len(self) == data_len
-            ), "Adding a field of length {} to a Instances of length {}".format(data_len, len(self))
+            assert len(self) == data_len, "Adding a field of length {} to a Instances of length {}".format(
+                data_len, len(self)
+            )
         self.batch_extra_fields[name] = value
 
     def __setattr__(self, name, val):
@@ -171,9 +170,7 @@ class Caffe2RPN(Caffe2Compatible, rpn.RPN):
         ) == (1.0, 1.0, 1.0, 1.0, 1.0)
         return ret
 
-    def _generate_proposals(
-        self, images, objectness_logits_pred, anchor_deltas_pred, gt_instances=None
-    ):
+    def _generate_proposals(self, images, objectness_logits_pred, anchor_deltas_pred, gt_instances=None):
         assert isinstance(images, ImageList)
         if self.tensor_mode:
             im_info = images.image_sizes
@@ -325,9 +322,7 @@ class Caffe2ROIPooler(Caffe2Compatible, poolers.ROIPooler):
             return out
 
         device = pooler_fmt_boxes.device
-        assert (
-            self.max_level - self.min_level + 1 == 4
-        ), "Currently DistributeFpnProposals only support 4 levels"
+        assert self.max_level - self.min_level + 1 == 4, "Currently DistributeFpnProposals only support 4 levels"
         fpn_outputs = torch.ops._caffe2.DistributeFpnProposals(
             to_device(pooler_fmt_boxes, "cpu"),
             roi_canonical_scale=self.canonical_box_size,
@@ -418,14 +413,9 @@ class Caffe2FastRCNNOutputsInference:
             im_info = proposals[0].image_size
             rois = rois.tensor
         else:
-            im_info = torch.tensor(
-                [[sz[0], sz[1], 1.0] for sz in [x.image_size for x in proposals]]
-            )
+            im_info = torch.tensor([[sz[0], sz[1], 1.0] for sz in [x.image_size for x in proposals]])
             batch_ids = cat(
-                [
-                    torch.full((b, 1), i, dtype=dtype, device=device)
-                    for i, b in enumerate(len(p) for p in proposals)
-                ],
+                [torch.full((b, 1), i, dtype=dtype, device=device) for i, b in enumerate(len(p) for p in proposals)],
                 dim=0,
             )
             rois = torch.cat([batch_ids, rois.tensor], dim=1)

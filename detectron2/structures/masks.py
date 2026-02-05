@@ -36,9 +36,7 @@ def polygons_to_bitmask(polygons: List[np.ndarray], height: int, width: int) -> 
     return mask_util.decode(rle).astype(np.bool_)
 
 
-def rasterize_polygons_within_box(
-    polygons: List[np.ndarray], box: np.ndarray, mask_size: int
-) -> torch.Tensor:
+def rasterize_polygons_within_box(polygons: List[np.ndarray], box: np.ndarray, mask_size: int) -> torch.Tensor:
     """
     Rasterize the polygons into a mask image and
     crop the mask content in the given box.
@@ -134,9 +132,7 @@ class BitMasks:
         if isinstance(item, int):
             return BitMasks(self.tensor[item].unsqueeze(0))
         m = self.tensor[item]
-        assert m.dim() == 3, "Indexing on BitMasks with {} returns a tensor with shape {}!".format(
-            item, m.shape
-        )
+        assert m.dim() == 3, "Indexing on BitMasks with {} returns a tensor with shape {}!".format(item, m.shape)
         return BitMasks(m)
 
     @torch.jit.unused
@@ -214,9 +210,7 @@ class BitMasks:
         bit_masks = self.tensor.to(dtype=torch.float32)
         rois = rois.to(device=device)
         output = (
-            ROIAlign((mask_size, mask_size), 1.0, 0, aligned=True)
-            .forward(bit_masks[:, None, :, :], rois)
-            .squeeze(1)
+            ROIAlign((mask_size, mask_size), 1.0, 0, aligned=True).forward(bit_masks[:, None, :, :], rois).squeeze(1)
         )
         output = output >= 0.5
         return output
@@ -234,9 +228,7 @@ class BitMasks:
             x = torch.where(x_any[idx, :])[0]
             y = torch.where(y_any[idx, :])[0]
             if len(x) > 0 and len(y) > 0:
-                boxes[idx, :] = torch.as_tensor(
-                    [x[0], y[0], x[-1] + 1, y[-1] + 1], dtype=torch.float32
-                )
+                boxes[idx, :] = torch.as_tensor([x[0], y[0], x[-1] + 1, y[-1] + 1], dtype=torch.float32)
         return Boxes(boxes)
 
     @staticmethod
@@ -291,9 +283,7 @@ class PolygonMasks:
                 t = t.cpu().numpy()
             return np.asarray(t).astype("float64")
 
-        def process_polygons(
-            polygons_per_instance: List[Union[torch.Tensor, np.ndarray]]
-        ) -> List[np.ndarray]:
+        def process_polygons(polygons_per_instance: List[Union[torch.Tensor, np.ndarray]]) -> List[np.ndarray]:
             if not isinstance(polygons_per_instance, list):
                 raise ValueError(
                     "Cannot create polygons: Expect a list of polygons per instance. "
@@ -412,8 +402,7 @@ class PolygonMasks:
         boxes = boxes.to(torch.device("cpu"))
 
         results = [
-            rasterize_polygons_within_box(poly, box.numpy(), mask_size)
-            for poly, box in zip(self.polygons, boxes)
+            rasterize_polygons_within_box(poly, box.numpy(), mask_size) for poly, box in zip(self.polygons, boxes)
         ]
         """
         poly: list[list[float]], the polygons for one instance
@@ -505,9 +494,7 @@ class ROIMasks:
         """
         t = self.tensor[item]
         if t.dim() != 3:
-            raise ValueError(
-                f"Indexing on ROIMasks with {item} returns a tensor with shape {t.shape}!"
-            )
+            raise ValueError(f"Indexing on ROIMasks with {item} returns a tensor with shape {t.shape}!")
         return ROIMasks(t)
 
     @torch.jit.unused

@@ -40,10 +40,7 @@ class DetectionCheckpointer(Checkpointer):
             if not all_has_file[0]:
                 raise OSError(f"File {path} not found on main worker.")
             if not all(all_has_file):
-                logger.warning(
-                    f"Not all workers can read checkpoint {path}. "
-                    "Training may fail to fully resume."
-                )
+                logger.warning(f"Not all workers can read checkpoint {path}. " "Training may fail to fully resume.")
                 # TODO: broadcast the checkpoint file contents from main
                 # worker, and load from it instead.
                 need_sync = True
@@ -78,11 +75,7 @@ class DetectionCheckpointer(Checkpointer):
             assert (
                 "model_state" in data
             ), f"Cannot load .pyth file {filename}; pycls checkpoints must contain 'model_state'."
-            model_state = {
-                k: v
-                for k, v in data["model_state"].items()
-                if not k.endswith("num_batches_tracked")
-            }
+            model_state = {k: v for k, v in data["model_state"].items() if not k.endswith("num_batches_tracked")}
             return {"model": model_state, "__author__": "pycls", "matching_heuristics": True}
 
         loaded = super()._load_file(filename)  # load native pth checkpoint

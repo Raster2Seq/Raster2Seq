@@ -8,7 +8,8 @@ import numpy as np
 
 NUM_SECTIONS = -1
 
-class PointCloudReaderPanorama():
+
+class PointCloudReaderPanorama:
 
     def __init__(self, path, resolution="full", random_level=0, generate_color=False, generate_normal=False):
         self.path = path
@@ -17,17 +18,26 @@ class PointCloudReaderPanorama():
         self.generate_color = generate_color
         self.generate_normal = generate_normal
         sections = [p for p in os.listdir(os.path.join(path, "2D_rendering"))]
-        self.depth_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "depth.png"]) for p in sections]
-        self.rgb_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "rgb_coldlight.png"]) for p in sections]
-        self.normal_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "normal.png"]) for p in sections]
+        self.depth_paths = [
+            os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "depth.png"]) for p in sections
+        ]
+        self.rgb_paths = [
+            os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "rgb_coldlight.png"])
+            for p in sections
+        ]
+        self.normal_paths = [
+            os.path.join(*[path, "2D_rendering", p, "panorama", self.resolution, "normal.png"]) for p in sections
+        ]
         self.camera_paths = [os.path.join(*[path, "2D_rendering", p, "panorama", "camera_xyz.txt"]) for p in sections]
         self.camera_centers = self.read_camera_center()
-        self.point_cloud = self.generate_point_cloud(self.random_level, color=self.generate_color, normal=self.generate_normal)
+        self.point_cloud = self.generate_point_cloud(
+            self.random_level, color=self.generate_color, normal=self.generate_normal
+        )
 
     def read_camera_center(self):
         camera_centers = []
         for i in range(len(self.camera_paths)):
-            with open(self.camera_paths[i], 'r') as f:
+            with open(self.camera_paths[i], "r") as f:
                 line = f.readline()
             center = list(map(float, line.strip().split(" ")))
             camera_centers.append(np.asarray([center[0], center[1], center[2]]))
@@ -42,8 +52,8 @@ class PointCloudReaderPanorama():
         # Getting Coordinates
         for i in range(len(self.depth_paths)):
             depth_img = cv2.imread(self.depth_paths[i], cv2.IMREAD_ANYDEPTH | cv2.IMREAD_ANYCOLOR)
-            x_tick = 180.0/depth_img.shape[0]
-            y_tick = 360.0/depth_img.shape[1]
+            x_tick = 180.0 / depth_img.shape[0]
+            y_tick = 360.0 / depth_img.shape[1]
 
             rgb_img = cv2.imread(self.rgb_paths[i])
             rgb_img = cv2.cvtColor(rgb_img, code=cv2.COLOR_BGR2RGB)
@@ -53,13 +63,13 @@ class PointCloudReaderPanorama():
                 for y in range(0, depth_img.shape[1]):
                     # need 90 - -09
                     alpha = 90 - (x * x_tick)
-                    beta = y * y_tick -180
+                    beta = y * y_tick - 180
 
-                    depth = depth_img[x,y] + np.random.random()*random_level
+                    depth = depth_img[x, y] + np.random.random() * random_level
 
-                    if depth > 500.:
-                        z_offset = depth*np.sin(np.deg2rad(alpha))
-                        xy_offset = depth*np.cos(np.deg2rad(alpha))
+                    if depth > 500.0:
+                        z_offset = depth * np.sin(np.deg2rad(alpha))
+                        xy_offset = depth * np.cos(np.deg2rad(alpha))
                         x_offset = xy_offset * np.sin(np.deg2rad(beta))
                         y_offset = xy_offset * np.cos(np.deg2rad(beta))
                         point = np.asarray([x_offset, y_offset, z_offset])
@@ -72,17 +82,16 @@ class PointCloudReaderPanorama():
         colors = np.asarray(colors) / 255.0
         # normals = np.asarray(normals)
 
-        coords[:,:2] = np.round(coords[:,:2] / 10) * 10.
-        coords[:,2] = np.round(coords[:,2] / 100) * 100.
+        coords[:, :2] = np.round(coords[:, :2] / 10) * 10.0
+        coords[:, 2] = np.round(coords[:, 2] / 100) * 100.0
         unique_coords, unique_ind = np.unique(coords, return_index=True, axis=0)
 
         coords = coords[unique_ind]
         colors = colors[unique_ind]
         # normals = normals[unique_ind]
 
-
-        points['coords'] = coords
-        points['colors'] = colors
+        points["coords"] = coords
+        points["colors"] = colors
         # points['normals'] = normals
 
         # if color:
@@ -103,7 +112,7 @@ class PointCloudReaderPanorama():
         #                 normals.append(normalize(normal_img[x, y].reshape(-1, 1)).ravel())
         #     points['normals'] = normals
 
-        print("Pointcloud size:", points['coords'].shape[0])
+        print("Pointcloud size:", points["coords"].shape[0])
         return points
 
     def get_point_cloud(self):
@@ -112,8 +121,8 @@ class PointCloudReaderPanorama():
     def generate_density(self, width=256, height=256):
 
         ps = self.point_cloud["coords"] * -1
-        ps[:,0] *= -1
-        ps[:,1] *= -1
+        ps[:, 0] *= -1
+        ps[:, 1] *= -1
 
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(ps)
@@ -138,13 +147,11 @@ class PointCloudReaderPanorama():
         normalization_dict["max_coords"] = max_coords
         normalization_dict["image_res"] = image_res
 
-
         # coordinates = np.round(points[:, :2] / max_coordinates[None,:2] * image_res[None])
-        coordinates = \
-            np.round(
-                (ps[:, :2] - min_coords[None, :2]) / (max_coords[None,:2] - min_coords[None, :2]) * image_res[None])
-        coordinates = np.minimum(np.maximum(coordinates, np.zeros_like(image_res)),
-                                    image_res - 1)
+        coordinates = np.round(
+            (ps[:, :2] - min_coords[None, :2]) / (max_coords[None, :2] - min_coords[None, :2]) * image_res[None]
+        )
+        coordinates = np.minimum(np.maximum(coordinates, np.zeros_like(image_res)), image_res - 1)
 
         density = np.zeros((height, width), dtype=np.float32)
 
@@ -162,15 +169,18 @@ class PointCloudReaderPanorama():
         normals_map = np.zeros((density.shape[0], density.shape[1], 3))
 
         import time
+
         start_time = time.time()
         for i, unique_coord in enumerate(unique_coordinates):
             # print(normals[unique_ind])
-            normals_indcs = np.argwhere(np.all(coordinates[::10] == unique_coord, axis=1))[:,0]
-            normals_map[unique_coordinates[i, 1], unique_coordinates[i, 0], :] = np.mean(normals[::10][normals_indcs, :], axis=0)
+            normals_indcs = np.argwhere(np.all(coordinates[::10] == unique_coord, axis=1))[:, 0]
+            normals_map[unique_coordinates[i, 1], unique_coordinates[i, 0], :] = np.mean(
+                normals[::10][normals_indcs, :], axis=0
+            )
 
         print("Time for normals: ", time.time() - start_time)
 
-        normals_map = (np.clip(normals_map,0,1) * 255).astype(np.uint8)
+        normals_map = (np.clip(normals_map, 0, 1) * 255).astype(np.uint8)
 
         # plt.figure()
         # plt.imshow(normals_map)
@@ -181,30 +191,29 @@ class PointCloudReaderPanorama():
     def visualize(self, export_path=None):
         pcd = o3d.geometry.PointCloud()
 
-        points = self.point_cloud['coords']
+        points = self.point_cloud["coords"]
 
         print(np.max(points, axis=0))
         indices = np.where(points[:, 2] < 2000)
 
         points = points[indices]
-        points[:,1] *= -1
-        points[:,:] /= 1000
+        points[:, 1] *= -1
+        points[:, :] /= 1000
         pcd.points = o3d.utility.Vector3dVector(points)
 
         if self.generate_normal:
-            normals = self.point_cloud['normals']
+            normals = self.point_cloud["normals"]
             normals = normals[indices]
             pcd.normals = o3d.utility.Vector3dVector(normals)
         if self.generate_color:
-            colors = self.point_cloud['colors']
+            colors = self.point_cloud["colors"]
             colors = colors[indices]
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
-
-        with open("/media/sinisa/Sinisa_hdd_data/Sinisa_Projects/corridor_localisation/Datasets/Structured_3D_dataset/Structured3D/Structured3D_0/Structured3D/train/scene_00015/annotation_3d.json") as file:
+        with open(
+            "/media/sinisa/Sinisa_hdd_data/Sinisa_Projects/corridor_localisation/Datasets/Structured_3D_dataset/Structured3D/Structured3D_0/Structured3D/train/scene_00015/annotation_3d.json"
+        ) as file:
             annos = json.load(file)
-
-
 
         # wireframe_geo_list = visualize_wireframe(annos, vis=False, ret=True)
         # o3d.visualization.draw_geometries([pcd] + wireframe_geo_list)
@@ -228,7 +237,7 @@ class PointCloudReaderPanorama():
         # o3d.visualization.draw_geometries([pcd])
 
     def export_ply(self, path):
-        '''
+        """
         ply
         format ascii 1.0
         comment Mars model by Paul Bourke
@@ -243,11 +252,11 @@ class PointCloudReaderPanorama():
         property float ny
         property float nz
         end_header
-        '''
+        """
         with open(path, "w") as f:
             f.write("ply\n")
             f.write("format ascii 1.0\n")
-            f.write("element vertex %d\n" % self.point_cloud['coords'].shape[0])
+            f.write("element vertex %d\n" % self.point_cloud["coords"].shape[0])
             f.write("property float x\n")
             f.write("property float y\n")
             f.write("property float z\n")
@@ -260,13 +269,13 @@ class PointCloudReaderPanorama():
                 f.write("property float ny\n")
                 f.write("property float nz\n")
             f.write("end_header\n")
-            for i in range(self.point_cloud['coords'].shape[0]):
+            for i in range(self.point_cloud["coords"].shape[0]):
                 normal = []
                 color = []
-                coord = self.point_cloud['coords'][i].tolist()
+                coord = self.point_cloud["coords"][i].tolist()
                 if self.generate_color:
-                    color = list(map(int, (self.point_cloud['colors'][i]*255).tolist()))
+                    color = list(map(int, (self.point_cloud["colors"][i] * 255).tolist()))
                 if self.generate_normal:
-                    normal = self.point_cloud['normals'][i].tolist()
+                    normal = self.point_cloud["normals"][i].tolist()
                 data = coord + color + normal
-                f.write(" ".join(list(map(str,data)))+'\n')
+                f.write(" ".join(list(map(str, data))) + "\n")

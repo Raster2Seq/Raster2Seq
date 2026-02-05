@@ -78,9 +78,9 @@ class ROIAlignRotated(nn.Module):
         if orig_dtype == torch.float16:
             input = input.float()
             rois = rois.float()
-        return roi_align_rotated(
-            input, rois, self.output_size, self.spatial_scale, self.sampling_ratio
-        ).to(dtype=orig_dtype)
+        return roi_align_rotated(input, rois, self.output_size, self.spatial_scale, self.sampling_ratio).to(
+            dtype=orig_dtype
+        )
 
     def __repr__(self):
         tmpstr = self.__class__.__name__ + "("

@@ -27,7 +27,7 @@ def extract_regions(adj_mat, corners, corner_sorted):
 
 def get_outwall(all_regions, corners, corner_sorted):
     """
-        Find the outermost boundary loop, which should be discarded
+    Find the outermost boundary loop, which should be discarded
     """
     if corner_sorted:
         regions_for_top_bot = np.nonzero([(0 in region and len(corners) - 1 in region) for region in all_regions])[0]
@@ -41,7 +41,6 @@ def get_outwall(all_regions, corners, corner_sorted):
         areas = [_compute_region_area(corners[all_regions[idx]]) for idx in range(len(all_regions))]
         max_idx = np.argmax(areas)
         return max_idx
-
 
 
 # def filter_regions(all_regions):
@@ -71,7 +70,7 @@ def _compute_region_area(region):
 def _get_regions_for_corner(cur_idx, adj_mat, nb_orders):
     regions = list()
     if adj_mat[cur_idx].sum() == 0:
-        assert ValueError('Zero-degree corner, should not reach here')
+        assert ValueError("Zero-degree corner, should not reach here")
     # elif adj_mat[cur_idx].sum() == 1:  # remove the connection if only one neighbour
     #     other_idx = nb_orders[0]
     #     import pdb; pdb.set_trace()
@@ -87,15 +86,18 @@ def _get_regions_for_corner(cur_idx, adj_mat, nb_orders):
                     adj_mat[:, v_s] = 0
                     break
             else:
-                assert v_q is not None, 'v_q should be known here'
+                assert v_q is not None, "v_q should be known here"
                 v_p = _find_wedge_third_v(v_q, v_s, nb_orders, adj_mat, dir=-1)
                 if v_p is None:
                     adj_mat[v_s, :] = 0
                     adj_mat[:, v_s] = 0
                     break
-            cur_region = [v_p, v_s, ]
+            cur_region = [
+                v_p,
+                v_s,
+            ]
             # try:
-            assert adj_mat[v_p, v_s] == 1, 'Wrong connection matrix!'
+            assert adj_mat[v_p, v_s] == 1, "Wrong connection matrix!"
             # except:
             #     import pdb; pdb.set_trace()
             adj_mat[v_p, v_s] = 0
@@ -103,7 +105,7 @@ def _get_regions_for_corner(cur_idx, adj_mat, nb_orders):
             closed_polygon = False
             while v_q is not None:  # tracking the current region
                 cur_region.append(v_q)
-                assert adj_mat[v_s, v_q] == 1, 'Wrong connection matrix!'
+                assert adj_mat[v_s, v_q] == 1, "Wrong connection matrix!"
                 adj_mat[v_s, v_q] = 0
                 # update the nb order list for the current v_s
                 if v_q == cur_region[0]:  # get a closed polygon
@@ -166,7 +168,7 @@ def _find_wedge_third_v(v1, v2, nb_orders, adj_mat, dir):
                 return None
             v3_idx = v3_idx + 1 if v3_idx <= len(sorted_nbs) - 2 else 0
     else:
-        raise ValueError('unknown dir {}'.format(dir))
+        raise ValueError("unknown dir {}".format(dir))
     return sorted_nbs[v3_idx]
 
 
@@ -198,8 +200,8 @@ def _compute_degree(c1, c2):
 
 
 def preprocess_pg(pg):
-    corners = pg['corners']
-    edge_pairs = pg['edges']
+    corners = pg["corners"]
+    edge_pairs = pg["edges"]
     adj_mat = np.zeros([len(corners), len(corners)])
     for edge_pair in edge_pairs:
         c1, c2 = edge_pair
@@ -210,8 +212,8 @@ def preprocess_pg(pg):
 
 
 def cleanup_pg(pg):
-    corners = pg['corners']
-    edge_pairs = pg['edges']
+    corners = pg["corners"]
+    edge_pairs = pg["edges"]
     adj_list = [[] for _ in range(len(corners))]
 
     for edge_pair in edge_pairs:
@@ -244,8 +246,8 @@ def cleanup_pg(pg):
     new_corners = np.array(new_corners)
     new_edges = np.array(new_edges)
     new_pg = {
-        'corners': new_corners,
-        'edges': new_edges,
+        "corners": new_corners,
+        "edges": new_edges,
     }
     return new_pg
 
@@ -283,10 +285,7 @@ def convert_annot(annot):
             if (idx_c, idx_other_c) not in edges and (idx_other_c, idx_c) not in edges:
                 edges.add((idx_c, idx_other_c))
     edges = np.array(list(edges))
-    pg_data = {
-        'corners': corners,
-        'edges': edges
-    }
+    pg_data = {"corners": corners, "edges": edges}
     return pg_data
 
 
@@ -315,19 +314,17 @@ def plot_floorplan_with_regions(regions, corners, edges, scale):
     # define the color map
     room_colors = [colors[i % 8] for i in range(len(regions))]
 
-    colorMap = [tuple(int(h[i:i + 2], 16) for i in (1, 3, 5)) for h in room_colors]
+    colorMap = [tuple(int(h[i : i + 2], 16) for i in (1, 3, 5)) for h in room_colors]
     colorMap = np.asarray(colorMap)
     if len(regions) > 0:
-        colorMap = np.concatenate([np.full(shape=(1, 3), fill_value=0), colorMap], axis=0).astype(
-            np.uint8)
+        colorMap = np.concatenate([np.full(shape=(1, 3), fill_value=0), colorMap], axis=0).astype(np.uint8)
     else:
-        colorMap = np.concatenate([np.full(shape=(1, 3), fill_value=0)], axis=0).astype(
-            np.uint8)
+        colorMap = np.concatenate([np.full(shape=(1, 3), fill_value=0)], axis=0).astype(np.uint8)
     # when using opencv, we need to flip, from RGB to BGR
     colorMap = colorMap[:, ::-1]
 
     alpha_channels = np.zeros(colorMap.shape[0], dtype=np.uint8)
-    alpha_channels[1:len(regions) + 1] = 150
+    alpha_channels[1 : len(regions) + 1] = 150
 
     colorMap = np.concatenate([colorMap, np.expand_dims(alpha_channels, axis=-1)], axis=-1)
 
@@ -354,4 +351,3 @@ def plot_floorplan_with_regions(regions, corners, edges, scale):
         cv2.line(image, tuple(c1), tuple(c2), color=(0, 0, 0, 255), thickness=3)
 
     return image
-

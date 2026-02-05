@@ -10,8 +10,9 @@ from clipseg_eval.general_utils import log
 
 class BaseMetric(object):
 
-    def __init__(self, metric_names, pred_range=None, gt_index=0, pred_index=0, eval_intermediate=True,
-                 eval_validation=True):
+    def __init__(
+        self, metric_names, pred_range=None, gt_index=0, pred_index=0, eval_intermediate=True, eval_validation=True
+    ):
         self._names = tuple(metric_names)
         self._eval_intermediate = eval_intermediate
         self._eval_validation = eval_validation
@@ -52,18 +53,31 @@ class BaseMetric(object):
         gt = ground_truth[self._gt_index]
 
         if self._pred_range is not None:
-            pred = pred[:, self._pred_range[0]: self._pred_range[1]]
+            pred = pred[:, self._pred_range[0] : self._pred_range[1]]
 
         return pred, gt
 
 
 class FixedIntervalMetrics(BaseMetric):
 
-    def __init__(self, sigmoid=False, ignore_mask=False, resize_to=None, 
-                 resize_pred=None, n_values=51, custom_threshold=None):
+    def __init__(
+        self, sigmoid=False, ignore_mask=False, resize_to=None, resize_pred=None, n_values=51, custom_threshold=None
+    ):
 
-
-        super().__init__(('ap', 'best_fgiou', 'best_miou', 'fgiou0.5', 'fgiou0.1', 'mean_iou_0p5', 'mean_iou_0p1', 'best_biniou', 'biniou_0.5', 'fgiou_thresh'))
+        super().__init__(
+            (
+                "ap",
+                "best_fgiou",
+                "best_miou",
+                "fgiou0.5",
+                "fgiou0.1",
+                "mean_iou_0p5",
+                "mean_iou_0p1",
+                "best_biniou",
+                "biniou_0.5",
+                "fgiou_thresh",
+            )
+        )
         self.intersections = []
         self.unions = []
         # self.threshold = threshold
@@ -71,7 +85,7 @@ class FixedIntervalMetrics(BaseMetric):
         self.resize_to = resize_to
         self.resize_pred = resize_pred  # resize prediction to match ground truth
         self.class_count = defaultdict(lambda: 0)
-        self.per_class = defaultdict(lambda : [0,0])
+        self.per_class = defaultdict(lambda: [0, 0])
         self.ignore_mask = ignore_mask
         self.custom_threshold = custom_threshold
 
@@ -86,29 +100,38 @@ class FixedIntervalMetrics(BaseMetric):
         self.metrics = dict(tp=[], fp=[], fn=[], tn=[])
 
     def add(self, pred, gt):
-        
+
         pred_batch = pred[0].cpu()
 
         if self.sigmoid:
             pred_batch = torch.sigmoid(pred_batch)
 
         gt_batch = gt[0].cpu()
-        mask_batch = gt[1] if len(gt) > 1 and not self.ignore_mask and gt[1].numel() > 0 else ([None] * len(pred_batch))
+        mask_batch = (
+            gt[1] if len(gt) > 1 and not self.ignore_mask and gt[1].numel() > 0 else ([None] * len(pred_batch))
+        )
         cls_batch = gt[2] if len(gt) > 2 else [None] * len(pred_batch)
 
         if self.resize_to is not None:
-            gt_batch = nnf.interpolate(gt_batch, self.resize_to, mode='nearest')
-            pred_batch = nnf.interpolate(pred_batch, self.resize_to, mode='bilinear', align_corners=False)
-        
+            gt_batch = nnf.interpolate(gt_batch, self.resize_to, mode="nearest")
+            pred_batch = nnf.interpolate(pred_batch, self.resize_to, mode="bilinear", align_corners=False)
+
         if isinstance(cls_batch, torch.Tensor):
             cls_batch = cls_batch.cpu().numpy().tolist()
 
-        assert len(gt_batch) == len(pred_batch) == len(cls_batch), f'{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}'
+        assert (
+            len(gt_batch) == len(pred_batch) == len(cls_batch)
+        ), f"{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}"
 
         for predictions, ground_truth, mask, cls in zip(pred_batch, gt_batch, mask_batch, cls_batch):
 
             if self.resize_pred:
-                predictions = nnf.interpolate(predictions.unsqueeze(0).float(), size=ground_truth.size()[-2:], mode='bilinear', align_corners=True)
+                predictions = nnf.interpolate(
+                    predictions.unsqueeze(0).float(),
+                    size=ground_truth.size()[-2:],
+                    mode="bilinear",
+                    align_corners=True,
+                )
 
             p = predictions.flatten()
             g = ground_truth.flatten()
@@ -140,68 +163,84 @@ class FixedIntervalMetrics(BaseMetric):
                 tps += [tp]
                 fps += [len(g) - n - tp]
 
-            self.metrics['tp'] += [tps]
-            self.metrics['fp'] += [fps]
-            self.metrics['fn'] += [fns]
-            self.metrics['tn'] += [tns]
+            self.metrics["tp"] += [tps]
+            self.metrics["fp"] += [fps]
+            self.metrics["fn"] += [fns]
+            self.metrics["tn"] += [tns]
 
             self.classes += [cls.item() if isinstance(cls, torch.Tensor) else cls]
 
     def value(self):
 
         import time
-        t_start = time.time()   
+
+        t_start = time.time()
 
         if set(self.classes) == set([None]):
             all_classes = None
-            log.warning('classes were not provided, cannot compute mIoU')
+            log.warning("classes were not provided, cannot compute mIoU")
         else:
             all_classes = set(int(c) for c in self.classes)
             # log.info(f'compute metrics for {len(all_classes)} classes')
 
-        summed = {k: [sum([self.metrics[k][i][j] 
-                           for i in range(len(self.metrics[k]))])
-                      for j in range(len(self.threshold_values))]
-                  for k in self.metrics.keys()}
+        summed = {
+            k: [
+                sum([self.metrics[k][i][j] for i in range(len(self.metrics[k]))])
+                for j in range(len(self.threshold_values))
+            ]
+            for k in self.metrics.keys()
+        }
 
         if all_classes is not None:
 
-            assert len(self.classes) == len(self.metrics['tp']) == len(self.metrics['fn'])
+            assert len(self.classes) == len(self.metrics["tp"]) == len(self.metrics["fn"])
             # group by class
             metrics_by_class = {c: {k: [] for k in self.metrics.keys()} for c in all_classes}
-            for i in range(len(self.metrics['tp'])):
+            for i in range(len(self.metrics["tp"])):
                 for k in self.metrics.keys():
                     metrics_by_class[self.classes[i]][k] += [self.metrics[k][i]]
-            
-            # sum over all instances within the classes
-            summed_by_cls = {k: {c: np.array(metrics_by_class[c][k]).sum(0).tolist() for c in all_classes} for k in self.metrics.keys()}
 
+            # sum over all instances within the classes
+            summed_by_cls = {
+                k: {c: np.array(metrics_by_class[c][k]).sum(0).tolist() for c in all_classes}
+                for k in self.metrics.keys()
+            }
 
         # Compute average precision
 
-        assert (np.array(summed['fp']) + np.array(summed['tp']) ).sum(), 'no predictions is made'
+        assert (np.array(summed["fp"]) + np.array(summed["tp"])).sum(), "no predictions is made"
 
         # only consider values where a prediction is made
-        precisions = [summed['tp'][j] / (1 + summed['tp'][j] + summed['fp'][j]) for j in range(len(self.threshold_values))
-                      if summed['tp'][j] + summed['fp'][j] > 0]
-        recalls = [summed['tp'][j] / (1 + summed['tp'][j] + summed['fn'][j]) for j in range(len(self.threshold_values))
-                           if summed['tp'][j] + summed['fp'][j] > 0]
+        precisions = [
+            summed["tp"][j] / (1 + summed["tp"][j] + summed["fp"][j])
+            for j in range(len(self.threshold_values))
+            if summed["tp"][j] + summed["fp"][j] > 0
+        ]
+        recalls = [
+            summed["tp"][j] / (1 + summed["tp"][j] + summed["fn"][j])
+            for j in range(len(self.threshold_values))
+            if summed["tp"][j] + summed["fp"][j] > 0
+        ]
 
         # remove duplicate recall-precision-pairs (and sort by recall value)
         recalls, precisions = zip(*sorted(list(set(zip(recalls, precisions))), key=lambda x: x[0]))
 
         from scipy.integrate import simps
+
         ap = simps(precisions, recalls)
 
         # Compute best IoU
-        fgiou_scores = [summed['tp'][j] / (1 + summed['tp'][j] + summed['fp'][j] + summed['fn'][j]) for j in range(len(self.threshold_values))]
-
-        biniou_scores = [
-            0.5*(summed['tp'][j] / (1 + summed['tp'][j] + summed['fp'][j] + summed['fn'][j])) + 
-            0.5*(summed['tn'][j] / (1 + summed['tn'][j] + summed['fn'][j] + summed['fp'][j])) 
+        fgiou_scores = [
+            summed["tp"][j] / (1 + summed["tp"][j] + summed["fp"][j] + summed["fn"][j])
             for j in range(len(self.threshold_values))
         ]
-        
+
+        biniou_scores = [
+            0.5 * (summed["tp"][j] / (1 + summed["tp"][j] + summed["fp"][j] + summed["fn"][j]))
+            + 0.5 * (summed["tn"][j] / (1 + summed["tn"][j] + summed["fn"][j] + summed["fp"][j]))
+            for j in range(len(self.threshold_values))
+        ]
+
         # index_0p5 = self.threshold_values.tolist().index(0.5)
         # index_0p1 = self.threshold_values.tolist().index(0.1)
         # index_0p2 = self.threshold_values.tolist().index(0.2)
@@ -212,58 +251,62 @@ class FixedIntervalMetrics(BaseMetric):
 
         if all_classes is not None:
             # mean IoU
-            mean_ious = [np.mean([summed_by_cls['tp'][c][j] / (1 + summed_by_cls['tp'][c][j] + summed_by_cls['fp'][c][j] + summed_by_cls['fn'][c][j]) 
-                            for c in all_classes])
-                        for j in range(len(self.threshold_values))]
+            mean_ious = [
+                np.mean(
+                    [
+                        summed_by_cls["tp"][c][j]
+                        / (1 + summed_by_cls["tp"][c][j] + summed_by_cls["fp"][c][j] + summed_by_cls["fn"][c][j])
+                        for c in all_classes
+                    ]
+                )
+                for j in range(len(self.threshold_values))
+            ]
 
             mean_iou_dict = {
-                'miou_best': max(mean_ious) if all_classes is not None else None,
+                "miou_best": max(mean_ious) if all_classes is not None else None,
                 # 'miou_0.5': mean_ious[index_0p5] if all_classes is not None else None,
                 # 'miou_0.1': mean_ious[index_0p1] if all_classes is not None else None,
                 # 'miou_0.2': mean_ious[index_0p2] if all_classes is not None else None,
                 # 'miou_0.3': mean_ious[index_0p3] if all_classes is not None else None,
-                'miou_best_t': self.threshold_values[np.argmax(mean_ious)],
-                'mean_iou_ct': mean_ious[index_ct] if all_classes is not None and self.custom_threshold is not None else None,
-                'mean_iou_scores': mean_ious,
+                "miou_best_t": self.threshold_values[np.argmax(mean_ious)],
+                "mean_iou_ct": (
+                    mean_ious[index_ct] if all_classes is not None and self.custom_threshold is not None else None
+                ),
+                "mean_iou_scores": mean_ious,
             }
 
-        print(f'metric computation on {(len(all_classes) if all_classes is not None else "no")} classes took {time.time() - t_start:.1f}s')
+        print(
+            f'metric computation on {(len(all_classes) if all_classes is not None else "no")} classes took {time.time() - t_start:.1f}s'
+        )
 
         return {
-            'ap': ap,
-
+            "ap": ap,
             # fgiou
-            'fgiou_best': max(fgiou_scores),
+            "fgiou_best": max(fgiou_scores),
             # 'fgiou_0.5': fgiou_scores[index_0p5],
             # 'fgiou_0.1': fgiou_scores[index_0p1],
             # 'fgiou_0.2': fgiou_scores[index_0p2],
             # 'fgiou_0.3': fgiou_scores[index_0p3],
-            'fgiou_best_t': self.threshold_values[np.argmax(fgiou_scores)],
-
+            "fgiou_best_t": self.threshold_values[np.argmax(fgiou_scores)],
             # mean iou
-
-
             # biniou
-            'biniou_best': max(biniou_scores),
+            "biniou_best": max(biniou_scores),
             # 'biniou_0.5': biniou_scores[index_0p5],
             # 'biniou_0.1': biniou_scores[index_0p1],
             # 'biniou_0.2': biniou_scores[index_0p2],
             # 'biniou_0.3': biniou_scores[index_0p3],
-            'biniou_best_t': self.threshold_values[np.argmax(biniou_scores)],
-
+            "biniou_best_t": self.threshold_values[np.argmax(biniou_scores)],
             # custom threshold
-            'fgiou_ct': fgiou_scores[index_ct] if self.custom_threshold is not None else None,
-            'biniou_ct': biniou_scores[index_ct] if self.custom_threshold is not None else None,
-            'ct': self.custom_threshold,
-
+            "fgiou_ct": fgiou_scores[index_ct] if self.custom_threshold is not None else None,
+            "biniou_ct": biniou_scores[index_ct] if self.custom_threshold is not None else None,
+            "ct": self.custom_threshold,
             # statistics
-            'fgiou_scores': fgiou_scores,
-            'biniou_scores': biniou_scores,
-            'precision_recall_curve': sorted(list(set(zip(recalls, precisions)))),
-            'summed_statistics': summed,
-            'summed_by_cls_statistics': summed_by_cls,
-
-            **mean_iou_dict
+            "fgiou_scores": fgiou_scores,
+            "biniou_scores": biniou_scores,
+            "precision_recall_curve": sorted(list(set(zip(recalls, precisions)))),
+            "summed_statistics": summed,
+            "summed_by_cls_statistics": summed_by_cls,
+            **mean_iou_dict,
         }
 
         # ('ap', 'best_fgiou', 'best_miou', 'fgiou0.5', 'fgiou0.1', 'mean_iou_0p5', 'mean_iou_0p1', 'best_biniou', 'biniou_0.5', 'fgiou_thresh'
@@ -272,30 +315,31 @@ class FixedIntervalMetrics(BaseMetric):
 
 
 class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
-    def __init__(self, sigmoid=False, ignore_mask=False, resize_to=None, 
-                 resize_pred=None, n_values=51, custom_threshold=None):
+    def __init__(
+        self, sigmoid=False, ignore_mask=False, resize_to=None, resize_pred=None, n_values=51, custom_threshold=None
+    ):
 
-
-        super().__init__(sigmoid, ignore_mask, resize_to, 
-                 resize_pred, n_values, custom_threshold)
-        self.threshold_values = np.array([0.5]) # np.linspace(0, 1, n_values)[1:-1]
+        super().__init__(sigmoid, ignore_mask, resize_to, resize_pred, n_values, custom_threshold)
+        self.threshold_values = np.array([0.5])  # np.linspace(0, 1, n_values)[1:-1]
         self.metrics = dict(tp=[], fp=[], fn=[], tn=[])
 
     def add(self, pred, gt):
-        
+
         pred_batch = pred[0].cpu()
 
         if self.sigmoid:
             pred_batch = torch.sigmoid(pred_batch)
 
         gt_batch = gt[0].cpu()
-        mask_batch = gt[1] if len(gt) > 1 and not self.ignore_mask and gt[1].numel() > 0 else ([None] * len(pred_batch))
+        mask_batch = (
+            gt[1] if len(gt) > 1 and not self.ignore_mask and gt[1].numel() > 0 else ([None] * len(pred_batch))
+        )
         cls_batch = gt[2] if len(gt) > 2 else [None] * len(pred_batch)
 
         if self.resize_to is not None:
-            gt_batch = nnf.interpolate(gt_batch, self.resize_to, mode='nearest')
-            pred_batch = nnf.interpolate(pred_batch, self.resize_to, mode='bilinear', align_corners=False)
-        
+            gt_batch = nnf.interpolate(gt_batch, self.resize_to, mode="nearest")
+            pred_batch = nnf.interpolate(pred_batch, self.resize_to, mode="bilinear", align_corners=False)
+
         if isinstance(cls_batch, torch.Tensor):
             cls_batch = cls_batch.cpu().numpy().tolist()
 
@@ -316,7 +360,7 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
 
         #     gt2pred_indices[gt_ind] = best_ind
         #     gt2pred_exists[gt_ind] = best_ind != -1
-        
+
         # # keep only those matching
         # num_matching = sum(gt2pred_exists)
         # if num_matching == 0:
@@ -354,12 +398,19 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
         # gt_batch, pred_batch = new_gt_batch, new_pred_batch
         # cls_batch, mask_batch = new_cls_batch, new_mask_batch
 
-        assert len(gt_batch) == len(pred_batch) == len(cls_batch), f'{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}'
+        assert (
+            len(gt_batch) == len(pred_batch) == len(cls_batch)
+        ), f"{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}"
 
         for predictions, ground_truth, mask, cls in zip(pred_batch, gt_batch, mask_batch, cls_batch):
 
             if self.resize_pred:
-                predictions = nnf.interpolate(predictions.unsqueeze(0).float(), size=ground_truth.size()[-2:], mode='bilinear', align_corners=True)
+                predictions = nnf.interpolate(
+                    predictions.unsqueeze(0).float(),
+                    size=ground_truth.size()[-2:],
+                    mode="bilinear",
+                    align_corners=True,
+                )
 
             p = predictions.flatten()
             g = ground_truth.flatten()
@@ -391,68 +442,84 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
                 tps += [tp]
                 fps += [len(g) - n - tp]
 
-            self.metrics['tp'] += [tps]
-            self.metrics['fp'] += [fps]
-            self.metrics['fn'] += [fns]
-            self.metrics['tn'] += [tns]
+            self.metrics["tp"] += [tps]
+            self.metrics["fp"] += [fps]
+            self.metrics["fn"] += [fns]
+            self.metrics["tn"] += [tns]
 
             self.classes += [cls.item() if isinstance(cls, torch.Tensor) else cls]
 
     def value(self):
 
         import time
-        t_start = time.time()   
+
+        t_start = time.time()
 
         if set(self.classes) == set([None]):
             all_classes = None
-            log.warning('classes were not provided, cannot compute mIoU')
+            log.warning("classes were not provided, cannot compute mIoU")
         else:
             all_classes = set(int(c) for c in self.classes)
             # log.info(f'compute metrics for {len(all_classes)} classes')
 
-        summed = {k: [sum([self.metrics[k][i][j] 
-                           for i in range(len(self.metrics[k]))])
-                      for j in range(len(self.threshold_values))]
-                  for k in self.metrics.keys()}
+        summed = {
+            k: [
+                sum([self.metrics[k][i][j] for i in range(len(self.metrics[k]))])
+                for j in range(len(self.threshold_values))
+            ]
+            for k in self.metrics.keys()
+        }
 
         if all_classes is not None:
 
-            assert len(self.classes) == len(self.metrics['tp']) == len(self.metrics['fn'])
+            assert len(self.classes) == len(self.metrics["tp"]) == len(self.metrics["fn"])
             # group by class
             metrics_by_class = {c: {k: [] for k in self.metrics.keys()} for c in all_classes}
-            for i in range(len(self.metrics['tp'])):
+            for i in range(len(self.metrics["tp"])):
                 for k in self.metrics.keys():
                     metrics_by_class[self.classes[i]][k] += [self.metrics[k][i]]
-            
-            # sum over all instances within the classes
-            summed_by_cls = {k: {c: np.array(metrics_by_class[c][k]).sum(0).tolist() for c in all_classes} for k in self.metrics.keys()}
 
+            # sum over all instances within the classes
+            summed_by_cls = {
+                k: {c: np.array(metrics_by_class[c][k]).sum(0).tolist() for c in all_classes}
+                for k in self.metrics.keys()
+            }
 
         # Compute average precision
 
-        assert (np.array(summed['fp']) + np.array(summed['tp']) ).sum(), 'no predictions is made'
+        assert (np.array(summed["fp"]) + np.array(summed["tp"])).sum(), "no predictions is made"
 
         # only consider values where a prediction is made
-        precisions = [summed['tp'][j] / (1 + summed['tp'][j] + summed['fp'][j]) for j in range(len(self.threshold_values))
-                      if summed['tp'][j] + summed['fp'][j] > 0]
-        recalls = [summed['tp'][j] / (1 + summed['tp'][j] + summed['fn'][j]) for j in range(len(self.threshold_values))
-                           if summed['tp'][j] + summed['fp'][j] > 0]
+        precisions = [
+            summed["tp"][j] / (1 + summed["tp"][j] + summed["fp"][j])
+            for j in range(len(self.threshold_values))
+            if summed["tp"][j] + summed["fp"][j] > 0
+        ]
+        recalls = [
+            summed["tp"][j] / (1 + summed["tp"][j] + summed["fn"][j])
+            for j in range(len(self.threshold_values))
+            if summed["tp"][j] + summed["fp"][j] > 0
+        ]
 
         # remove duplicate recall-precision-pairs (and sort by recall value)
         recalls, precisions = zip(*sorted(list(set(zip(recalls, precisions))), key=lambda x: x[0]))
 
         from scipy.integrate import simps
+
         ap = simps(precisions, recalls)
 
         # Compute best IoU
-        fgiou_scores = [summed['tp'][j] / (1 + summed['tp'][j] + summed['fp'][j] + summed['fn'][j]) for j in range(len(self.threshold_values))]
-
-        biniou_scores = [
-            0.5*(summed['tp'][j] / (1 + summed['tp'][j] + summed['fp'][j] + summed['fn'][j])) + 
-            0.5*(summed['tn'][j] / (1 + summed['tn'][j] + summed['fn'][j] + summed['fp'][j])) 
+        fgiou_scores = [
+            summed["tp"][j] / (1 + summed["tp"][j] + summed["fp"][j] + summed["fn"][j])
             for j in range(len(self.threshold_values))
         ]
-        
+
+        biniou_scores = [
+            0.5 * (summed["tp"][j] / (1 + summed["tp"][j] + summed["fp"][j] + summed["fn"][j]))
+            + 0.5 * (summed["tn"][j] / (1 + summed["tn"][j] + summed["fn"][j] + summed["fp"][j]))
+            for j in range(len(self.threshold_values))
+        ]
+
         # index_0p5 = self.threshold_values.tolist().index(0.5)
         # index_0p1 = self.threshold_values.tolist().index(0.1)
         # index_0p2 = self.threshold_values.tolist().index(0.2)
@@ -463,55 +530,58 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
 
         if all_classes is not None:
             # mean IoU
-            mean_ious = [np.mean([summed_by_cls['tp'][c][j] / (1 + summed_by_cls['tp'][c][j] + summed_by_cls['fp'][c][j] + summed_by_cls['fn'][c][j]) 
-                            for c in all_classes])
-                        for j in range(len(self.threshold_values))]
+            mean_ious = [
+                np.mean(
+                    [
+                        summed_by_cls["tp"][c][j]
+                        / (1 + summed_by_cls["tp"][c][j] + summed_by_cls["fp"][c][j] + summed_by_cls["fn"][c][j])
+                        for c in all_classes
+                    ]
+                )
+                for j in range(len(self.threshold_values))
+            ]
 
             mean_iou_dict = {
-                'miou_best': max(mean_ious) if all_classes is not None else None,
+                "miou_best": max(mean_ious) if all_classes is not None else None,
                 # 'miou_0.5': mean_ious[index_0p5] if all_classes is not None else None,
                 # 'miou_0.1': mean_ious[index_0p1] if all_classes is not None else None,
                 # 'miou_0.2': mean_ious[index_0p2] if all_classes is not None else None,
                 # 'miou_0.3': mean_ious[index_0p3] if all_classes is not None else None,
-                'miou_best_t': self.threshold_values[np.argmax(mean_ious)],
+                "miou_best_t": self.threshold_values[np.argmax(mean_ious)],
                 # 'mean_iou_ct': mean_ious[index_ct] if all_classes is not None and self.custom_threshold is not None else None,
-                'mean_iou_scores': mean_ious,
+                "mean_iou_scores": mean_ious,
             }
 
-        print(f'metric computation on {(len(all_classes) if all_classes is not None else "no")} classes took {time.time() - t_start:.1f}s')
+        print(
+            f'metric computation on {(len(all_classes) if all_classes is not None else "no")} classes took {time.time() - t_start:.1f}s'
+        )
 
         return {
-            'ap': ap,
-
+            "ap": ap,
             # fgiou
-            'fgiou_best': max(fgiou_scores),
+            "fgiou_best": max(fgiou_scores),
             # 'fgiou_0.5': fgiou_scores[index_0p5],
             # 'fgiou_0.1': fgiou_scores[index_0p1],
             # 'fgiou_0.2': fgiou_scores[index_0p2],
             # 'fgiou_0.3': fgiou_scores[index_0p3],
-            'fgiou_best_t': self.threshold_values[np.argmax(fgiou_scores)],
-
+            "fgiou_best_t": self.threshold_values[np.argmax(fgiou_scores)],
             # mean iou
-
-
             # biniou
-            'biniou_best': max(biniou_scores),
+            "biniou_best": max(biniou_scores),
             # 'biniou_0.5': biniou_scores[index_0p5],
             # 'biniou_0.1': biniou_scores[index_0p1],
             # 'biniou_0.2': biniou_scores[index_0p2],
             # 'biniou_0.3': biniou_scores[index_0p3],
-            'biniou_best_t': self.threshold_values[np.argmax(biniou_scores)],
-
+            "biniou_best_t": self.threshold_values[np.argmax(biniou_scores)],
             # custom threshold
             # 'fgiou_ct': fgiou_scores[index_ct] if self.custom_threshold is not None else None,
             # 'biniou_ct': biniou_scores[index_ct] if self.custom_threshold is not None else None,
             # 'ct': self.custom_threshold,
-
             # statistics
-            'fgiou_scores': fgiou_scores,
-            'biniou_scores': biniou_scores,
-            'precision_recall_curve': sorted(list(set(zip(recalls, precisions)))),
-            'summed_statistics': summed,
+            "fgiou_scores": fgiou_scores,
+            "biniou_scores": biniou_scores,
+            "precision_recall_curve": sorted(list(set(zip(recalls, precisions)))),
+            "summed_statistics": summed,
             # 'summed_by_cls_statistics': summed_by_cls,
             # **mean_iou_dict
         }

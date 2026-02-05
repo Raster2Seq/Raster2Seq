@@ -206,9 +206,7 @@ class NaiveSyncBatchNorm(BatchNorm2d):
                 vec = torch.zeros([2 * C + 1], device=mean.device, dtype=mean.dtype)
                 vec = vec + input.sum()  # make sure there is gradient w.r.t input
             else:
-                vec = torch.cat(
-                    [mean, meansqr, torch.ones([1], device=mean.device, dtype=mean.dtype)], dim=0
-                )
+                vec = torch.cat([mean, meansqr, torch.ones([1], device=mean.device, dtype=mean.dtype)], dim=0)
             vec = differentiable_all_reduce(vec * B)
 
             total_batch = vec[-1].detach()

@@ -75,9 +75,7 @@ def _generate_optimizer_class_with_gradient_clipping(
     return OptimizerWithGradientClip
 
 
-def maybe_add_gradient_clipping(
-    cfg: CfgNode, optimizer: Type[torch.optim.Optimizer]
-) -> Type[torch.optim.Optimizer]:
+def maybe_add_gradient_clipping(cfg: CfgNode, optimizer: Type[torch.optim.Optimizer]) -> Type[torch.optim.Optimizer]:
     """
     If gradient clipping is enabled through config options, wraps the existing
     optimizer type to become a new dynamically created class OptimizerWithGradientClip
@@ -259,9 +257,7 @@ def reduce_param_groups(params: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return ret
 
 
-def build_lr_scheduler(
-    cfg: CfgNode, optimizer: torch.optim.Optimizer
-) -> torch.optim.lr_scheduler._LRScheduler:
+def build_lr_scheduler(cfg: CfgNode, optimizer: torch.optim.Optimizer) -> torch.optim.lr_scheduler._LRScheduler:
     """
     Build a LR scheduler from config.
     """
@@ -272,8 +268,7 @@ def build_lr_scheduler(
         if len(steps) != len(cfg.SOLVER.STEPS):
             logger = logging.getLogger(__name__)
             logger.warning(
-                "SOLVER.STEPS contains values larger than SOLVER.MAX_ITER. "
-                "These values will be ignored."
+                "SOLVER.STEPS contains values larger than SOLVER.MAX_ITER. " "These values will be ignored."
             )
         sched = MultiStepParamScheduler(
             values=[cfg.SOLVER.GAMMA**k for k in range(len(steps) + 1)],

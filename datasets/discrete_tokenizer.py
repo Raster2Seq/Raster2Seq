@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+
 class DiscreteTokenizer(object):
     def __init__(self, num_bins, seq_len, add_cls=False):
         self.num_bins = num_bins
@@ -17,7 +18,7 @@ class DiscreteTokenizer(object):
             self.vocab_size = vocab_size + 5
         else:
             self.vocab_size = vocab_size + 4
-    
+
     def __len__(self):
         return self.vocab_size
 
@@ -25,7 +26,7 @@ class DiscreteTokenizer(object):
         out = []
         if add_bos:
             out = [self.bos]
-        num_extra = 1 if not self.add_cls else 2 # cls and sep
+        num_extra = 1 if not self.add_cls else 2  # cls and sep
         for sub in seq:
             cur_len = len(out)
             # Append sub only if it doesn't exceed seq_len
@@ -35,11 +36,11 @@ class DiscreteTokenizer(object):
                 break
             # Append cls and sep tokens only if it doesn't exceed seq_len
             if self.add_cls:
-                out.append(self.cls) # cls token
+                out.append(self.cls)  # cls token
             out.append(self.sep)
         # Remove last separator token if present
         if out and out[-1] == self.sep:
-            out.pop(-1) # remove last separator token
+            out.pop(-1)  # remove last separator token
 
         if self.seq_len > len(out):
             out.extend([self.pad] * (self.seq_len - len(out)))
@@ -48,7 +49,7 @@ class DiscreteTokenizer(object):
             out[-1] = self.eos
 
         return torch.tensor(out, dtype=dtype)
-    
+
     def _padding(self, seq, pad_value, dtype):
         if self.seq_len > len(seq):
             seq.extend([pad_value] * (self.seq_len - len(seq)))
@@ -60,7 +61,7 @@ class DiscreteTokenizerV2(DiscreteTokenizer):
         out = []
         if add_bos:
             out = [self.bos]
-        num_extra = 1 if not self.add_cls else 2 # cls and sep
+        num_extra = 1 if not self.add_cls else 2  # cls and sep
         indices = []
         for i, sub in enumerate(seq):
             cur_len = len(out)
@@ -72,11 +73,11 @@ class DiscreteTokenizerV2(DiscreteTokenizer):
                 continue
             # Append cls and sep tokens only if it doesn't exceed seq_len
             if self.add_cls:
-                out.append(self.cls) # cls token
+                out.append(self.cls)  # cls token
             out.append(self.sep)
         # Remove last separator token if present
         if out and out[-1] == self.sep:
-            out.pop(-1) # remove last separator token
+            out.pop(-1)  # remove last separator token
 
         if self.seq_len > len(out):
             out.extend([self.pad] * (self.seq_len - len(out)))

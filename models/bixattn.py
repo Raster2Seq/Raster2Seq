@@ -4,6 +4,7 @@ from torch import nn
 from timm.models.layers import DropPath
 from timm.models.layers import Mlp
 
+
 # LayerScale NOT used by default, but might be beneficial for larger / deeper models
 class LayerScale(nn.Module):
     def __init__(self, dim, init_values=1e-5, inplace=False):
@@ -17,32 +18,41 @@ class LayerScale(nn.Module):
 
 class BiXAttn(nn.Module):
     """BiXAttn module for bi-attention between latents and patches/tokens"""
-    def __init__(self, dim_lat, dim_pat, dim_attn, num_heads=8, rv_bias=False, attn_drop=0., proj_drop=0.):
+
+    def __init__(self, dim_lat, dim_pat, dim_attn, num_heads=8, rv_bias=False, attn_drop=0.0, proj_drop=0.0):
         super().__init__()
-        assert dim_attn % num_heads == 0, 'dim_attn MUST be divisible by num_heads'
+        assert dim_attn % num_heads == 0, "dim_attn MUST be divisible by num_heads"
 
         self.num_heads = num_heads
         head_dim = dim_attn // num_heads
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim**-0.5
         self.dim_attn = dim_attn
 
         self.rv_latents = nn.Linear(dim_lat, dim_attn * 2, bias=rv_bias)  # 'in-projection' for latents
         self.rv_patches = nn.Linear(dim_pat, dim_attn * 2, bias=rv_bias)  # 'in-projection' for patches/tokens
         self.attn_drop = nn.Dropout(attn_drop)
         self.attn_dropT = nn.Dropout(attn_drop)
-        self.proj_lat = nn.Linear(dim_attn, dim_lat)             # 'out-projection' for latents
+        self.proj_lat = nn.Linear(dim_attn, dim_lat)  # 'out-projection' for latents
         self.proj_drop_lat = nn.Dropout(proj_drop)
-        self.proj_pat = nn.Linear(dim_attn, dim_pat)             # 'out-projection' for patches/tokens
+        self.proj_pat = nn.Linear(dim_attn, dim_pat)  # 'out-projection' for patches/tokens
         self.proj_drop_pat = nn.Dropout(proj_drop)
 
     def forward(self, x_latents, x_patches):
-        B_lat, N_lat, _ = x_latents.shape  # Note: need B_lat since 1 at very first pass, then broadcasted/extended to bs
+        B_lat, N_lat, _ = (
+            x_latents.shape
+        )  # Note: need B_lat since 1 at very first pass, then broadcasted/extended to bs
         B_pat, N_pat, _ = x_patches.shape
-        rv_lat = self.rv_latents(x_latents).reshape(B_lat, N_lat, 2, self.num_heads,
-                                                    self.dim_attn // self.num_heads).permute(2, 0, 3, 1, 4)
+        rv_lat = (
+            self.rv_latents(x_latents)
+            .reshape(B_lat, N_lat, 2, self.num_heads, self.dim_attn // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
         r_lat, v_lat = rv_lat.unbind(0)
-        rv_pat = self.rv_patches(x_patches).reshape(B_pat, N_pat, 2, self.num_heads,
-                                                    self.dim_attn // self.num_heads).permute(2, 0, 3, 1, 4)
+        rv_pat = (
+            self.rv_patches(x_patches)
+            .reshape(B_pat, N_pat, 2, self.num_heads, self.dim_attn // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
         r_pat, v_pat = rv_pat.unbind(0)
         # attention: (q@k.T), and will be multiplied with the value associated with the keys k
         attn = (r_lat @ r_pat.transpose(-2, -1)) * self.scale  # query from latent, key from patches
@@ -69,36 +79,58 @@ class BiXAttn(nn.Module):
 
 class BiXAttnBlock(nn.Module):
     """Block performing Cross-Attention between the latents and input tokens, bi-directional attention"""
+
     def __init__(
-            self, dim_lat, dim_pat, dim_attn, num_heads, rv_bias=False, drop=0., attn_drop=0.,
-            init_values=None, drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm,
-            lat_mlp_ratio=4., pat_mlp_ratio=4.):
+        self,
+        dim_lat,
+        dim_pat,
+        dim_attn,
+        num_heads,
+        rv_bias=False,
+        drop=0.0,
+        attn_drop=0.0,
+        init_values=None,
+        drop_path=0.0,
+        act_layer=nn.GELU,
+        norm_layer=nn.LayerNorm,
+        lat_mlp_ratio=4.0,
+        pat_mlp_ratio=4.0,
+    ):
         super().__init__()
         self.norm1_lat = norm_layer(dim_lat)
         self.norm1_pat = norm_layer(dim_pat)
-        self.attn = BiXAttn(dim_lat=dim_lat, dim_pat=dim_pat, dim_attn=dim_attn, num_heads=num_heads,
-                                   rv_bias=rv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.attn = BiXAttn(
+            dim_lat=dim_lat,
+            dim_pat=dim_pat,
+            dim_attn=dim_attn,
+            num_heads=num_heads,
+            rv_bias=rv_bias,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
         self.ls1_lat = LayerScale(dim_lat, init_values=init_values) if init_values else nn.Identity()
         self.ls1_pat = LayerScale(dim_pat, init_values=init_values) if init_values else nn.Identity()
         # NOTE: drop path for stochastic depth, papers/repos indicate that that's better than dropout here
-        self.drop_path1_lat = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-        self.drop_path1_pat = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path1_lat = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.drop_path1_pat = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         # Latents -- components for further refinement after attention:
         self.norm2_lat = norm_layer(dim_lat)
-        self.mlp_lat = Mlp(in_features=dim_lat, hidden_features=int(dim_lat * lat_mlp_ratio),
-                           act_layer=act_layer, drop=drop)
+        self.mlp_lat = Mlp(
+            in_features=dim_lat, hidden_features=int(dim_lat * lat_mlp_ratio), act_layer=act_layer, drop=drop
+        )
 
         self.ls2_lat = LayerScale(dim_lat, init_values=init_values) if init_values else nn.Identity()
-        self.drop_path2_lat = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path2_lat = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         # Patches -- components for further refinement after attention:
         self.norm2_pat = norm_layer(dim_pat)
-        self.mlp_pat = Mlp(in_features=dim_pat, hidden_features=int(dim_pat * pat_mlp_ratio),
-                           act_layer=act_layer, drop=drop)
+        self.mlp_pat = Mlp(
+            in_features=dim_pat, hidden_features=int(dim_pat * pat_mlp_ratio), act_layer=act_layer, drop=drop
+        )
 
         self.ls2_pat = LayerScale(dim_pat, init_values=init_values) if init_values else nn.Identity()
-        self.drop_path2_pat = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path2_pat = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
     def forward(self, x_latents, x_patches):
         # Cross attention forwards
@@ -117,35 +149,45 @@ class BiXAttnBlock(nn.Module):
 
 class CrossAttentionOneSided(nn.Module):
     """Cross-Attention between latents and input tokens -- only returning the refined latents here, used at the last
-        stage of the BiXT (since we don't use the patch tokens afterwards, we can save the compute) """
-    def __init__(self, dim_lat, dim_pat, dim_attn, num_heads=8, rv_bias=False, attn_drop=0., proj_drop=0.):
+    stage of the BiXT (since we don't use the patch tokens afterwards, we can save the compute)"""
+
+    def __init__(self, dim_lat, dim_pat, dim_attn, num_heads=8, rv_bias=False, attn_drop=0.0, proj_drop=0.0):
         super().__init__()
-        assert dim_attn % num_heads == 0, 'dim_attn MUST be divisible by num_heads'
+        assert dim_attn % num_heads == 0, "dim_attn MUST be divisible by num_heads"
 
         self.num_heads = num_heads
         head_dim = dim_attn // num_heads
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim**-0.5
         self.dim_attn = dim_attn
 
-        self.r_latents = nn.Linear(dim_lat, dim_attn, bias=rv_bias)             # 'in-projection' for latents
-        self.rv_patches = nn.Linear(dim_pat, dim_attn * 2, bias=rv_bias)        # 'in-projection' for patches/tokens
+        self.r_latents = nn.Linear(dim_lat, dim_attn, bias=rv_bias)  # 'in-projection' for latents
+        self.rv_patches = nn.Linear(dim_pat, dim_attn * 2, bias=rv_bias)  # 'in-projection' for patches/tokens
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj_lat = nn.Linear(dim_attn, dim_lat)                            # 'out-projection' for latents
+        self.proj_lat = nn.Linear(dim_attn, dim_lat)  # 'out-projection' for latents
         self.proj_drop_lat = nn.Dropout(proj_drop)
 
     def forward(self, x_latents, x_patches):
-        B_lat, N_lat, _ = x_latents.shape  # Note: need B_lat since 1 at very first pass, then broadcasted/extended to bs
+        B_lat, N_lat, _ = (
+            x_latents.shape
+        )  # Note: need B_lat since 1 at very first pass, then broadcasted/extended to bs
         B_pat, N_pat, _ = x_patches.shape
-        r_lat = self.r_latents(x_latents).reshape(B_lat, N_lat, 1, self.num_heads,
-                                                  self.dim_attn // self.num_heads).permute(2, 0, 3, 1, 4).squeeze(0)
+        r_lat = (
+            self.r_latents(x_latents)
+            .reshape(B_lat, N_lat, 1, self.num_heads, self.dim_attn // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+            .squeeze(0)
+        )
 
-        rv_pat = self.rv_patches(x_patches).reshape(B_pat, N_pat, 2, self.num_heads,
-                                                    self.dim_attn // self.num_heads).permute(2, 0, 3, 1, 4)
+        rv_pat = (
+            self.rv_patches(x_patches)
+            .reshape(B_pat, N_pat, 2, self.num_heads, self.dim_attn // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
         r_pat, v_pat = rv_pat.unbind(0)
         # attention: (q@k.T), and will be multiplied with the value associated with the keys k
         attn = (r_lat @ r_pat.transpose(-2, -1)) * self.scale
 
-        attn = attn.softmax(dim=-1)   # softmax along patch token dimension
+        attn = attn.softmax(dim=-1)  # softmax along patch token dimension
         attn = self.attn_drop(attn)
 
         # Retrieve information form the patch tokens via latent query:
@@ -158,26 +200,46 @@ class CrossAttentionOneSided(nn.Module):
 
 class CAOneSidedBlock(nn.Module):
     """Block performing one-sided Cross-Attention between the latents and input tokens, no information transfer
-       to input tokens for this block!"""
+    to input tokens for this block!"""
+
     def __init__(
-            self, dim_lat, dim_pat, dim_attn, num_heads, rv_bias=False, drop=0., attn_drop=0.,
-            init_values=None, drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm,
-            lat_mlp_ratio=4.):
+        self,
+        dim_lat,
+        dim_pat,
+        dim_attn,
+        num_heads,
+        rv_bias=False,
+        drop=0.0,
+        attn_drop=0.0,
+        init_values=None,
+        drop_path=0.0,
+        act_layer=nn.GELU,
+        norm_layer=nn.LayerNorm,
+        lat_mlp_ratio=4.0,
+    ):
         super().__init__()
         self.norm1_lat = norm_layer(dim_lat)
         self.norm1_pat = norm_layer(dim_pat)
-        self.attn = CrossAttentionOneSided(dim_lat=dim_lat, dim_pat=dim_pat, dim_attn=dim_attn, num_heads=num_heads,
-                                           rv_bias=rv_bias, attn_drop=attn_drop, proj_drop=drop)
+        self.attn = CrossAttentionOneSided(
+            dim_lat=dim_lat,
+            dim_pat=dim_pat,
+            dim_attn=dim_attn,
+            num_heads=num_heads,
+            rv_bias=rv_bias,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
         self.ls1_lat = LayerScale(dim_lat, init_values=init_values) if init_values else nn.Identity()
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.drop_path1_lat = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path1_lat = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         # Latents -- components for further refinement after attention:
         self.norm2_lat = norm_layer(dim_lat)
 
-        self.mlp_lat = Mlp(in_features=dim_lat, hidden_features=int(dim_lat * lat_mlp_ratio),
-                           act_layer=act_layer, drop=drop)
+        self.mlp_lat = Mlp(
+            in_features=dim_lat, hidden_features=int(dim_lat * lat_mlp_ratio), act_layer=act_layer, drop=drop
+        )
         self.ls2_lat = LayerScale(dim_lat, init_values=init_values) if init_values else nn.Identity()
-        self.drop_path2_lat = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path2_lat = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
     def forward(self, x_latents, x_patches):
         # Cross attention forwards

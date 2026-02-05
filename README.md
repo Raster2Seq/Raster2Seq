@@ -22,6 +22,9 @@
       <a href="#data">Data</a>
     </li>
     <li>
+      <a href="#inference">Inference</a>
+    </li>
+    <li>
       <a href="#evaluation">Evaluation</a>
     </li>
     <li>
@@ -99,33 +102,38 @@ Our model checkpoints can be found in table below:
     <tr>
       <th>Dataset</th>
       <th>RoomF1</th>
-      <th>Model</th>
-      <th>Semantic Model</th>
+      <th>Checkpoints</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td>Structured3D</td>
-      <td>99.6</td>
-      <td></td>
-      <td>https://drive.google.com/file/d/1NLWnEkEgWN5ibOQlk3FVr4w2Nrhnjsmo/view?usp=sharing</td>
+      <td>99.6 & 99.6</td>
+      <td>
+        <a href="https://drive.google.com/file/d/1aC2vyR_2ct7DNR5nGL4o2bkGRpZr0qVE/view?usp=sharing">Structured Model</a> & 
+        <a href="https://drive.google.com/file/d/1OsqFzusl7qH0H1Od3yY_SziBCjnW6FPo/view?usp=sharing">Semantic Model</a>
+      </td>
     </tr>
     <tr>
       <td>CubiCasa5K</td>
-      <td>88.7</td>
-      <td></td>
-      <td>https://drive.google.com/file/d/1_kEbWvmQjS8Xr6lIZox2vMyTi6C6kTpj/view?usp=sharing</td>
+      <td>88.1 & 88.7</td>
+      <td>
+        <a href="https://drive.google.com/file/d/1NcKzVSkfvHs97aE48-9bFBMlyz1Wfkea/view?usp=sharing">Structured Model</a> &
+        <a href="https://drive.google.com/file/d/1M32HlYwXw-4Q_uajSCvpbF31UFPzQVHP/view?usp=sharing">Semantic Model</a>
+      </td>
     </tr>
     <tr>
       <td>Raster2Graph</td>
-      <td>97.0</td>
-      <td></td>
-      <td>https://drive.google.com/file/d/16wkbt096DkvBT_lDK-qVSGT6kWan15I5/view?usp=sharing</td>
+      <td>97.0 & 97.0</td>
+      <td>
+        <a href="https://drive.google.com/file/d/15xCgv0a8Na5QZEGptPvG0ZnKnpB3pXqk/view?usp=sharing">Structured Model</a> &
+        <a href="https://drive.google.com/file/d/1ZI4hs1iKk2y84S2dpsDHb40wCOPOGrtj/view?usp=sharing">Semantic Model</a>
+      </td>
     </tr>
   </tbody>
 </table>
 
-To download, use `gdown --fuzzy path` or our provided script [tools/download_checkpoints.sh](tools/download_checkpoints.sh).
+To download, use `gdown --fuzzy <url>` or our provided script [tools/download_checkpoints.sh](tools/download_checkpoints.sh).
 
 
 ## Inference

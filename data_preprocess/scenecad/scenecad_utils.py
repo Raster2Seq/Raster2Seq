@@ -11,27 +11,27 @@ import os
 import sys
 import open3d as o3d
 
-sys.path.append('../data_preprocess')
+sys.path.append("../data_preprocess")
 from common_utils import is_clockwise, resort_corners
 
+
 def get_axis_align_matrix(scan_name, scans_transform_path):
-    meta_file = scans_transform_path + '/'+os.path.join(scan_name,scan_name+'.txt')
+    meta_file = scans_transform_path + "/" + os.path.join(scan_name, scan_name + ".txt")
     lines = open(meta_file).readlines()
     for line in lines:
-        if 'axisAlignment' in line:
-            axis_align_matrix = [float(x) \
-                for x in line.rstrip().strip('axisAlignment = ').split(' ')]
+        if "axisAlignment" in line:
+            axis_align_matrix = [float(x) for x in line.rstrip().strip("axisAlignment = ").split(" ")]
             break
-    axis_align_matrix = np.array(axis_align_matrix).reshape((4,4))
+    axis_align_matrix = np.array(axis_align_matrix).reshape((4, 4))
     return axis_align_matrix
 
 
-def transform(scan_name,mesh_vertices,scans_transform_path):
+def transform(scan_name, mesh_vertices, scans_transform_path):
     axis_align_matrix = get_axis_align_matrix(scan_name, scans_transform_path)
     pts = np.ones((mesh_vertices.shape[0], 4))
-    pts[:,0:3] = mesh_vertices[:,0:3]
-    pts = np.dot(pts, axis_align_matrix.transpose()) # Nx4
-    mesh_vertices[:,0:3] = pts[:,0:3]
+    pts[:, 0:3] = mesh_vertices[:, 0:3]
+    pts = np.dot(pts, axis_align_matrix.transpose())  # Nx4
+    mesh_vertices[:, 0:3] = pts[:, 0:3]
     return mesh_vertices
 
 
@@ -39,33 +39,33 @@ def get_floor(scan_name, scannet_planes_path, scans_transform_path, out_path):
 
     print("Processing scan: ", scan_name)
 
-    with open(scannet_planes_path+'/'+scan_name+'.json','r') as quad_file:
+    with open(scannet_planes_path + "/" + scan_name + ".json", "r") as quad_file:
         plane_dict = json.load(quad_file)
-    edge_dict = plane_dict['edges']
-    vert_dict=plane_dict['verts']
-    
-    for i in range(0,len(vert_dict)):
-       temp = vert_dict[i][1]
-       vert_dict[i][1] = - vert_dict[i][2]
-       vert_dict[i][2] = temp
+    edge_dict = plane_dict["edges"]
+    vert_dict = plane_dict["verts"]
+
+    for i in range(0, len(vert_dict)):
+        temp = vert_dict[i][1]
+        vert_dict[i][1] = -vert_dict[i][2]
+        vert_dict[i][2] = temp
 
     verts = np.array(vert_dict)
-    verts = transform(scan_name,verts,scans_transform_path)
+    verts = transform(scan_name, verts, scans_transform_path)
 
     floor_egdes = []
-    z_center = verts[:,2].mean()
+    z_center = verts[:, 2].mean()
 
     ## extract points and egdes on the floor
     for egde in edge_dict:
         # if np.all(verts[egde][:,2] < z_center) & (np.abs(verts[egde][0,2]-verts[egde][1,2]) < 1):
-        if np.all(verts[egde][:,2] < z_center):
+        if np.all(verts[egde][:, 2] < z_center):
             floor_egdes.append(egde)
 
     floor_egdes = np.array(floor_egdes)
     vert_idx = np.unique(floor_egdes)
     vert_idx_dict = dict(zip(np.arange(0, vert_idx.shape[0], 1), vert_idx))
-    for k, v in vert_idx_dict.items(): floor_egdes[floor_egdes==v] = k
-
+    for k, v in vert_idx_dict.items():
+        floor_egdes[floor_egdes == v] = k
 
     floor_points = verts[vert_idx]
 
@@ -73,20 +73,18 @@ def get_floor(scan_name, scannet_planes_path, scans_transform_path, out_path):
     # upper_corner_idx = np.argmin(floor_points, 0)[0]
     # V2: find most upper corner (x+y minimum)
     # upper_corner_idx = np.argmin(floor_points[:,0] + floor_points[:,1])
-    x_y_square_sum = floor_points[:,0]**2 + floor_points[:,1]**2 
-    lower_left_points = (floor_points[:,0] < 0) & (floor_points[:,1] < 0)
-    x_y_square_sum[np.invert(lower_left_points)] =0
+    x_y_square_sum = floor_points[:, 0] ** 2 + floor_points[:, 1] ** 2
+    lower_left_points = (floor_points[:, 0] < 0) & (floor_points[:, 1] < 0)
+    x_y_square_sum[np.invert(lower_left_points)] = 0
     upper_corner_idx = np.argmax(x_y_square_sum)
 
-
-    adjacent_edges = floor_egdes[(floor_egdes[:,0]==upper_corner_idx) | (floor_egdes[:,1]==upper_corner_idx)]
+    adjacent_edges = floor_egdes[(floor_egdes[:, 0] == upper_corner_idx) | (floor_egdes[:, 1] == upper_corner_idx)]
     adjacent_vertices = {e for l in adjacent_edges.tolist() for e in l}
     adjacent_vertices.remove(upper_corner_idx)
     if not len(adjacent_vertices) == 2:
         print("Ignored scan: ", scan_name)
-        return False 
+        return False
     adj_v1, adj_v2 = adjacent_vertices
-
 
     ## sort points and edges from the starting point
     edge_sorted = []
@@ -94,15 +92,15 @@ def get_floor(scan_name, scannet_planes_path, scans_transform_path, out_path):
     edge_sorted.append([0, 1])
     points_sorted.append(floor_points[upper_corner_idx])
     points_sorted.append(floor_points[adj_v1])
-    vert_idx_dict_sorted = {0:upper_corner_idx, 1:adj_v1}
+    vert_idx_dict_sorted = {0: upper_corner_idx, 1: adj_v1}
     idx = 2
 
     adj_v_next = adj_v1
     adj_v_before = upper_corner_idx
-    
+
     while not adj_v_next == adj_v2:
-        
-        adjacent_edges_next = floor_egdes[(floor_egdes[:,0]==adj_v_next) | (floor_egdes[:,1]==adj_v_next)]
+
+        adjacent_edges_next = floor_egdes[(floor_egdes[:, 0] == adj_v_next) | (floor_egdes[:, 1] == adj_v_next)]
         adjacent_vertices = {e for l in adjacent_edges_next.tolist() for e in l}
         adjacent_vertices.remove(adj_v_next)
         adjacent_vertices.remove(adj_v_before)
@@ -112,22 +110,22 @@ def get_floor(scan_name, scannet_planes_path, scans_transform_path, out_path):
             return False
 
         adj_v_before = adj_v_next
-        (adj_v_next,)=adjacent_vertices
+        (adj_v_next,) = adjacent_vertices
 
-        edge_sorted.append([idx-1, idx])
+        edge_sorted.append([idx - 1, idx])
         points_sorted.append(floor_points[adj_v_next])
         vert_idx_dict_sorted[idx] = adj_v_next
-        idx+=1
-    edge_sorted.append([idx-1, 0])
+        idx += 1
+    edge_sorted.append([idx - 1, 0])
     edge_sorted = np.array(edge_sorted)
     points_sorted = np.array(points_sorted)
 
     ## sort points clockwise
-    if not is_clockwise(points_sorted[:,:2].tolist()):
+    if not is_clockwise(points_sorted[:, :2].tolist()):
         points_sorted[1:] = np.flip(points_sorted[1:], 0)
 
-    toSave = {'floor_verts': points_sorted.tolist(), 'floor_edges':edge_sorted.tolist()}
-    with open(out_path+'/'+scan_name+'.json', 'w') as fp:
+    toSave = {"floor_verts": points_sorted.tolist(), "floor_edges": edge_sorted.tolist()}
+    with open(out_path + "/" + scan_name + ".json", "w") as fp:
         json.dump(toSave, fp)
 
     return True
@@ -137,57 +135,54 @@ def get_floor_multiRoom(scan_name, scannet_planes_path, scans_transform_path, ou
 
     print("Processing scan: ", scan_name)
 
-    with open(scannet_planes_path+'/'+scan_name+'.json','r') as quad_file:
+    with open(scannet_planes_path + "/" + scan_name + ".json", "r") as quad_file:
         plane_dict = json.load(quad_file)
-    edge_dict = plane_dict['edges']
-    vert_dict=plane_dict['verts']
-    
-    for i in range(0,len(vert_dict)):
-       temp = vert_dict[i][1]
-       vert_dict[i][1] = - vert_dict[i][2]
-       vert_dict[i][2] = temp
+    edge_dict = plane_dict["edges"]
+    vert_dict = plane_dict["verts"]
+
+    for i in range(0, len(vert_dict)):
+        temp = vert_dict[i][1]
+        vert_dict[i][1] = -vert_dict[i][2]
+        vert_dict[i][2] = temp
 
     verts = np.array(vert_dict)
-    verts = transform(scan_name,verts,scans_transform_path)
+    verts = transform(scan_name, verts, scans_transform_path)
 
     floor_egdes = []
-    z_center = verts[:,2].mean()
+    z_center = verts[:, 2].mean()
 
     ## extract points and egdes on the floor
     for egde in edge_dict:
         # if np.all(verts[egde][:,2] < z_center) & (np.abs(verts[egde][0,2]-verts[egde][1,2]) < 1):
-        if np.all(verts[egde][:,2] < z_center):
+        if np.all(verts[egde][:, 2] < z_center):
             floor_egdes.append(egde)
 
     floor_egdes = np.array(floor_egdes)
     vert_idx = np.unique(floor_egdes)
     vert_idx_dict = dict(zip(np.arange(0, vert_idx.shape[0], 1), vert_idx))
-    for k, v in vert_idx_dict.items(): floor_egdes[floor_egdes==v] = k
-
+    for k, v in vert_idx_dict.items():
+        floor_egdes[floor_egdes == v] = k
 
     floor_points = verts[vert_idx]
 
-    pg = {'corners': floor_points[:,:2], 'edges': floor_egdes}
-
+    pg = {"corners": floor_points[:, :2], "edges": floor_egdes}
 
     ## find most upper corner (x minimum)
     # upper_corner_idx = np.argmin(floor_points, 0)[0]
     # V2: find most upper corner (x+y minimum)
     # upper_corner_idx = np.argmin(floor_points[:,0] + floor_points[:,1])
-    x_y_square_sum = floor_points[:,0]**2 + floor_points[:,1]**2 
-    lower_left_points = (floor_points[:,0] < 0) & (floor_points[:,1] < 0)
-    x_y_square_sum[np.invert(lower_left_points)] =0
+    x_y_square_sum = floor_points[:, 0] ** 2 + floor_points[:, 1] ** 2
+    lower_left_points = (floor_points[:, 0] < 0) & (floor_points[:, 1] < 0)
+    x_y_square_sum[np.invert(lower_left_points)] = 0
     upper_corner_idx = np.argmax(x_y_square_sum)
 
-
-    adjacent_edges = floor_egdes[(floor_egdes[:,0]==upper_corner_idx) | (floor_egdes[:,1]==upper_corner_idx)]
+    adjacent_edges = floor_egdes[(floor_egdes[:, 0] == upper_corner_idx) | (floor_egdes[:, 1] == upper_corner_idx)]
     adjacent_vertices = {e for l in adjacent_edges.tolist() for e in l}
     adjacent_vertices.remove(upper_corner_idx)
     if not len(adjacent_vertices) == 2:
         print("Ignored scan: ", scan_name)
-        return False 
+        return False
     adj_v1, adj_v2 = adjacent_vertices
-
 
     ## sort points and edges from the starting point
     edge_sorted = []
@@ -195,15 +190,15 @@ def get_floor_multiRoom(scan_name, scannet_planes_path, scans_transform_path, ou
     edge_sorted.append([0, 1])
     points_sorted.append(floor_points[upper_corner_idx])
     points_sorted.append(floor_points[adj_v1])
-    vert_idx_dict_sorted = {0:upper_corner_idx, 1:adj_v1}
+    vert_idx_dict_sorted = {0: upper_corner_idx, 1: adj_v1}
     idx = 2
 
     adj_v_next = adj_v1
     adj_v_before = upper_corner_idx
-    
+
     while not adj_v_next == adj_v2:
-        
-        adjacent_edges_next = floor_egdes[(floor_egdes[:,0]==adj_v_next) | (floor_egdes[:,1]==adj_v_next)]
+
+        adjacent_edges_next = floor_egdes[(floor_egdes[:, 0] == adj_v_next) | (floor_egdes[:, 1] == adj_v_next)]
         adjacent_vertices = {e for l in adjacent_edges_next.tolist() for e in l}
         adjacent_vertices.remove(adj_v_next)
         adjacent_vertices.remove(adj_v_before)
@@ -213,44 +208,44 @@ def get_floor_multiRoom(scan_name, scannet_planes_path, scans_transform_path, ou
             return False
 
         adj_v_before = adj_v_next
-        (adj_v_next,)=adjacent_vertices
+        (adj_v_next,) = adjacent_vertices
 
-        edge_sorted.append([idx-1, idx])
+        edge_sorted.append([idx - 1, idx])
         points_sorted.append(floor_points[adj_v_next])
         vert_idx_dict_sorted[idx] = adj_v_next
-        idx+=1
-    edge_sorted.append([idx-1, 0])
+        idx += 1
+    edge_sorted.append([idx - 1, 0])
     edge_sorted = np.array(edge_sorted)
     points_sorted = np.array(points_sorted)
 
     ## sort points clockwise
-    if not is_clockwise(points_sorted[:,:2].tolist()):
+    if not is_clockwise(points_sorted[:, :2].tolist()):
         points_sorted[1:] = np.flip(points_sorted[1:], 0)
 
-    toSave = {'floor_verts': points_sorted.tolist(), 'floor_edges':edge_sorted.tolist()}
-    with open(out_path+'/'+scan_name+'.json', 'w') as fp:
+    toSave = {"floor_verts": points_sorted.tolist(), "floor_edges": edge_sorted.tolist()}
+    with open(out_path + "/" + scan_name + ".json", "w") as fp:
         json.dump(toSave, fp)
 
     return True
 
 
 def get_floor_corners(scan_name, floorplan_path):
-    with open(floorplan_path+'/'+scan_name+'.json','r') as quad_file:
+    with open(floorplan_path + "/" + scan_name + ".json", "r") as quad_file:
         floor_dict = json.load(quad_file)
-    edge_dict = floor_dict['floor_edges']
-    vert_dict=floor_dict['floor_verts']
+    edge_dict = floor_dict["floor_edges"]
+    vert_dict = floor_dict["floor_verts"]
     verts = np.array(vert_dict)
 
     return verts, edge_dict
 
 
 def normalize_point(corner, min_x, width, min_y, height):
-        img_x = np.clip(int(math.floor((corner[0] - min_x) * 1.0 / width * 256)), 0, 255)
-        img_y = np.clip(int(math.floor((corner[1] - min_y) * 1.0 / height * 256)), 0, 255)
-        return img_x, img_y
+    img_x = np.clip(int(math.floor((corner[0] - min_x) * 1.0 / width * 256)), 0, 255)
+    img_y = np.clip(int(math.floor((corner[1] - min_y) * 1.0 / height * 256)), 0, 255)
+    return img_x, img_y
+
 
 def generate_density(xyz, normal=False):
-
 
     # xyz = xyz * 1000.0
     # xyz[:, :2] = np.round(xyz[:, :2] / 10) * 10.
@@ -275,9 +270,8 @@ def generate_density(xyz, normal=False):
 
     xyz = (xyz - mins) / max_range  # re-scale coords into [0.0, 1.0]
 
-    coordinates = np.round(xyz[:,:2] * 256)
-    coordinates = np.minimum(np.maximum(coordinates, 0),
-                                255)
+    coordinates = np.round(xyz[:, :2] * 256)
+    coordinates = np.minimum(np.maximum(coordinates, 0), 255)
 
     density = np.zeros((256, 256), dtype=np.float32)
 
@@ -293,24 +287,26 @@ def generate_density(xyz, normal=False):
     normalization_dict["min_y"] = mins[0][1]
     normalization_dict["max_range"] = max_range
 
-
     if normal:
         normals = np.array(pcd.normals)
         normals_map = np.zeros((density.shape[0], density.shape[1], 3))
 
         # count_map = np.ones((density.shape[0], density.shape[1], 3))
         for i, unique_coord in enumerate(unique_coordinates):
-            normals_indcs = np.argwhere(np.all(coordinates[::10] == unique_coord, axis=1))[:,0]
-            normals_map[unique_coordinates[i, 1], unique_coordinates[i, 0], :] = np.mean(normals[::10][normals_indcs, :], axis=0)
+            normals_indcs = np.argwhere(np.all(coordinates[::10] == unique_coord, axis=1))[:, 0]
+            normals_map[unique_coordinates[i, 1], unique_coordinates[i, 0], :] = np.mean(
+                normals[::10][normals_indcs, :], axis=0
+            )
             # if len(normals_indcs) > 0:
             #     count_map[unique_coordinates[i, 1], unique_coordinates[i, 0], :] = len(normals_indcs)
 
-        normals_map = (np.clip(normals_map,0,1) * 255).astype(np.uint8)
+        normals_map = (np.clip(normals_map, 0, 1) * 255).astype(np.uint8)
 
     else:
         normals_map = None
 
     return density, normalization_dict, normals_map
+
 
 def normalize_annotations(scan_name, SCANNET_FLOOR_PATH, normalization_dict):
 
@@ -331,18 +327,16 @@ def normalize_annotations(scan_name, SCANNET_FLOOR_PATH, normalization_dict):
     heat_annot = dict()
     edge_dict = np.array(edge_dict)
     for i, corner in enumerate(corners_in_img):
-        adjacent_edge = edge_dict[(edge_dict[:,0]==i) | (edge_dict[:,1]==i)]
+        adjacent_edge = edge_dict[(edge_dict[:, 0] == i) | (edge_dict[:, 1] == i)]
         adjacent_idx = {e for l in adjacent_edge.tolist() for e in l}
         adjacent_idx.remove(i)
 
         heat_annot[tuple(corners_in_img[i])] = [tuple(corners_in_img[j]) for j in adjacent_idx]
 
-
     return corners_in_img, heat_annot
 
 
 def generate_coco_dict(polygons, curr_instance_id, curr_img_id):
-
 
     coco_annotation_dict_list = []
 
@@ -350,9 +344,8 @@ def generate_coco_dict(polygons, curr_instance_id, curr_img_id):
 
         poly_shapely = Polygon(polygon)
         area = poly_shapely.area
-        
-        rectangle_shapely = poly_shapely.envelope
 
+        rectangle_shapely = poly_shapely.envelope
 
         coco_seg_poly = []
         poly_sorted = resort_corners(polygon)
@@ -371,22 +364,22 @@ def generate_coco_dict(polygons, curr_instance_id, curr_img_id):
         bb_x_max = np.minimum(np.max(bb_x) + bound_pad, 256 - 1)
         bb_y_max = np.minimum(np.max(bb_y) + bound_pad, 256 - 1)
 
-        bb_width = (bb_x_max - bb_x_min)
-        bb_height = (bb_y_max - bb_y_min)
+        bb_width = bb_x_max - bb_x_min
+        bb_height = bb_y_max - bb_y_min
 
         coco_bb = [bb_x_min, bb_y_min, bb_width, bb_height]
 
         coco_annotation_dict = {
-                "segmentation": [coco_seg_poly],
-                "area": area,
-                "iscrowd": 0,
-                "image_id": curr_img_id,
-                "bbox": coco_bb,
-                "category_id": 0,
-                "id": curr_instance_id}
-        
+            "segmentation": [coco_seg_poly],
+            "area": area,
+            "iscrowd": 0,
+            "image_id": curr_img_id,
+            "bbox": coco_bb,
+            "category_id": 0,
+            "id": curr_instance_id,
+        }
+
         coco_annotation_dict_list.append(coco_annotation_dict)
         curr_instance_id += 1
-
 
     return coco_annotation_dict_list

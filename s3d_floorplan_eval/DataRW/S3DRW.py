@@ -7,6 +7,7 @@ import time
 from s3d_floorplan_eval.DataRW.DataRW import DataRW
 from s3d_floorplan_eval.S3DLoader.S3DLoader import S3DLoader
 
+
 class S3DRW(DataRW):
     def __init__(self, options, mode):
         """
@@ -48,11 +49,10 @@ class S3DRW(DataRW):
         # print(len(list(iter(self.s3d_loader.data))))
         self.gt_sample = gt_sample = self.loader[scene_ind]
         self.gt_sample["density_map"] = torch.tensor(self.gt_sample["density_map"][None], device=self.device)
-        self.gt_sample["room_map"] = torch.tensor(self.gt_sample["room_map"][None,:,:,None], device=self.device)
-        self.gt_sample["wall_map"] = torch.tensor(self.gt_sample["wall_map"][None,:,:,None], device=self.device)
+        self.gt_sample["room_map"] = torch.tensor(self.gt_sample["room_map"][None, :, :, None], device=self.device)
+        self.gt_sample["wall_map"] = torch.tensor(self.gt_sample["wall_map"][None, :, :, None], device=self.device)
 
-
-        self.density_map = self.gt_sample['density_map'][:,:,:,None]
+        self.density_map = self.gt_sample["density_map"][:, :, :, None]
 
         self.h, self.w = self.density_map.shape[1], self.density_map.shape[2]
 
@@ -65,7 +65,7 @@ class S3DRW(DataRW):
         :return:
         """
         img_path = os.path.join(self.dataset_path, str(self.scene_id) + "_density.png")
-        density_map = cv2.imread(img_path, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_ANYCOLOR)[:,:, 0][None,:,:,None]
+        density_map = cv2.imread(img_path, cv2.IMREAD_ANYDEPTH | cv2.IMREAD_ANYCOLOR)[:, :, 0][None, :, :, None]
 
         density_map = torch.from_numpy(density_map).to(self.device)
 
@@ -105,9 +105,9 @@ class S3DRW(DataRW):
 
         if return_mask:
             room_filled_map = np.zeros((self.h, self.w))
-            cv2.fillPoly(room_filled_map, approx, color=1.)
+            cv2.fillPoly(room_filled_map, approx, color=1.0)
 
-            room_filled_map = torch.tensor(room_filled_map[:,:], dtype=torch.float32, device=self.device)
+            room_filled_map = torch.tensor(room_filled_map[:, :], dtype=torch.float32, device=self.device)
 
             return room_filled_map
         else:
@@ -131,11 +131,3 @@ class S3DRW(DataRW):
             assert "generate_input_dict_from_room_props for %s not implemented" % score_function
 
         return inputs
-
-
-
-
-
-
-
-

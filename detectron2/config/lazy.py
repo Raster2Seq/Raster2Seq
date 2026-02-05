@@ -41,9 +41,7 @@ class LazyCall:
 
     def __init__(self, target):
         if not (callable(target) or isinstance(target, (str, abc.Mapping))):
-            raise TypeError(
-                f"target of LazyCall must be a callable or defines a callable! Got {target}"
-            )
+            raise TypeError(f"target of LazyCall must be a callable or defines a callable! Got {target}")
         self._target = target
 
     def __call__(self, **kwargs):
@@ -125,8 +123,7 @@ def _patch_import():
             cur_file += ".py"
         if not PathManager.isfile(cur_file):
             raise ImportError(
-                f"Cannot import name {relative_import_path} from "
-                f"{original_file}: {cur_file} has to exist."
+                f"Cannot import name {relative_import_path} from " f"{original_file}: {cur_file} has to exist."
             )
         return cur_file
 
@@ -139,9 +136,7 @@ def _patch_import():
         ):
             cur_file = find_relative_file(globals["__file__"], name, level)
             _validate_py_syntax(cur_file)
-            spec = importlib.machinery.ModuleSpec(
-                _random_package_name(cur_file), None, origin=cur_file
-            )
+            spec = importlib.machinery.ModuleSpec(_random_package_name(cur_file), None, origin=cur_file)
             module = importlib.util.module_from_spec(spec)
             module.__file__ = cur_file
             with PathManager.open(cur_file) as f:
@@ -228,8 +223,7 @@ class LazyConfig:
                     {
                         name: _cast_to_config(value)
                         for name, value in ret.items()
-                        if isinstance(value, (DictConfig, ListConfig, dict))
-                        and not name.startswith("_")
+                        if isinstance(value, (DictConfig, ListConfig, dict)) and not name.startswith("_")
                     },
                     flags={"allow_objects": True},
                 )
@@ -325,8 +319,7 @@ class LazyConfig:
                     break
                 if not OmegaConf.is_config(v):
                     raise KeyError(
-                        f"Trying to update key {key}, but {prefix} "
-                        f"is not a config, but has type {type(v)}."
+                        f"Trying to update key {key}, but {prefix} " f"is not a config, but has type {type(v)}."
                     )
             OmegaConf.update(cfg, key, value, merge=True)
 
@@ -390,10 +383,7 @@ class LazyConfig:
                 # Dict that is inside a call is rendered as a regular dict
                 return (
                     "{"
-                    + ",".join(
-                        f"{repr(k)}: {_to_str(v, inside_call=inside_call)}"
-                        for k, v in sorted(obj.items())
-                    )
+                    + ",".join(f"{repr(k)}: {_to_str(v, inside_call=inside_call)}" for k, v in sorted(obj.items()))
                     + "}"
                 )
             elif isinstance(obj, list):

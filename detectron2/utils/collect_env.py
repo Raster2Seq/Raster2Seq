@@ -35,9 +35,7 @@ def detect_compute_compatibility(CUDA_HOME, so_file):
     try:
         cuobjdump = os.path.join(CUDA_HOME, "bin", "cuobjdump")
         if os.path.isfile(cuobjdump):
-            output = subprocess.check_output(
-                "'{}' --list-elf '{}'".format(cuobjdump, so_file), shell=True
-            )
+            output = subprocess.check_output("'{}' --list-elf '{}'".format(cuobjdump, so_file), shell=True)
             output = output.decode("utf-8").strip().split("\n")
             arch = []
             for line in output:
@@ -72,9 +70,7 @@ def collect_env_info():
     try:
         import detectron2  # noqa
 
-        data.append(
-            ("detectron2", detectron2.__version__ + " @" + os.path.dirname(detectron2.__file__))
-        )
+        data.append(("detectron2", detectron2.__version__ + " @" + os.path.dirname(detectron2.__file__)))
     except ImportError:
         data.append(("detectron2", "failed to import"))
     except AttributeError:
@@ -110,17 +106,13 @@ def collect_env_info():
             except (ImportError, AttributeError):
                 pass
             else:
-                data.append(
-                    ("detectron2 arch flags", detect_compute_compatibility(CUDA_HOME, so_file))
-                )
+                data.append(("detectron2 arch flags", detect_compute_compatibility(CUDA_HOME, so_file)))
     else:
         # print compilers that are used to build extension
         data.append(("Compiler", _C.get_compiler_version()))
         data.append(("CUDA compiler", _C.get_cuda_version()))  # cuda or hip
         if has_cuda and getattr(_C, "has_cuda", lambda: True)():
-            data.append(
-                ("detectron2 arch flags", detect_compute_compatibility(CUDA_HOME, _C.__file__))
-            )
+            data.append(("detectron2 arch flags", detect_compute_compatibility(CUDA_HOME, _C.__file__)))
 
     data.append(get_env_module())
     data.append(("PyTorch", torch_version + " @" + os.path.dirname(torch.__file__)))
@@ -234,9 +226,6 @@ if __name__ == "__main__":
                 x = torch.tensor([1, 2.0], dtype=torch.float32)
                 x = x.to(device)
             except Exception as e:
-                print(
-                    f"Unable to copy tensor to device={device}: {e}. "
-                    "Your CUDA environment is broken."
-                )
+                print(f"Unable to copy tensor to device={device}: {e}. " "Your CUDA environment is broken.")
         if num_gpu > 1:
             test_nccl_ops()

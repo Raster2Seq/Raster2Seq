@@ -26,6 +26,6 @@ class VCache(nn.Module):
 
     def update(self, v_val):
         self.v_cache = v_val
-    
+
     def get(self):
         return self.v_cache

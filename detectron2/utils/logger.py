@@ -36,9 +36,7 @@ class _ColorfulFormatter(logging.Formatter):
 
 
 @functools.lru_cache()  # so that calling setup_logger multiple times won't add many handlers
-def setup_logger(
-    output=None, distributed_rank=0, *, color=True, name="detectron2", abbrev_name=None
-):
+def setup_logger(output=None, distributed_rank=0, *, color=True, name="detectron2", abbrev_name=None):
     """
     Initialize the detectron2 logger and set its verbosity level to "DEBUG".
 
@@ -62,9 +60,7 @@ def setup_logger(
     if abbrev_name is None:
         abbrev_name = "d2" if name == "detectron2" else name
 
-    plain_formatter = logging.Formatter(
-        "[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S"
-    )
+    plain_formatter = logging.Formatter("[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S")
     # stdout logging: master only
     if distributed_rank == 0:
         ch = logging.StreamHandler(stream=sys.stdout)
