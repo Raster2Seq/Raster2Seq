@@ -13,7 +13,8 @@ import torch
 
 import util.misc as utils
 
-
+# Add evaluations folder relative to this file's location
+sys.path.append(os.path.join(os.path.dirname(__file__), 'evaluations'))
 from s3d_floorplan_eval.Evaluator.Evaluator import Evaluator
 from s3d_floorplan_eval.options import MCSSOptions
 from s3d_floorplan_eval.DataRW.S3DRW import S3DRW
