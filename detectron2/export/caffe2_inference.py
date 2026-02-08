@@ -1,8 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 import logging
-import numpy as np
 from itertools import count
+
+import numpy as np
 import torch
 from caffe2.proto import caffe2_pb2
 from caffe2.python import core
@@ -83,7 +84,7 @@ class ProtobufModel(torch.nn.Module):
             try:
                 ws.RunNet(self.net.Proto().name)
             except RuntimeError as e:
-                if not str(e) in self._error_msgs:
+                if str(e) not in self._error_msgs:
                     self._error_msgs.add(str(e))
                     logger.warning("Encountered new RuntimeError: \n{}".format(str(e)))
                 logger.warning("Catch the error and use partial results.")

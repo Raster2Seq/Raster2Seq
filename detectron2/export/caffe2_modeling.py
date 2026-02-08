@@ -4,6 +4,7 @@ import functools
 import io
 import struct
 import types
+
 import torch
 
 from detectron2.modeling import meta_arch

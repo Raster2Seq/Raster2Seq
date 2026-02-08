@@ -1,7 +1,10 @@
-import os, cv2, numpy as np, json
-from tqdm import *
-from PIL import Image
 import argparse
+import json
+import os
+
+import numpy as np
+from PIL import Image
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser("Preprocess LIFULL HOMES DATA (HIGH RESOLUTION) Dataset")
 parser.add_argument("--data_root", type=str, default=r"R2G_hr_dataset/", help="path to the root folder of the dataset")
@@ -32,7 +35,6 @@ for mode in ["train", "val", "test"]:
             if os.path.exists(os.path.join(f"{args.data_root}/annot_npy", fn + ".npy")) and os.path.exists(
                 os.path.join(f"{args.data_root}/original_vector_boundary", fn + ".npy")
             ):
-
                 img_original = Image.open(os.path.join(original_images_path, fn.replace("-", "/") + ".jpg"))
                 boundary_path = os.path.join(f"{args.data_root}/original_vector_boundary", fn + ".npy")
                 boundary = np.load(boundary_path, allow_pickle=True).item()

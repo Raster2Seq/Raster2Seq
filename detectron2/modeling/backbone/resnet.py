@@ -1,6 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
-import numpy as np
 import fvcore.nn.weight_init as weight_init
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn

@@ -13,26 +13,25 @@ Misc functions, including distributed helpers.
 Mostly copy-paste from torchvision references.
 """
 
-import os
-import subprocess
-import time
-from collections import defaultdict, deque
 import datetime
 import getpass
+import os
 import pickle
-from typing import Optional, List
-from collections import OrderedDict
+import subprocess
+import time
+from collections import OrderedDict, defaultdict, deque
+from typing import List, Optional
 
 import torch
-import torch.nn as nn
 import torch.distributed as dist
-from torch import Tensor
 
 # needed due to empty tensor bug in pytorch and torchvision 0.5
 import torchvision
+from torch import Tensor
 
 if float(torchvision.__version__.split(".")[1]) < 5:
     import math
+
     from torchvision.ops.misc import _NewEmptyTensorOp
 
     def _check_size_scale_factor(dim, size, scale_factor):
@@ -43,8 +42,9 @@ if float(torchvision.__version__.split(".")[1]) < 5:
             raise ValueError("only one of size or scale_factor should be defined")
         if not (scale_factor is not None and len(scale_factor) != dim):
             raise ValueError(
-                "scale_factor shape must match input shape. "
-                "Input is {}D, scale_factor size is {}".format(dim, len(scale_factor))
+                "scale_factor shape must match input shape. Input is {}D, scale_factor size is {}".format(
+                    dim, len(scale_factor)
+                )
             )
 
     def _output_size(dim, input, size, scale_factor):

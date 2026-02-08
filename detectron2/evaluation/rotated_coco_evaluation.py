@@ -1,8 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import itertools
 import json
-import numpy as np
 import os
+
+import numpy as np
 import torch
 from pycocotools.cocoeval import COCOeval, maskUtils
 

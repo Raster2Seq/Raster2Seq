@@ -3,8 +3,9 @@
 import copy
 import io
 import logging
-import numpy as np
 from typing import List
+
+import numpy as np
 import onnx
 import torch
 from caffe2.proto import caffe2_pb2

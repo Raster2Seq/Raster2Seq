@@ -3,6 +3,7 @@
 
 import typing
 from typing import Any, List
+
 import fvcore
 from fvcore.nn import activation_count, flop_count, parameter_count, parameter_count_table
 from torch import nn

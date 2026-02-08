@@ -2,12 +2,13 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 import logging
-import numpy as np
 import os
 import tempfile
 import xml.etree.ElementTree as ET
 from collections import OrderedDict, defaultdict
 from functools import lru_cache
+
+import numpy as np
 import torch
 
 from detectron2.data import MetadataCatalog

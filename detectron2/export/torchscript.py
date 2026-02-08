@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 import os
+
 import torch
 
 from detectron2.utils.file_io import PathManager

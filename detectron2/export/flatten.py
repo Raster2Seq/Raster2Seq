@@ -2,6 +2,7 @@
 import collections
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
+
 import torch
 from torch import nn
 

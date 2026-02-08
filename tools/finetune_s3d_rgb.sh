@@ -39,7 +39,7 @@ WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=${NUM_GPUS} -
                --disable_poly_refine \
                --dec_attn_concat_src \
                --per_token_sem_loss \
+               --jointly_train \
                --converter_version ${CONVERTER} \
                --use_anchor \
-               --jointly_train \
                --start_from_checkpoint ${PRETRAIN}

@@ -2,10 +2,11 @@
 import itertools
 import json
 import logging
-import numpy as np
 import os
 from collections import OrderedDict
 from typing import Optional, Union
+
+import numpy as np
 import pycocotools.mask as mask_util
 import torch
 from PIL import Image

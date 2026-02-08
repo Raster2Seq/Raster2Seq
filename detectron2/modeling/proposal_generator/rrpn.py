@@ -2,6 +2,7 @@
 import itertools
 import logging
 from typing import Dict, List
+
 import torch
 
 from detectron2.config import configurable

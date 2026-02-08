@@ -1,23 +1,24 @@
 import argparse
+import copy
 import datetime
 import json
-import random
 import os
+import random
 import time
 from pathlib import Path
-import copy
 
 import numpy as np
-import wandb
 import torch
 import torch.distributed as dist
+from torch.nn import functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from torch.nn import functional as F
+
 import util.misc as utils
+import wandb
 from datasets import build_dataset
-from engine import evaluate, train_one_epoch, evaluate_v2
+from engine import evaluate, evaluate_v2, train_one_epoch
 from models import build_model
 
 
@@ -140,9 +141,12 @@ def get_args_parser():
         help="if true, the query in one room will not be allowed to attend other room",
     )
     parser.add_argument(
-        "--semantic_classes", default=-1, type=int, help="Number of classes for semantically-rich floorplan:  \
+        "--semantic_classes",
+        default=-1,
+        type=int,
+        help="Number of classes for semantically-rich floorplan:  \
                         1. default -1 means non-semantic floorplan \
-                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty"
+                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty",
     )
     parser.add_argument(
         "--disable_poly_refine",

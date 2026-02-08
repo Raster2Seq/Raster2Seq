@@ -1,4 +1,5 @@
 import math
+
 from shapely.geometry import Polygon
 
 
@@ -7,7 +8,7 @@ def poly_iou(poly1: Polygon, poly2: Polygon):
         intersection_area = poly1.intersection(poly2).area
         union_area = poly1.union(poly2).area
         return intersection_area / union_area
-    except Exception as e:
+    except Exception:
         poly1 = poly1.buffer(1)
         poly2 = poly2.buffer(1)
         intersection_area = poly1.intersection(poly2).area

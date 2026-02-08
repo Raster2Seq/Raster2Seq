@@ -1,15 +1,13 @@
+import argparse
+import json
 import os
 import sys
 from glob import glob
 from pathlib import Path
-import json
 
 import cv2
-from PIL import Image
 import numpy as np
-import matplotlib.pyplot as plt
-import argparse
-
+from PIL import Image
 from shapely.geometry import Polygon
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -113,7 +111,6 @@ def config():
 
 
 if __name__ == "__main__":
-
     LABEL_NOTATIONS = {
         "Background": (0, 0, 0),  # Black
         "Interior": (255, 255, 255),  # White

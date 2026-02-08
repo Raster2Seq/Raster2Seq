@@ -1,11 +1,12 @@
 # import lmdb
 import pickle
-import torch
-from torch.utils.data import Dataset
+
 import cv2
 import numpy as np
-from numpy import genfromtxt
+import torch
 from house import House
+from numpy import genfromtxt
+from torch.utils.data import Dataset
 
 ROOM_NAMES = {
     0: "Background",

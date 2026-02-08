@@ -1,15 +1,15 @@
-import json
 import inspect
-import torch
+import json
 import os
 import sys
+from os.path import basename, dirname, expanduser, isdir, isfile, join, realpath
+from shutil import copy
+
+import torch
 import yaml
-from shutil import copy, copytree
-from os.path import join, dirname, realpath, expanduser, isfile, isdir, basename
 
 
 class Logger(object):
-
     def __getattr__(self, k):
         return print
 
@@ -82,11 +82,9 @@ def get_from_repository(
         dataset_exists = dataset_exists and integrity_ok
 
     if not dataset_exists:
-
         repo_dir = realpath(expanduser(repo_dir))
 
         for i, filename in enumerate(repo_files):
-
             if type(filename) == str:
                 origin, target = filename, filename
                 archive_target = join(local_dir, basename(origin))
@@ -121,7 +119,7 @@ def get_from_repository(
 
 
 def extract_archive(filename, target_folder=None, noarchive_ok=False):
-    from subprocess import run, PIPE
+    from subprocess import PIPE, run
 
     if filename.endswith(".tgz") or filename.endswith(".tar"):
         command = f"tar -xf {filename}"
@@ -233,7 +231,6 @@ def load_model(checkpoint_id, weights_file=None, strict=True, model_args="from_c
 
 
 class TrainingLogger(object):
-
     def __init__(self, model, log_dir, config=None, *args):
         super().__init__()
         self.model = model

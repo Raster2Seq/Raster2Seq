@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import math
 from typing import List, Optional
+
 import torch
 from torch import nn
 from torchvision.ops import RoIPool

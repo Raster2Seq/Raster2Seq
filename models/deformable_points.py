@@ -1,12 +1,10 @@
-import torch
-from torch import nn
-import torch.nn.functional as F
-
 import einops
+import torch
+import torch.nn.functional as F
+from torch import nn
 
 
 class LayerNormProxy(nn.Module):
-
     def __init__(self, dim):
 
         super().__init__()
@@ -20,7 +18,6 @@ class LayerNormProxy(nn.Module):
 
 
 class MSDeformablePoints(nn.Module):
-
     def __init__(
         self,
         embed_dim,
@@ -78,7 +75,7 @@ class MSDeformablePoints(nn.Module):
         return ref
 
     def forward(self, x, spatial_shapes, level_start_index):
-        B, C = x.size(0), x.size(2)
+        B = x.size(0)
         dtype, device = x.dtype, x.device
 
         x_list = x.split([H_ * W_ for H_, W_ in spatial_shapes], dim=1)
@@ -91,7 +88,6 @@ class MSDeformablePoints(nn.Module):
             q_off = einops.rearrange(q, "b (g c) h w -> (b g) c h w", g=self.n_heads, c=self.n_head_channels)
             offset = self.conv_offset[i](q_off).contiguous()  # [B*g, 2, Hg Wg]
             Hk, Wk = offset.size(2), offset.size(3)
-            n_sample = Hk * Wk
 
             if self.offset_range_factor >= 0:
                 offset_range = torch.tensor([1.0 / Hk, 1.0 / Wk], device=device).reshape(1, 2, 1, 1)

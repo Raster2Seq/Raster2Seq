@@ -1,7 +1,8 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
-import numpy as np
 from typing import List
+
 import fvcore.nn.weight_init as weight_init
+import numpy as np
 import torch
 from torch import nn
 

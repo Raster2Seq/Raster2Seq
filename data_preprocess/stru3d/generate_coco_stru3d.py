@@ -2,11 +2,12 @@ import argparse
 import json
 import os
 import sys
+
+from stru3d_utils import generate_coco_dict, generate_density, normalize_annotations, parse_floor_plan_polys
 from tqdm import tqdm
-from stru3d_utils import generate_density, normalize_annotations, parse_floor_plan_polys, generate_coco_dict
 
 sys.path.append("../.")
-from common_utils import read_scene_pc, export_density
+from common_utils import export_density, read_scene_pc
 
 ### Note: Some scenes have missing/wrong annotations. These are the indices that you should additionally exclude
 ### to be consistent with MonteFloor and HEAT:
@@ -195,5 +196,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     main(config())

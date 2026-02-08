@@ -1,7 +1,7 @@
 # built
 diff_rass
 diff_ras/build/
-diff_ras/native_rasterizer.cpython-38-x86_64-linux-gnu.so
+diff_ras/native_rasterizer.*
 diff_ras/rasterizer.egg-info/PKG-INFO
 
 models/ops
@@ -25,6 +25,7 @@ output*
 wandb
 wandb_keys
 watch_folder
+cross_eval_out
 *.json
 *.png
 *.csv

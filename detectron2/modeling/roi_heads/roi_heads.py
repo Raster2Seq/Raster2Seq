@@ -1,8 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import inspect
 import logging
-import numpy as np
 from typing import Dict, List, Optional, Tuple
+
+import numpy as np
 import torch
 from torch import nn
 

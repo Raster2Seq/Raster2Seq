@@ -1,6 +1,7 @@
 import os
-import numpy as np
+
 import cv2
+import numpy as np
 from planar_graph_utils import get_regions_from_pg, plot_floorplan_with_regions
 
 # example_pg = {

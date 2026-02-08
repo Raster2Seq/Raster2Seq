@@ -1,6 +1,8 @@
 import copy
 import math
-from util.geom_utils import *
+
+from shapely.geometry import Polygon
+from util.geom_utils import poly_iou
 
 
 def calculate_AP(valid_results, ground_truths, confidence_final):
@@ -20,7 +22,6 @@ def calculate_AP(valid_results, ground_truths, confidence_final):
 
     all_metrics = []
     for n in range(1, len(all_preds) + 1):
-
         ground_truths = copy.deepcopy(ground_truths_copy)
 
         sub_preds = all_preds[0:n]
@@ -299,9 +300,6 @@ def calculate_single_sample(
     for output_region_i, output_region in enumerate(output_regions):
         matched = False
         for gt_region_i, gt_region in enumerate(gt_regions):
-            # print(output_region)
-            # print(gt_region)
-            # print(poly_iou(Polygon(gt_region), Polygon(output_region)))
             if poly_iou(Polygon(gt_region), Polygon(output_region)) >= iou_threshold:
                 if gt_region in gt_regions_copy:
                     regions_TP += 1

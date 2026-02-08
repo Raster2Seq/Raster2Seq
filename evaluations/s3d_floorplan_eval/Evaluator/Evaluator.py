@@ -1,16 +1,11 @@
-import os
-import torch
-import matplotlib.pyplot as plt
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial import Delaunay
-import os
-import shapely
-from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
+import torch
 
 try:
     np.bool = np.bool_
-except:
+except Exception:
     np.bool = np.bool  # for numpy 1.20
 
 corner_metric_thresh = 10
@@ -47,17 +42,10 @@ class Evaluator:
                 cnt = cont
                 max_area = cv2.contourArea(cont)
 
-        perimeter = cv2.arcLength(cnt, True)
-        # epsilon = 0.01 * cv2.arcLength(cnt, True)
         epsilon = degree * cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, epsilon, True)
-
-        # approx = np.concatenate([approx, approx[0][None]], axis=0)
         approx = approx.astype(np.int32).reshape((-1, 2))
 
-        # approx_tensor = torch.tensor(approx, device=self.device)
-
-        # return approx_tensor
         if return_mask:
             room_filled_map = np.zeros((h, w))
             cv2.fillPoly(room_filled_map, [approx], color=1.0)
@@ -127,21 +115,16 @@ class Evaluator:
 
         with torch.no_grad():
             joint_room_map = np.zeros((self.options.height, self.options.width))
-
             edge_map = np.zeros_like(joint_room_map)
-            room_filled_map = np.ones([joint_room_map.shape[0], joint_room_map.shape[1], 3])
 
         density_map = self.data_rw.density_map.cpu().numpy()[0]
         img_size = (density_map.shape[0], density_map.shape[0])
 
-        for room_ind, poly in enumerate(room_polys):
+        for _, poly in enumerate(room_polys):
             cv2.polylines(edge_map, [poly], isClosed=True, color=1.0)
             cv2.fillPoly(joint_room_map, [poly], color=1.0)
 
-        joint_room_map_vis = np.ones([joint_room_map.shape[0], joint_room_map.shape[1], 3])
-
         # Ground Truth
-
         gt_polys_list = self.data_rw.gt_sample["polygons_list"]
         gt_polys_list = [np.concatenate([poly, poly[None, 0]]) for poly in gt_polys_list]
         gt_polys_type_list = self.data_rw.gt_sample["polygons_type_list"]
@@ -431,12 +414,10 @@ class Evaluator:
 
         ### match predicted rooms to ground truth rooms
         for gt_ind, gt_map in enumerate(gt_room_map_list):
-
             best_iou = 0.0
             best_ind = -1
             best_ind_sem = -1
             for pred_ind, pred_map in enumerate(pred_room_map_list):
-
                 intersection = (1 - ignore_mask_region) * ((pred_map + gt_map) == 2)
                 union = (1 - ignore_mask_region) * ((pred_map + gt_map) >= 1)
                 # intersection = (pred_map + gt_map) == 2
@@ -482,7 +463,6 @@ class Evaluator:
                 best_ind = -1
 
                 for pred_ind, pred_wd in enumerate(pred_window_doors):
-
                     dist_match1 = [
                         np.linalg.norm(gt_wd[0] - pred_wd[0], axis=0, ord=2),
                         np.linalg.norm(gt_wd[1] - pred_wd[1], axis=0, ord=2),
@@ -518,25 +498,11 @@ class Evaluator:
             pred2gt_exists_sem = [
                 True if pred_ind in gt2pred_indices_sem else False for pred_ind, _ in enumerate(pred_polys)
             ]
-            pred2gt_indices_sem = [
-                gt2pred_indices_sem.index(pred_ind) if pred_ind in gt2pred_indices_sem else -1
-                for pred_ind, _ in enumerate(pred_polys)
-            ]
 
         if pred_window_doors_types is not None:
             pred2gt_exists_wd = [
                 True if pred_ind in gt2pred_indices_wd else False for pred_ind, _ in enumerate(pred_window_doors)
             ]
-            pred2gt_indices_wd = [
-                gt2pred_indices_wd.index(pred_ind) if pred_ind in gt2pred_indices_wd else -1
-                for pred_ind, _ in enumerate(pred_window_doors)
-            ]
-
-        # print(gt2pred_indices)
-        # print(pred2gt_indices)
-        # assert False
-
-        # import pdb; pdb.set_trace()
 
         room_metric, room_sem_metric = get_room_metric()
         ###### metric for room WITHOUT considering type ######

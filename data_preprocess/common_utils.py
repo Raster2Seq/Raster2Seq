@@ -1,7 +1,8 @@
-import numpy as np
 import os
+
 import cv2
-from plyfile import PlyData, PlyElement
+import numpy as np
+from plyfile import PlyData
 
 
 def read_scene_pc(file_path):

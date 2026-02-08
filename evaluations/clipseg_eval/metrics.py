@@ -1,15 +1,12 @@
-from torch.functional import Tensor
 from collections import defaultdict
+
 import numpy as np
-
 import torch
-from torch.nn import functional as nnf
-
 from clipseg_eval.general_utils import log
+from torch.nn import functional as nnf
 
 
 class BaseMetric(object):
-
     def __init__(
         self, metric_names, pred_range=None, gt_index=0, pred_index=0, eval_intermediate=True, eval_validation=True
     ):
@@ -42,7 +39,7 @@ class BaseMetric(object):
     def scores(self):
         # similar to value but returns dict
         value = self.value()
-        if type(value) == dict:
+        if isinstance(value, dict):
             return value
         else:
             assert type(value) in {list, tuple}
@@ -59,7 +56,6 @@ class BaseMetric(object):
 
 
 class FixedIntervalMetrics(BaseMetric):
-
     def __init__(
         self, sigmoid=False, ignore_mask=False, resize_to=None, resize_pred=None, n_values=51, custom_threshold=None
     ):
@@ -119,12 +115,11 @@ class FixedIntervalMetrics(BaseMetric):
         if isinstance(cls_batch, torch.Tensor):
             cls_batch = cls_batch.cpu().numpy().tolist()
 
-        assert (
-            len(gt_batch) == len(pred_batch) == len(cls_batch)
-        ), f"{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}"
+        assert len(gt_batch) == len(pred_batch) == len(cls_batch), (
+            f"{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}"
+        )
 
         for predictions, ground_truth, mask, cls in zip(pred_batch, gt_batch, mask_batch, cls_batch):
-
             if self.resize_pred:
                 predictions = nnf.interpolate(
                     predictions.unsqueeze(0).float(),
@@ -149,7 +144,6 @@ class FixedIntervalMetrics(BaseMetric):
 
             tps, fps, fns, tns = [], [], [], []
             for thresh in self.threshold_values:
-
                 valid = torch.where(p > thresh)[0]
                 if len(valid) > 0:
                     n = int(valid[0])
@@ -192,7 +186,6 @@ class FixedIntervalMetrics(BaseMetric):
         }
 
         if all_classes is not None:
-
             assert len(self.classes) == len(self.metrics["tp"]) == len(self.metrics["fn"])
             # group by class
             metrics_by_class = {c: {k: [] for k in self.metrics.keys()} for c in all_classes}
@@ -276,7 +269,7 @@ class FixedIntervalMetrics(BaseMetric):
             }
 
         print(
-            f'metric computation on {(len(all_classes) if all_classes is not None else "no")} classes took {time.time() - t_start:.1f}s'
+            f"metric computation on {(len(all_classes) if all_classes is not None else 'no')} classes took {time.time() - t_start:.1f}s"
         )
 
         return {
@@ -343,67 +336,11 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
         if isinstance(cls_batch, torch.Tensor):
             cls_batch = cls_batch.cpu().numpy().tolist()
 
-        # # perform matching
-        # gt2pred_indices = [-1] * len(gt_batch)
-        # gt2pred_exists = [False] * len(gt_batch)
-        # for gt_ind, gt_map in enumerate(gt_batch):
-        #     best_iou = 0
-        #     best_ind = -1
-        #     for pred_ind, pred_map in enumerate(pred_batch):
-        #         intersection = (pred_map + gt_map) == 2
-        #         union = (pred_map + gt_map) >= 1
-        #         iou = torch.sum(intersection) / (torch.sum(union) + 1)
-
-        #         if iou > best_iou and iou > self.custom_threshold:
-        #             best_iou = iou
-        #             best_ind = pred_ind
-
-        #     gt2pred_indices[gt_ind] = best_ind
-        #     gt2pred_exists[gt_ind] = best_ind != -1
-
-        # # keep only those matching
-        # num_matching = sum(gt2pred_exists)
-        # if num_matching == 0:
-        #     # self.metrics['tp'] += [0]
-        #     # self.metrics['tn'] += [0]
-        #     # self.metrics['fp'] += [0]
-        #     # self.metrics['fn'] += [0]
-        #     # self.classes += [None]
-        #     return
-
-        # new_gt_batch = []
-        # new_pred_batch = []
-        # new_cls_batch = []
-        # new_mask_batch = []
-        # for i in range(len(gt_batch)):
-        #     if gt2pred_exists[i]:
-        #         new_gt_batch.append(gt_batch[i])
-        #         new_pred_batch.append(pred_batch[gt2pred_indices[i]])
-        #         new_cls_batch.append(cls_batch[gt2pred_indices[i]])
-        #         new_mask_batch.append(mask_batch[gt2pred_indices[i]])
-        #     else:
-        #         new_gt_batch.append(gt_batch[i])
-        #         new_pred_batch.append(torch.zeros_like(gt_batch[i]))
-        #         new_cls_batch.append(None)
-        #         new_mask_batch.append(None)
-
-        # new_gt_batch = torch.stack(new_gt_batch, dim=0)
-        # newt_pred_batch = torch.stack(new_pred_batch, dim=0)
-
-        # new_gt_batch = torch.stack([gt_batch[i] for i in range(len(gt_batch)) if gt2pred_exists[i]], dim=0)
-        # new_pred_batch = torch.stack([pred_batch[gt2pred_indices[i]] for i in range(len(gt_batch)) if gt2pred_exists[i]], dim=0)
-        # cls_batch = [cls_batch[gt2pred_indices[i]] for i in range(len(gt_batch)) if gt2pred_exists[i]]
-        # mask_batch = [mask_batch[gt2pred_indices[i]] for i in range(len(gt_batch)) if gt2pred_exists[i]]
-
-        # gt_batch, pred_batch = new_gt_batch, new_pred_batch
-        # cls_batch, mask_batch = new_cls_batch, new_mask_batch
-
-        assert (
-            len(gt_batch) == len(pred_batch) == len(cls_batch)
-        ), f"{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}"
+        assert len(gt_batch) == len(pred_batch) == len(cls_batch), (
+            f"{len(gt_batch)} {len(pred_batch)} {len(cls_batch)}"
+        )
 
         for predictions, ground_truth, mask, cls in zip(pred_batch, gt_batch, mask_batch, cls_batch):
-
             if self.resize_pred:
                 predictions = nnf.interpolate(
                     predictions.unsqueeze(0).float(),
@@ -428,7 +365,6 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
 
             tps, fps, fns, tns = [], [], [], []
             for thresh in self.threshold_values:
-
                 valid = torch.where(p > thresh)[0]
                 if len(valid) > 0:
                     n = int(valid[0])
@@ -460,7 +396,7 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
             log.warning("classes were not provided, cannot compute mIoU")
         else:
             all_classes = set(int(c) for c in self.classes)
-            # log.info(f'compute metrics for {len(all_classes)} classes')
+            log.info(f"compute metrics for {len(all_classes)} classes")
 
         summed = {
             k: [
@@ -471,7 +407,6 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
         }
 
         if all_classes is not None:
-
             assert len(self.classes) == len(self.metrics["tp"]) == len(self.metrics["fn"])
             # group by class
             metrics_by_class = {c: {k: [] for k in self.metrics.keys()} for c in all_classes}
@@ -479,11 +414,11 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
                 for k in self.metrics.keys():
                     metrics_by_class[self.classes[i]][k] += [self.metrics[k][i]]
 
-            # sum over all instances within the classes
-            summed_by_cls = {
-                k: {c: np.array(metrics_by_class[c][k]).sum(0).tolist() for c in all_classes}
-                for k in self.metrics.keys()
-            }
+            # # sum over all instances within the classes
+            # summed_by_cls = {
+            #     k: {c: np.array(metrics_by_class[c][k]).sum(0).tolist() for c in all_classes}
+            #     for k in self.metrics.keys()
+            # }
 
         # Compute average precision
 
@@ -520,68 +455,22 @@ class FixedIntervalMetricsWithMatching(FixedIntervalMetrics):
             for j in range(len(self.threshold_values))
         ]
 
-        # index_0p5 = self.threshold_values.tolist().index(0.5)
-        # index_0p1 = self.threshold_values.tolist().index(0.1)
-        # index_0p2 = self.threshold_values.tolist().index(0.2)
-        # index_0p3 = self.threshold_values.tolist().index(0.3)
-
-        # if self.custom_threshold is not None:
-        #     index_ct = self.threshold_values.tolist().index(self.custom_threshold)
-
-        if all_classes is not None:
-            # mean IoU
-            mean_ious = [
-                np.mean(
-                    [
-                        summed_by_cls["tp"][c][j]
-                        / (1 + summed_by_cls["tp"][c][j] + summed_by_cls["fp"][c][j] + summed_by_cls["fn"][c][j])
-                        for c in all_classes
-                    ]
-                )
-                for j in range(len(self.threshold_values))
-            ]
-
-            mean_iou_dict = {
-                "miou_best": max(mean_ious) if all_classes is not None else None,
-                # 'miou_0.5': mean_ious[index_0p5] if all_classes is not None else None,
-                # 'miou_0.1': mean_ious[index_0p1] if all_classes is not None else None,
-                # 'miou_0.2': mean_ious[index_0p2] if all_classes is not None else None,
-                # 'miou_0.3': mean_ious[index_0p3] if all_classes is not None else None,
-                "miou_best_t": self.threshold_values[np.argmax(mean_ious)],
-                # 'mean_iou_ct': mean_ious[index_ct] if all_classes is not None and self.custom_threshold is not None else None,
-                "mean_iou_scores": mean_ious,
-            }
-
         print(
-            f'metric computation on {(len(all_classes) if all_classes is not None else "no")} classes took {time.time() - t_start:.1f}s'
+            f"metric computation on {(len(all_classes) if all_classes is not None else 'no')} classes took {time.time() - t_start:.1f}s"
         )
 
         return {
             "ap": ap,
             # fgiou
             "fgiou_best": max(fgiou_scores),
-            # 'fgiou_0.5': fgiou_scores[index_0p5],
-            # 'fgiou_0.1': fgiou_scores[index_0p1],
-            # 'fgiou_0.2': fgiou_scores[index_0p2],
-            # 'fgiou_0.3': fgiou_scores[index_0p3],
             "fgiou_best_t": self.threshold_values[np.argmax(fgiou_scores)],
             # mean iou
             # biniou
             "biniou_best": max(biniou_scores),
-            # 'biniou_0.5': biniou_scores[index_0p5],
-            # 'biniou_0.1': biniou_scores[index_0p1],
-            # 'biniou_0.2': biniou_scores[index_0p2],
-            # 'biniou_0.3': biniou_scores[index_0p3],
             "biniou_best_t": self.threshold_values[np.argmax(biniou_scores)],
-            # custom threshold
-            # 'fgiou_ct': fgiou_scores[index_ct] if self.custom_threshold is not None else None,
-            # 'biniou_ct': biniou_scores[index_ct] if self.custom_threshold is not None else None,
-            # 'ct': self.custom_threshold,
             # statistics
             "fgiou_scores": fgiou_scores,
             "biniou_scores": biniou_scores,
             "precision_recall_curve": sorted(list(set(zip(recalls, precisions)))),
             "summed_statistics": summed,
-            # 'summed_by_cls_statistics': summed_by_cls,
-            # **mean_iou_dict
         }

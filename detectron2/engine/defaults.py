@@ -16,6 +16,7 @@ import sys
 import weakref
 from collections import OrderedDict
 from typing import Optional
+
 import torch
 from fvcore.nn.precise_bn import get_bn_modules
 from omegaconf import OmegaConf
@@ -160,8 +161,8 @@ def _highlight(code, filename):
     except ImportError:
         return code
 
-    from pygments.lexers import Python3Lexer, YamlLexer
     from pygments.formatters import Terminal256Formatter
+    from pygments.lexers import Python3Lexer, YamlLexer
 
     lexer = Python3Lexer() if filename.endswith(".py") else YamlLexer()
     code = pygments.highlight(code, lexer, Terminal256Formatter(style="monokai"))

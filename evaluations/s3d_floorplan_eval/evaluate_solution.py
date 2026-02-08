@@ -1,12 +1,11 @@
 import copy
-import functools
-import numpy as np
 import os
 
-from Evaluator.Evaluator import Evaluator
-from options import MCSSOptions
+import numpy as np
 from DataRW.S3DRW import S3DRW
 from DataRW.wrong_annotatios import wrong_s3d_annotations_list
+from Evaluator.Evaluator import Evaluator
+from options import MCSSOptions
 from planar_graph_utils import get_regions_from_pg
 
 room_polys_def = [
@@ -41,11 +40,9 @@ options = MCSSOptions()
 opts = options.parse()
 
 if __name__ == "__main__":
-
     # data_rw = FloorNetRW(opts)
 
     if opts.scene_id == "val":
-
         opts.scene_id = "scene_03250"  # Temp. value
         data_rw = S3DRW(opts)
         scene_list = data_rw.loader.scenes_list

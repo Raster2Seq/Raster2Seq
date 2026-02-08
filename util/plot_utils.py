@@ -2,23 +2,19 @@
 Utilities for floorplan visualization.
 """
 
-import torch
 import math
-from matplotlib.cm import get_cmap
-import matplotlib.pyplot as plt
-from matplotlib.patches import Arc
-import matplotlib.patches as mpatches
-from matplotlib.colors import to_hex, to_rgb
-from PIL import ImageColor
 
 import cv2
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
-from imageio import imsave
-
-from shapely.geometry import LineString
-from shapely.geometry import Polygon
 from descartes.patch import PolygonPatch
+from imageio import imsave
+from matplotlib.cm import get_cmap
+from matplotlib.colors import to_hex
+from PIL import ImageColor
 from plotly.colors import qualitative
+from shapely.geometry import LineString, Polygon
 
 colors_12 = [
     "#e6194b",
@@ -430,7 +426,6 @@ def plot_anno(img, annos, save_path, transformed=False, draw_poly=True, draw_bbx
     bbx_color = (0, 255, 0)
     # poly_color = (0, 255, 0)
     for j in range(num_inst):
-
         if draw_bbx:
             bbox = annos[j]["bbox"]
             if transformed:
@@ -567,7 +562,6 @@ def plot_semantic_rich_floorplan(polygons, file_name, prec=None, rec=None):
 
     # Draw doors
     for poly, poly_type, door_size in polygons_doors:
-
         door_size_y = np.abs(poly[0, 1] - poly[1, 1])
         door_size_x = np.abs(poly[0, 0] - poly[1, 0])
         if door_size_y > door_size_x:
@@ -699,7 +693,6 @@ def plot_semantic_rich_floorplan_tight(
 
     # Draw doors
     for poly, poly_type, door_size in polygons_doors:
-
         door_size_y = np.abs(poly[0, 1] - poly[1, 1])
         door_size_x = np.abs(poly[0, 0] - poly[1, 0])
         if door_size_y > door_size_x:
@@ -837,7 +830,6 @@ def plot_semantic_rich_floorplan_nicely(
 
     # Draw doors
     for poly, poly_type, door_size in polygons_doors:
-
         door_size_y = np.abs(poly[0, 1] - poly[1, 1])
         door_size_x = np.abs(poly[0, 0] - poly[1, 0])
         if door_size_y > door_size_x:
@@ -941,14 +933,7 @@ def plot_semantic_rich_floorplan_opencv(
         colors = list(qualitative.Set3) + list(qualitative.Dark2)
         rgb_string_to_tuple = lambda rgb_string: tuple(float(x) / 255 for x in rgb_string.strip("rgb()").split(","))
         colors = [to_hex(rgb_string_to_tuple(x)) for x in colors]
-        # colors = [to_hex(x) for x in colors]
-        # # TODO
-        # colors = ['#85660D'] * len(qualitative.Light24)
-        # colors[polygons[0][1]] = '#FF9616' # red
-        # colors[polygons[1][1]] = '#FE00CE' # green
 
-    # cmap = get_cmap('tab20', 20)
-    # colors = [to_hex(cmap(x)) for x in np.linspace(0, 1, 20)]  # Convert to hex
     # Create a white background image (more conventional for floorplans)
     if is_bw:
         image = np.ones((img_h, img_w), dtype=np.uint8) * 255  # White grayscale image
@@ -979,10 +964,6 @@ def plot_semantic_rich_floorplan_opencv(
 
     # Draw rooms first (bottom layer)
     for room_id, (points, poly_type) in enumerate(room_polygons):
-        # # # TODO:test
-        # if room_id > 1:
-        #     poly_type = room_polygons[0][1]+1
-
         # Fill room with color
         if not is_bw:
             # Get RGB color from semantics_cmap and convert from RGB to BGR for OpenCV
@@ -991,11 +972,7 @@ def plot_semantic_rich_floorplan_opencv(
             else:
                 rgb_color = ImageColor.getcolor(colors[poly_type % len(colors)], "RGB")
 
-            # # TODO
-            # rgb_color = ImageColor.getcolor(colors[poly_type % len(colors)], "RGB")
             bgr_color = (rgb_color[2], rgb_color[1], rgb_color[0])
-            # bgr_color = rgb_color
-
             cv2.fillPoly(overlay, [points], color=bgr_color)
         else:
             # Use light gray for rooms in BW mode
@@ -1114,7 +1091,7 @@ def plot_semantic_rich_floorplan_opencv(
             cv2.imwrite(file_name, image, [cv2.IMWRITE_PNG_COMPRESSION, 0])
         print(f"Saved improved floorplan to {file_name}")
 
-    return image  # Return the image for optional further processing or visualization
+    return image
 
 
 def draw_dashed_line(image, pt1, pt2, color, thickness, dash_length=10):
@@ -1129,23 +1106,6 @@ def draw_dashed_line(image, pt1, pt2, color, thickness, dash_length=10):
         start = pt1 + direction * (i * dash_length)
         end = pt1 + direction * ((i + 0.5) * dash_length)
         cv2.line(image, tuple(start.astype(int)), tuple(end.astype(int)), color, thickness)
-
-
-# def draw_dashed_line(image, pt1, pt2, color, thickness, dash_length=10, gap_length=5):
-#     """Draw a smoother dashed line between two points."""
-#     # Calculate the Euclidean distance between the points
-#     dist = np.linalg.norm(np.array(pt2) - np.array(pt1))
-#     # Calculate the number of dashes
-#     num_dashes = int(dist // (dash_length + gap_length))
-#     # Calculate the direction vector
-#     direction = (np.array(pt2) - np.array(pt1)) / dist
-#     for i in range(num_dashes):
-#         start = pt1 + direction * (i * (dash_length + gap_length))
-#         end = pt1 + direction * (i * (dash_length + gap_length) + dash_length)
-#         # Ensure the end point does not exceed pt2
-#         if np.linalg.norm(end - np.array(pt1)) > dist:
-#             end = pt2
-#         cv2.line(image, tuple(start.astype(int)), tuple(end.astype(int)), color, thickness)
 
 
 def draw_dashed_polyline(image, points, color, thickness, dash_length=10, gap_length=5):

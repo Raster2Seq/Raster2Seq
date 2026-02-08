@@ -6,6 +6,7 @@ import logging
 import os
 import pickle
 from collections import OrderedDict
+
 import torch
 
 import detectron2.utils.comm as comm

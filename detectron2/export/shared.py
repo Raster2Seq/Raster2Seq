@@ -5,11 +5,12 @@ import contextlib
 import copy
 import functools
 import logging
-import numpy as np
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from unittest import mock
+
 import caffe2.python.utils as putils
+import numpy as np
 import torch
 import torch.nn.functional as F
 from caffe2.proto import caffe2_pb2
@@ -672,7 +673,7 @@ def rename_op_input(
 
     if from_producer:
         producer_map = get_producer_map(predict_net_ssa)
-        if not (old_name, version) in producer_map:
+        if (old_name, version) not in producer_map:
             raise NotImplementedError(
                 "Can't find producer, the input {} is probably from"
                 " init_net, this is not supported yet.".format(old_name)

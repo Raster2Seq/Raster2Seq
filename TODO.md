@@ -1,6 +1,6 @@
 [x] Reformat the codespace (already run black and isort)
 [x] Upload all checkpoints to gdrive
-[] Add cross-evaluation scripts
+[x] Add cross-evaluation scripts
 [] Check syntax eror with flake8
 [] Rerun evaluations
 [] Rerun prediction scripts

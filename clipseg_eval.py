@@ -1,30 +1,21 @@
-from torch.functional import Tensor
-
-import torch
 import inspect
 import json
-import yaml
-import time
-import sys
 import os
+import sys
+from os.path import isfile, join, realpath
 from pathlib import Path
-from tqdm import tqdm
-
 
 import numpy as np
-from os.path import expanduser, join, isfile, realpath
-
+import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'evaluations'))
-from clipseg_eval.metrics import FixedIntervalMetrics
+sys.path.append(os.path.join(os.path.dirname(__file__), "evaluations"))
 from clipseg_eval.general_utils import (
-    load_model,
-    log,
-    score_config_from_cli_args,
     AttributeDict,
-    get_attribute,
     filter_args,
+    get_attribute,
+    score_config_from_cli_args,
 )
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -94,16 +85,13 @@ def compute_shift2(model, datasets, seed=123, repetitions=1):
 
     preds, gts = [], []
     for i_dataset, dataset in enumerate(datasets):
-
         loader = DataLoader(dataset, batch_size=1, num_workers=0, shuffle=False, drop_last=False)
 
         max_iterations = int(repetitions * len(dataset.dataset.data_list))
 
         with torch.no_grad():
-
-            i, losses = 0, []
+            i = []
             for i_all, (data_x, data_y) in enumerate(loader):
-
                 data_x = [v.cuda(non_blocking=True) if v is not None else v for v in data_x]
                 data_y = [v.cuda(non_blocking=True) if v is not None else v for v in data_y]
 
@@ -149,22 +137,10 @@ def main():
     metrics = score(config, train_checkpoint_id, None)
     print(metrics)
 
-    # for dataset in metrics.keys():
-    #     for k in metrics[dataset]:
-    # if type(metrics[dataset][k]) in {float, int}:
-    #         print(dataset, f'{k:<16} {metrics[dataset][k]:.3f}')
-
 
 def score(config, train_checkpoint_id, train_config):
     config = AttributeDict(config)
     print(config)
-
-    # use training dataset and loss
-    # load_model()
-    # model = None
-
-    # model.eval()
-    # model.cuda()
 
     metric_args = dict()
 
@@ -205,25 +181,15 @@ def score(config, train_checkpoint_id, train_config):
         pred_json_root = config.pred_json_root
 
         with torch.no_grad():
-
-            i, losses = 0, []
+            i = 0
             for i_all, batch_data in enumerate(tqdm(loader)):
-                # data_x = [v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v for v in data_x]
-                # data_y = [v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v for v in data_y]
-
-                # if config.mask == 'separate':  # for old CondBase model
-                #     pred, = model(data_x[0], data_x[1], data_x[2])
-                # else:
-                #     # assert config.mask in {'text', 'highlight'}
-                #     pred, _, _, _  = model(data_x[0], data_x[1], return_features=True)
                 image_path = batch_data[0]["file_name"]
-                data_y = batch_data[0]["instances"].gt_masks.tensor[None, ...]  # .cuda(non_blocking=True).unsqueeze(0)
+                data_y = batch_data[0]["instances"].gt_masks.tensor[None, ...]
                 gt_classes = batch_data[0]["instances"].gt_classes[None, ...]
                 interior_mask = gt_classes == 0
                 data_y = data_y[interior_mask][None, ...]
                 data_y = torch.sum(data_y, dim=1, keepdim=True).clamp(0, 1)  # Shape: Bx1xHxW
 
-                # pred = read_pred_json(os.path.join(pred_json_root, os.path.basename(image_path).split('.')[0] + "_pred.json"), image_size=(config.image_size, config.image_size), mask_format=config.mask_format)
                 pred = read_pred_json(
                     os.path.join(pred_json_root, os.path.basename(image_path).split(".")[0] + ".json"),
                     image_size=(config.image_size, config.image_size),
@@ -232,7 +198,7 @@ def score(config, train_checkpoint_id, train_config):
                 if len(pred) == 0:
                     pred = torch.zeros_like(data_y)
                 else:
-                    pred = pred.gt_masks.tensor[None, ...]  # .cuda(non_blocking=True).unsqueeze(0)
+                    pred = pred.gt_masks.tensor[None, ...]
                     pred = torch.sum(pred, dim=1, keepdim=True).clamp(0, 1)  # Shape: Bx1xHxW
                 metric.add(pred + shift, data_y)
 
@@ -240,13 +206,10 @@ def score(config, train_checkpoint_id, train_config):
                 if config.max_iterations and i >= config.max_iterations:
                     break
 
-        # print(metric.value()['mean_iou_scores'])
-
         key_prefix = config["name"] if "name" in config else "coco"
 
         print(metric.scores())
         return {key_prefix: metric.scores()}
-        # return {key_prefix: {k: v for k, v in zip(metric.names(), metric.value())}}
 
 
 if __name__ == "__main__":

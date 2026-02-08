@@ -1,13 +1,8 @@
 import copy
 import random
-import time
 
-import cv2
 import torch
-import numpy as np
-from PIL import Image
-
-from util.edges_utils import get_edges_alldirections, get_edges_alldirections_rev
+from util.edges_utils import get_edges_alldirections_rev
 from util.math_utils import clip
 from util.mean_std import mean, std
 
@@ -450,88 +445,76 @@ def draw_given_layers_on_tensors_random_region(given_layers, tensors, graphs):
                 if pos1[1] > pos2[1]:
                     temp_tensor_0[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_1[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_2[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 255
                 else:
                     temp_tensor_0[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_1[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_2[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 255
             else:
                 if pos1[0] > pos2[0]:
                     temp_tensor_0[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 0
                     temp_tensor_1[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 0
                     temp_tensor_2[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 255
                 else:
                     temp_tensor_0[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
                     ] = 0
                     temp_tensor_1[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
                     ] = 0
                     temp_tensor_2[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
@@ -756,88 +739,76 @@ def draw_preds_on_tensors(preds, tensors):
                 if pos1[1] > pos2[1]:
                     temp_tensor_0[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_1[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_2[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 255
                 else:
                     temp_tensor_0[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_1[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_2[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 255
             else:
                 if pos1[0] > pos2[0]:
                     temp_tensor_0[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 0
                     temp_tensor_1[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 0
                     temp_tensor_2[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 255
                 else:
                     temp_tensor_0[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
                     ] = 0
                     temp_tensor_1[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
                     ] = 0
                     temp_tensor_2[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
@@ -849,88 +820,76 @@ def draw_preds_on_tensors(preds, tensors):
                 if pos1[1] > pos2[1]:
                     temp_tensor_0[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_1[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_2[
                         pos2[1] : pos1[1] + 1,
-                        int((pos1[0] + pos2[0]) / 2)
-                        - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
+                        int((pos1[0] + pos2[0]) / 2) - int(line_width / 2) : int((pos1[0] + pos2[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 255
                 else:
                     temp_tensor_0[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_1[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 0
                     temp_tensor_2[
                         pos1[1] : pos2[1] + 1,
-                        int((pos2[0] + pos1[0]) / 2)
-                        - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
+                        int((pos2[0] + pos1[0]) / 2) - int(line_width / 2) : int((pos2[0] + pos1[0]) / 2)
                         + int(line_width / 2)
                         + 1,
                     ] = 255
             else:
                 if pos1[0] > pos2[0]:
                     temp_tensor_0[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 0
                     temp_tensor_1[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 0
                     temp_tensor_2[
-                        int((pos1[1] + pos2[1]) / 2)
-                        - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
+                        int((pos1[1] + pos2[1]) / 2) - int(line_width / 2) : int((pos1[1] + pos2[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos2[0] : pos1[0] + 1,
                     ] = 255
                 else:
                     temp_tensor_0[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
                     ] = 0
                     temp_tensor_1[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,
                     ] = 0
                     temp_tensor_2[
-                        int((pos2[1] + pos1[1]) / 2)
-                        - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
+                        int((pos2[1] + pos1[1]) / 2) - int(line_width / 2) : int((pos2[1] + pos1[1]) / 2)
                         + int(line_width / 2)
                         + 1,
                         pos1[0] : pos2[0] + 1,

@@ -1,32 +1,21 @@
+import argparse
+import json
 import os
 import sys
+from multiprocessing import Pool
 from pathlib import Path
 
-import copy
-import argparse
-
-from tqdm import tqdm
-import shutil
-import json
-import numpy as np
 import cv2
-
-from shapely.geometry import Polygon
-import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+from loaders import FloorplanSVG
 from matplotlib.patches import Patch
-from matplotlib.colors import ListedColormap
-
-from descartes.patch import PolygonPatch
-
 from PIL import Image
+from shapely.geometry import Polygon
 from skimage import measure
-from multiprocessing import Pool
-
-from loaders import FloorplanSVG, ROOM_NAMES
+from tqdm import tqdm
 
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from util.plot_utils import plot_semantic_rich_floorplan_tight
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from common_utils import resort_corners
@@ -229,54 +218,6 @@ def binary_mask_to_polygon(binary_mask, tolerance=0):
     return polygons
 
 
-def extract_room_polygons_cv2(mask, skip_classes=[]):
-    room_ids = np.unique(mask)
-    # room_ids = room_ids[room_ids != 0]
-
-    room_polygons = []
-
-    for room_id in room_ids:
-        # skip wall
-        if room_id in skip_classes:
-            continue
-        # Create binary mask for this room
-        room_mask = (mask == room_id).astype(np.uint8)
-
-        polygon = binary_mask_to_polygon(room_mask, tolerance=0)
-        room_polygons.append([np.array(polygon[0]).reshape(-1, 2), int(room_id)])
-
-        # # Find contours using OpenCV
-        # contours, _ = cv2.findContours(
-        #     room_mask,
-        #     cv2.RETR_EXTERNAL,
-        #     cv2.CHAIN_APPROX_SIMPLE
-        # )
-
-        # if contours:
-        #     # Get the largest contour
-        #     largest_contour = max(contours, key=cv2.contourArea)
-
-        #     polygon = [tuple(point[0]) for point in largest_contour]
-        #     if len(polygon) < 3:
-        #         continue
-        #     # # Simpify polygon with shapely
-        #     # poly = Polygon(polygon)
-        #     # simplified_poly = poly.simplify(tolerance=0.1, preserve_topology=True)
-        #     # simplified_poly = list(simplified_poly.exterior.coords)
-        #     room_polygons.append([polygon, int(room_id)])
-
-        #     # # Optional: Simplify polygon
-        #     # epsilon = 0.01 * cv2.arcLength(largest_contour, True)
-        #     # approx = cv2.approxPolyDP(largest_contour, epsilon, True)
-
-        #     # # Convert to list of (x, y) tuples
-        #     # polygon = [tuple(point[0]) for point in polygon]
-
-        #     # room_polygons[int(room_id)] = polygon
-
-    return room_polygons
-
-
 def extract_icon_cv2(mask, start_cls_id=11, skip_classes=[]):
     room_ids = np.unique(mask)
     room_polygons = []
@@ -467,7 +408,6 @@ def process_floorplan(
     vis_fp=False,
     wd2line=False,
 ):
-    # image_set = dataset[scene_id]
     if use_org_cc5k_classs:
         class_mapping_dict = CC5K_MAPPING_2  # old: CC5K_MAPPING
         class_to_index_dict = CC5K_CLASS_MAPPING_2
@@ -478,13 +418,10 @@ def process_floorplan(
         door_window_index = [16, 17]
 
     mask = image_set["label"].numpy()
-    # room_polygons = extract_room_polygons_cv2(mask[0], skip_classes=[0]) # [2]
-    # icon_polygons, icon_mask = extract_icon_cv2(mask[1], start_cls_id=0, skip_classes=[]) # [0] + list(range(3,11))
     room_polygons = [[poly, poly_type] for poly, poly_type in zip(image_set["room_polygon"], image_set["room_type"])]
     icon_polygons = [[poly, poly_type] for poly, poly_type in zip(image_set["icon_polygon"], image_set["icon_type"])]
 
     image_height, image_width = mask.shape[1:]
-    new_polygon_list = []
     coco_annotation_dict_list = []
 
     # for storing
@@ -548,16 +485,10 @@ def process_floorplan(
 
     binary_mask = np.zeros_like(filtered_mask)
     binary_mask = np.where((mask[0] + mask[1]) != 0, 1, 0).astype(np.uint8)
-    # # Fill in 0-pixels surrounded by 1-pixels
-    # kernel = np.ones((3, 3), np.uint8)  # Define a kernel for dilation
-    # dilated_mask = cv2.dilate(binary_mask, kernel, iterations=1)  # Dilate the binary mask
-    # filled_mask = np.where(dilated_mask == 1, 1, binary_mask)  # Combine with the original mask
-
     filled_mask = fill_holes_in_mask(binary_mask)
     cv2.imwrite(
         f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5) + '_mask.png'}", filled_mask.astype(np.uint8) * 255
     )
-
     # visualize_room_polygons(combined_mask, combined_polygons, list(ROOM_NAMES.values()) + list(ICON_NAMES.values()), save_path=f"{save_dir}/{str(img_id).zfill(5)}_combined.png")
 
     save_image(
@@ -583,9 +514,6 @@ def process_floorplan(
         if poly_type is None:
             continue
 
-        # assert area > 10
-        # if area < 100:
-        # 'door', 'window'
         if poly_type not in door_window_index and area < 100:
             continue
         if poly_type in door_window_index and area < 1:
@@ -596,27 +524,10 @@ def process_floorplan(
 
         ### here we convert door/window annotation into a single line
         if poly_type in door_window_index and wd2line:
-            # convert to rect
-            # if polygon.shape[0] > 4:
-            #     min_x = np.min(polygon[:, 0])
-            #     max_x = np.max(polygon[:, 0])
-            #     min_y = np.min(polygon[:, 1])
-            #     max_y = np.max(polygon[:, 1])
-
-            #     # The bounding rectangle
-            #     bounding_rect = np.array([
-            #         [min_x, min_y],  # top-left
-            #         [min_x, max_y],  # bottom-left
-            #         [max_x, max_y],  # bottom-right
-            #         [max_x, min_y],  # top-right
-            #         # [min_x, min_y]   # back to start (closed shape)
-            #     ])
-            #     polygon = bounding_rect
             if polygon.shape[0] > 4:
                 if len(polygon) == 5 and (polygon[0] == polygon[-1]).all():
                     polygon = polygon[:-1]  # drop last point since it is same as first
                 else:
-                    breakpoint()
                     bounding_rect = np.array(poly_shapely.minimum_rotated_rectangle.exterior.coords)
                     polygon = bounding_rect[:4]
 
@@ -658,13 +569,6 @@ def process_floorplan(
         combined_polygon_list.append([np.array(coco_seg_poly).reshape(-1, 2), org_poly_type])
         output_polygon_list.append([np.array(coco_seg_poly).reshape(-1, 2), poly_type + 1])
 
-        # # modified for plotting
-        # corners = polygon
-        # corners_flip_y = corners.copy()
-        # corners_flip_y[:,1] = image_height - corners_flip_y[:,1] - 1
-        # corners = corners_flip_y
-        # new_polygon_list.append([corners, poly_type])
-
     #### end split_file loop
     save_dict["images"].append(img_dict)
     save_dict["annotations"] += coco_annotation_dict_list
@@ -687,12 +591,6 @@ def process_floorplan(
             save_path=f"{save_dir.rstrip('/') + '_aux'}/{str(img_id).zfill(5)}_final.png",
         )
 
-    # save_path = f"{save_dir}/plot_debug.jpg"
-    # plot_semantic_rich_floorplan_tight(new_polygon_list, save_path, prec=1, rec=1, plot_text=False, is_bw=True,
-    #                                    img_w=image_width, img_h=image_height)
-
-    # return save_dict
-
 
 def prepare_dict(categories_dict):
     save_dict = {"images": [], "annotations": [], "categories": []}
@@ -704,9 +602,6 @@ def prepare_dict(categories_dict):
 
 if __name__ == "__main__":
     args = config()
-
-    # data_folder = '/share/kuleshov/htp26/floorplan_datasets/cubicasa5k/'
-    # data_file = 'test.txt'
 
     ### prepare
     outFolder = args.output
@@ -736,21 +631,10 @@ if __name__ == "__main__":
     coco_val_json_path = os.path.join(annotation_outFolder, "val.json")
     coco_test_json_path = os.path.join(annotation_outFolder, "test.json")
 
-    # coco_train_dict = {"images":[],"annotations":[],"categories":[]}
-    # coco_val_dict = {"images":[],"annotations":[],"categories":[]}
-    # coco_test_dict = {"images":[],"annotations":[],"categories":[]}
-
-    # for key, value in type2id.items():
-    #     type_dict = {"supercategory": "room", "id": value, "name": key}
-    #     coco_train_dict["categories"].append(type_dict)
-    #     coco_val_dict["categories"].append(type_dict)
-    #     coco_test_dict["categories"].append(type_dict)
-
     ### begin processing
     start_scene_id = 3500  # following index of s3d data
     split_set = ["train.txt", "val.txt", "test.txt"]
     save_folders = [train_img_folder, val_img_folder, test_img_folder]
-    # save_dicts = [coco_train_dict, coco_val_dict, coco_test_dict]
     coco_json_paths = [coco_train_json_path, coco_val_json_path, coco_test_json_path]
     annos_folders = [annos_train_folder, annos_val_folder, annos_test_folder]
 
@@ -776,15 +660,10 @@ if __name__ == "__main__":
     for split_id, split_file in enumerate(split_set):
         dataset = FloorplanSVG(args.data_root, split_file, format="txt", original_size=False)
         save_dir = save_folders[split_id]
-        # save_dict = save_dicts[split_id]
         json_path = coco_json_paths[split_id]
         print(f"############# {split_file}")
 
         annos_folder = annos_folders[split_id]
-
-        # for scene_id in tqdm([5,8,9,10,15]): # tqdm(range(0, len(dataset), 1)):
-        #     wrapper(scene_id)
-
         num_processes = 16
         with Pool(num_processes, initializer=worker_init, initargs=(dataset,)) as p:
             indices = range(len(dataset))

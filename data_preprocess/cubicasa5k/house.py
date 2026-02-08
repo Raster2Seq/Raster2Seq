@@ -1,20 +1,19 @@
 import copy
-import math
+from xml.dom import minidom
+
+import cv2
 import numpy as np
+from skimage.draw import polygon
 from svg_utils import (
     PolygonWall,
-    get_polygon,
     calc_distance,
-    get_room_number,
+    get_direction,
+    get_gaussian2D,
     get_icon,
     get_icon_number,
     get_points,
-    get_direction,
-    get_gaussian2D,
+    get_room_number,
 )
-from xml.dom import minidom
-from skimage.draw import polygon
-import cv2
 
 all_rooms = {
     "Background": 0,  # Not in data. The default outside label
@@ -841,7 +840,6 @@ class House:
                     pointIndex_1 = nearestPair[0]
                     pointIndex_2 = nearestPair[1]
                     if pointIndex_1 > -1 and pointIndex_2 > -1:
-
                         point = [None, None]
                         point[lineDim_1] = fixedValue_2
                         point[lineDim_2] = fixedValue_1
@@ -861,7 +859,6 @@ class House:
                         usedLinePointMask[lineIndex_1][pointIndex_1] = True
                         usedLinePointMask[lineIndex_2][pointIndex_2] = True
                     elif (pointIndex_1 > -1 and pointIndex_2 == -1) or (pointIndex_1 == -1 and pointIndex_2 > -1):
-
                         if pointIndex_1 > -1:
                             lineDim = lineDim_1
                             pointIndex = pointIndex_1
@@ -1097,7 +1094,6 @@ class House:
         minDistance = None
         for index_1 in range(0, 2):
             for index_2 in range(0, 2):
-
                 distance = calc_distance(line_1[index_1], line_2[index_2])
                 if minDistance is None or distance < minDistance:
                     nearestPair = [index_1, index_2]

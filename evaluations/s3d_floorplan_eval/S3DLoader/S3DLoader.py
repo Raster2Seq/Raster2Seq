@@ -1,12 +1,12 @@
-import torch
-from torch.utils.data import Dataset, DataLoader
-import torch.utils.data.distributed
-import os
-import cv2
 import json
+import os
 
-from s3d_floorplan_eval.S3DLoader.s3d_utils import *
-from s3d_floorplan_eval.S3DLoader.poly_utils import *
+import cv2
+import torch
+import torch.utils.data.distributed
+from numpy import np
+from s3d_floorplan_eval.S3DLoader.s3d_utils import generate_floorplan, parse_floor_plan_polys
+from torch.utils.data import DataLoader, Dataset
 
 
 class S3DLoader(object):

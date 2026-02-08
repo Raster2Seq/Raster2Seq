@@ -1,8 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import io
-import numpy as np
 import os
 import tempfile
+
+import numpy as np
 import torch
 
 from detectron2 import model_zoo

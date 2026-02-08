@@ -2,20 +2,19 @@ import copy
 import json
 import os
 from collections import defaultdict
+
 import numpy as np
 import torch
+import torch.multiprocessing
 import torch.utils.data
-from glob import glob
+import torchvision.transforms.functional as F
 from PIL import Image
 from torch.utils.data import Dataset
-import torchvision.transforms.functional as F
 from util.data_utils import l1_dist
 from util.graph_utils import graph_to_tensor
 from util.image_id_dict import d
 from util.mean_std import mean, std
 from util.semantics_dict import semantics_dict
-
-import torch.multiprocessing
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -175,27 +174,16 @@ class MyDataset2(Dataset):
             if ann["image_id"] not in available_ids:
                 continue
             self.imgToAnns[ann["image_id"]].append(ann)
-        self.ids = list(
-            sorted(self.imgs.keys())
-        )  # [os.path.basename(x).split('.')[0] for x in list(sorted(glob(f"{self.img_path}/*.png")))]
+        self.ids = list(sorted(self.imgs.keys()))
 
     def __getitem__(self, index):
         img_id = self.ids[index]
-        img_file_name = self.imgs[int(img_id)]["file_name"]  # self.imgs[int(img_id)]['id'] + '.png'
+        img_file_name = self.imgs[int(img_id)]["file_name"]
         img = Image.open(os.path.join(self.img_path, img_file_name)).convert("RGB")
 
         if 1:
             # get structure annotations
-            anns = self.imgToAnns[int(img_id)]
-
-            # new_anns = []
-            # image_points = []
-            # for ann in anns:
-            #     new_ann = copy.deepcopy(ann)
-            #     points = np.array(ann['segmentation']).reshape(-1, 2)
-            #     new_ann['point'] = [[p[0], p[1]] for p in points]
-            #     new_anns.append(new_ann)
-            #     image_points.extend(list(zip(points[:,0], points[:,1])))
+            # anns = self.imgToAnns[int(img_id)]
 
             data = np.load(os.path.join(self.quadtree_path, img_file_name[:-4] + ".npy"), allow_pickle=True).item()
             orig_quadtree = data["quadtree"]
@@ -210,8 +198,6 @@ class MyDataset2(Dataset):
                 new_anns.append(new_ann)
             target = {"image_id": img_id, "annotations": new_anns}
 
-            # orig_quadtree = np.load(os.path.join(self.quadtree_path,
-            #                                      img_file_name[:-4] + '.npy'), allow_pickle=True).item()['quatree'][0]
             quadtree = {}
             for k, v in orig_quadtree.items():
                 new_k = k
@@ -221,9 +207,6 @@ class MyDataset2(Dataset):
                     new_v.append(new_pos)
                 quadtree[new_k] = new_v
 
-            # orig_graph = np.load(os.path.join(self.quadtree_path,
-            #                                   img_file_name[:-4] + '.npy'), allow_pickle=True).item()
-            # del orig_graph['quatree']
             new_graph = {}
             for k, v in orig_graph.items():
                 new_k = (int(k[0]), int(k[1]))
@@ -253,14 +236,9 @@ class MyDataset2(Dataset):
                     layer_indices.append(count)
                 count += len(v)
 
-            # image_id = torch.tensor([d[img_id]])
             image_id = torch.tensor([int(img_id)])
 
             points = [obj["point"] for obj in target_layers]
-
-            # edges = [obj['edge_code'] for obj in target_layers]
-            # edges = torch.tensor(edges, dtype=torch.int64)
-
             with open(os.path.join(self.edgecode_path, img_file_name[:-4] + ".json"), "r") as f:
                 edge2code = json.load(f)
                 edge2code = {

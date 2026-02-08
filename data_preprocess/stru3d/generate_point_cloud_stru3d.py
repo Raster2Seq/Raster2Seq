@@ -1,7 +1,8 @@
 import argparse
 import os
-from tqdm import tqdm
+
 from PointCloudReaderPanorama import PointCloudReaderPanorama
+from tqdm import tqdm
 
 
 def config():
@@ -28,5 +29,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     main(config())

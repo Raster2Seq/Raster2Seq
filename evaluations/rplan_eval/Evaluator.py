@@ -4,16 +4,10 @@ This is a hack implementation for evaluation on RPlan
 Mostly copy-paste from Evaluator.py (from MonteFloor) with small modification
 """
 
-from collections import Counter
-import os
-import torch
-import matplotlib.pyplot as plt
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial import Delaunay
-import os
-import shapely
-from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
+import torch
 
 corner_metric_thresh = 10  # 10,20
 angle_metric_thresh = 5
@@ -51,17 +45,10 @@ class Evaluator_RPlan:
                 cnt = cont
                 max_area = cv2.contourArea(cont)
 
-        perimeter = cv2.arcLength(cnt, True)
-        # epsilon = 0.01 * cv2.arcLength(cnt, True)
         epsilon = degree * cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, epsilon, True)
-
-        # approx = np.concatenate([approx, approx[0][None]], axis=0)
         approx = approx.astype(np.int32).reshape((-1, 2))
 
-        # approx_tensor = torch.tensor(approx, device=self.device)
-
-        # return approx_tensor
         if return_mask:
             room_filled_map = np.zeros((h, w))
             cv2.fillPoly(room_filled_map, [approx], color=1.0)
@@ -322,13 +309,6 @@ class Evaluator_RPlan:
 
                 gt_poly = gt_polys[gt_poly_ind][:-1]
 
-                # for v in p_poly:
-                #     v_dists = np.linalg.norm(v[None,:] - gt_poly, axis=1, ord=2)
-                #     v_min_dist = np.min(v_dists)
-                #
-                #     v_tp = v_min_dist <= 10
-                #     room_corners_metric.append(v_tp)
-
                 gt_poly_orient = get_poly_orientation(gt_poly)
                 p_poly_orient = get_poly_orientation(p_poly)
 
@@ -338,7 +318,6 @@ class Evaluator_RPlan:
                     v_min_dist = v_dists[v_ind]
 
                     if v_min_dist > corner_metric_thresh:
-                        # room_angles_metric.append(False)
                         continue
 
                     if v_ind < len(p_poly) - 1:
@@ -360,14 +339,7 @@ class Evaluator_RPlan:
                     gt_angle_degree = get_angle_v_sides(v_sides, gt_poly_orient)
 
                     angle_metric = np.abs(pred_angle_degree - gt_angle_degree)
-
-                    # room_angles_metric.append(angle_metric < 5)
                     p_poly_angle_metrics[v_ind] = angle_metric <= angle_metric_thresh
-
-                    # if angle_metric > 5:
-                    #     print(v_gt_ind, angle_metric)
-                    #     print(pred_angle_degree, gt_angle_degree)
-                    #     input("?")
 
                 room_angles_metric += p_poly_angle_metrics
 
@@ -418,14 +390,10 @@ class Evaluator_RPlan:
         ### match predicted rooms to ground truth rooms
         best_iou = 0.0
         for gt_ind, gt_map in enumerate(gt_room_map_list):
-
             best_iou = 0.0
             best_ind = -1
             best_ind_sem = -1
             for pred_ind, pred_map in enumerate(pred_room_map_list):
-
-                # intersection = (1 - ignore_mask_region) * ((pred_map + gt_map) == 2)
-                # union = (1 - ignore_mask_region) * ((pred_map + gt_map) >= 1)
                 intersection = (pred_map + gt_map) == 2
                 union = (pred_map + gt_map) >= 1
 
@@ -439,28 +407,12 @@ class Evaluator_RPlan:
                         if gt_polys_types[gt_ind] == pred_types[pred_ind]:
                             best_ind_sem = pred_ind
 
-            #         plt.figure()
-            #         plt.subplot(121)
-            #         plt.imshow(pred_map)
-            #         plt.subplot(122)
-            #         plt.imshow(gt_map)
-            #         plt.show()
-            # if best_ind == -1:
-            #     plt.figure()
-            #     plt.imshow(gt_map)
-            #     plt.show()
-
             gt2pred_indices[gt_ind] = best_ind
             gt2pred_exists[gt_ind] = best_ind != -1
 
             if pred_types is not None:
                 gt2pred_indices_sem[gt_ind] = best_ind_sem
                 gt2pred_exists_sem[gt_ind] = best_ind_sem != -1
-
-            # if best_ind == -1:
-            #     plt.figure()
-            #     plt.imshow(gt_map)
-            #     plt.show()
 
         ### match predicted window/door to ground truth window/door
         if pred_window_doors_types is not None:
@@ -470,7 +422,6 @@ class Evaluator_RPlan:
                     best_ind = -1
 
                     for pred_ind, pred_wd in enumerate(pred_window_doors):
-
                         dist_match1 = [
                             np.linalg.norm(gt_wd[0] - pred_wd[0], axis=0, ord=2),
                             np.linalg.norm(gt_wd[1] - pred_wd[1], axis=0, ord=2),
@@ -518,13 +469,9 @@ class Evaluator_RPlan:
                     pred_wd_map_list = masks_list
 
                 for gt_ind, gt_map in enumerate(gt_wd_map_list):
-
                     best_iou = 0.0
                     best_ind = -1
                     for pred_ind, pred_map in enumerate(pred_wd_map_list):
-
-                        # intersection = (1 - ignore_mask_region) * ((pred_map + gt_map) == 2)
-                        # union = (1 - ignore_mask_region) * ((pred_map + gt_map) >= 1)
                         intersection = (pred_map + gt_map) == 2
                         union = (pred_map + gt_map) >= 1
 
@@ -542,40 +489,18 @@ class Evaluator_RPlan:
             gt2pred_indices.index(pred_ind) if pred_ind in gt2pred_indices else -1
             for pred_ind, _ in enumerate(pred_polys)
         ]
-
-        # # Check for duplicate indices in pred2gt_indices
-        # duplicates = [item for item, count in Counter(pred2gt_indices).items() if count > 1 and item != -1]
-
-        # if duplicates:
-        #     print(f"Duplicate indices found in pred2gt_indices: {duplicates}")
-        # else:
-        #     print("No duplicate indices found in pred2gt_indices.")
-
         room_missing_ratio = 1.0 - sum(pred2gt_exists) / float(len(gt_polys) + 1e-4)
 
         if pred_types is not None:
             pred2gt_exists_sem = [
                 True if pred_ind in gt2pred_indices_sem else False for pred_ind, _ in enumerate(pred_polys)
             ]
-            pred2gt_indices_sem = [
-                gt2pred_indices_sem.index(pred_ind) if pred_ind in gt2pred_indices_sem else -1
-                for pred_ind, _ in enumerate(pred_polys)
-            ]
 
         if pred_window_doors_types is not None:
             pred2gt_exists_wd = [
                 True if pred_ind in gt2pred_indices_wd else False for pred_ind, _ in enumerate(pred_window_doors)
             ]
-            pred2gt_indices_wd = [
-                gt2pred_indices_wd.index(pred_ind) if pred_ind in gt2pred_indices_wd else -1
-                for pred_ind, _ in enumerate(pred_window_doors)
-            ]
 
-        # print(gt2pred_indices)
-        # print(pred2gt_indices)
-        # assert False
-
-        # import pdb; pdb.set_trace()
         room_metric, room_sem_metric = get_room_metric()
         ###### metric for room WITHOUT considering type ######
         if len(pred_polys) == 0:

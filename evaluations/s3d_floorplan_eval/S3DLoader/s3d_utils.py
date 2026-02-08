@@ -4,10 +4,11 @@ This code is an adaptation that uses Structured 3D for the code base.
 Reference: https://github.com/bertjiazheng/Structured3D
 """
 
-import numpy as np
-import cv2
-from shapely.geometry import Polygon
 import random
+
+import cv2
+import numpy as np
+from shapely.geometry import Polygon
 
 type2id = {
     "living room": 0,
@@ -169,7 +170,6 @@ def generate_floorplan(
     if shuffle:
         random.shuffle(polygons_list)
     for poly_ind, polygon in enumerate(polygons_list):
-
         if shuffle:
             room_ind += np.random.randint(1, 2)
         else:

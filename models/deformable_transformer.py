@@ -3,16 +3,15 @@
 # ------------------------------------------------------------------------------------
 
 import copy
-from typing import Optional, List
 import math
 
 import torch
 import torch.nn.functional as F
-from torch import nn, Tensor
-from torch.nn.init import xavier_uniform_, constant_, uniform_, normal_
+from torch import nn
+from torch.nn.init import normal_
 
-from util.misc import inverse_sigmoid
 from models.ops.modules import MSDeformAttn
+from util.misc import inverse_sigmoid
 
 
 class MLP(nn.Module):
@@ -198,7 +197,6 @@ class DeformableTransformerEncoder(nn.Module):
     def get_reference_points(spatial_shapes, valid_ratios, device):
         reference_points_list = []
         for lvl, (H_, W_) in enumerate(spatial_shapes):
-
             ref_y, ref_x = torch.meshgrid(
                 torch.linspace(0.5, H_ - 0.5, H_, dtype=torch.float32, device=device),
                 torch.linspace(0.5, W_ - 0.5, W_, dtype=torch.float32, device=device),

@@ -1,8 +1,6 @@
-import os
-import numpy as np
 import cv2
+import numpy as np
 from scipy import ndimage
-from shapely.geometry import Polygon
 
 
 def extract_regions(adj_mat, corners, corner_sorted):
@@ -115,7 +113,7 @@ def _get_regions_for_corner(cur_idx, adj_mat, nb_orders):
                     v_p = cur_region[region_i + 1]
                     v_s = cur_region[region_i + 2]
                     v_q = _find_wedge_third_v(v_p, v_s, nb_orders, adj_mat, dir=1)
-                    if v_q == None:
+                    if v_q is None:
                         closed_polygon = False
                         break
                     region_i += 1

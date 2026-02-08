@@ -6,6 +6,7 @@ import tempfile
 from contextlib import ExitStack, contextmanager
 from copy import deepcopy
 from unittest import mock
+
 import torch
 from torch import nn
 
@@ -303,7 +304,7 @@ def patch_nonscriptable_classes():
     # __prepare_scriptable__ can also be added to models for easier maintenance.
     # But it complicates the clean model code.
 
-    from detectron2.modeling.backbone import ResNet, FPN
+    from detectron2.modeling.backbone import FPN, ResNet
 
     # Due to https://github.com/pytorch/pytorch/issues/36061,
     # we change backbone to use ModuleList for scripting.

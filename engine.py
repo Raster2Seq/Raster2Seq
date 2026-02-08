@@ -1,42 +1,35 @@
-import cv2
 import copy
 import json
 import math
 import os
 import sys
-import time
 from typing import Iterable
 
+import cv2
 import numpy as np
-from shapely.geometry import Polygon
 import torch
+from shapely.geometry import Polygon
 
 import util.misc as utils
 
 # Add evaluations folder relative to this file's location
-sys.path.append(os.path.join(os.path.dirname(__file__), 'evaluations'))
-from s3d_floorplan_eval.Evaluator.Evaluator import Evaluator
-from s3d_floorplan_eval.options import MCSSOptions
+sys.path.append(os.path.join(os.path.dirname(__file__), "evaluations"))
+from rplan_eval.Evaluator import Evaluator_RPlan
 from s3d_floorplan_eval.DataRW.S3DRW import S3DRW
 from s3d_floorplan_eval.DataRW.wrong_annotatios import wrong_s3d_annotations_list
-
+from s3d_floorplan_eval.Evaluator.Evaluator import Evaluator
+from s3d_floorplan_eval.options import MCSSOptions
 from scenecad_eval.Evaluator import Evaluator_SceneCAD
-from rplan_eval.Evaluator import Evaluator_RPlan
-
-from util.poly_ops import pad_gt_polys
-from util.plot_utils import (
-    plot_room_map,
-    plot_score_map,
-    plot_floorplan_with_regions,
-    plot_semantic_rich_floorplan,
-    plot_semantic_rich_floorplan_tight,
-    sort_polygons_by_matching,
-)
-from util.plot_utils import plot_density_map, plot_semantic_rich_floorplan_opencv
-from util.plot_utils import S3D_LABEL, CC5K_LABEL
-from util.eval_utils import compute_f1
 
 from datasets import get_dataset_class_labels
+from util.eval_utils import compute_f1
+from util.plot_utils import (
+    plot_density_map,
+    plot_floorplan_with_regions,
+    plot_semantic_rich_floorplan_opencv,
+    sort_polygons_by_matching,
+)
+from util.poly_ops import pad_gt_polys
 
 options = MCSSOptions()
 opts = options.parse()
@@ -174,7 +167,6 @@ def evaluate(
 
         # process per scene
         for i in range(bs):
-
             if dataset_name == "stru3d":
                 if int(scene_ids[i]) in wrong_s3d_annotations_list:
                     continue
@@ -370,18 +362,14 @@ def evaluate_v2(
             bs = outputs["pred_logits"].shape[0]
         else:
             bs = outputs["pred_logits"].shape[0]
-            pred_logits = outputs["pred_logits"]
             pred_corners = outputs["pred_coords"]
-            fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
 
         if "pred_room_logits" in outputs:
             prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
-            num_classes = prob.shape[-1]
             _, pred_room_label = prob[..., :-1].max(-1)
 
         # process per scene
         for i in range(bs):
-
             gt_polys, gt_polys_types = [], []
             gt_window_doors = []
             gt_window_doors_types = []
@@ -419,7 +407,6 @@ def evaluate_v2(
 
             print("Running Evaluation for scene %s" % scene_ids[i])
 
-            # fg_mask_per_scene = fg_mask[i]
             pred_corners_per_scene = pred_corners[i]
 
             room_polys = []
@@ -609,7 +596,6 @@ def evaluate_floor(
         os.mkdir(output_dir)
 
     for batched_inputs, batched_extras in data_loader:
-
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
@@ -905,7 +891,6 @@ def evaluate_floor_v2(
         os.mkdir(output_dir)
 
     for batched_inputs, batched_extras in data_loader:
-
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
@@ -948,13 +933,11 @@ def evaluate_floor_v2(
 
         if "pred_room_logits" in outputs:
             prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
-            num_classes = prob.shape[-1]
             _, pred_room_label = prob[..., :-1].max(-1)
             pred_room_logits = outputs["pred_room_logits"]
 
         # process per scene
         for i in range(bs):
-
             gt_polys, gt_polys_types = [], []
             gt_window_doors = []
             gt_window_doors_types = []

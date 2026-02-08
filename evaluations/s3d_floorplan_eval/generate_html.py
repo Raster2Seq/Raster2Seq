@@ -1,5 +1,6 @@
-import numpy as np
 import os.path as osp
+
+import numpy as np
 
 head = """
 <html>
@@ -8,7 +9,7 @@ head = """
 td {text-align: center;}
 </style>
 </head>
-<p>  
+<p>
 </p>
 <br>
 <table border="1">

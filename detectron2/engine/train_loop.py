@@ -2,10 +2,11 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 
 import logging
-import numpy as np
 import time
 import weakref
 from typing import List, Mapping, Optional
+
+import numpy as np
 import torch
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 

@@ -1,18 +1,15 @@
 import argparse
-import datetime
-import json
-import random
-import os
-import time
-from pathlib import Path
 import copy
-from tqdm import trange
+import os
+import random
+from pathlib import Path
 
-from PIL import Image
 import numpy as np
 import torch
+from PIL import Image
 from torch.utils.data import DataLoader
-import util.misc as utils
+from tqdm import trange
+
 from datasets import build_dataset
 from engine import evaluate_floor, evaluate_floor_v2, generate, generate_v2
 from models import build_model
@@ -35,6 +32,7 @@ def get_args_parser():
     parser.add_argument("--measure_time", action="store_true")
     parser.add_argument("--disable_sampling_cache", action="store_true")
     parser.add_argument("--use_anchor", action="store_true")
+    parser.add_argument("--drop_wd", action="store_true")
     parser.add_argument("--iou_thres", type=float, default=0.5)
     parser.add_argument("--disable_sem_rich", action="store_true")
     parser.add_argument("--wd_only", action="store_true")
@@ -123,9 +121,12 @@ def get_args_parser():
         help="if true, the query in one room will not be allowed to attend other room",
     )
     parser.add_argument(
-        "--semantic_classes", default=-1, type=int, help="Number of classes for semantically-rich floorplan:  \
+        "--semantic_classes",
+        default=-1,
+        type=int,
+        help="Number of classes for semantically-rich floorplan:  \
                         1. default -1 means non-semantic floorplan \
-                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty"
+                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty",
     )
     parser.add_argument(
         "--disable_poly_refine",
@@ -265,20 +266,20 @@ def main(args):
             for rep in trange(repetitions):
                 starter.record()
                 if not args.poly2seq:
-                    outputs = generate(
+                    _ = generate(
                         model,
                         images,
                         semantic_rich=args.semantic_classes > 0,
-                        drop_wd=False,
+                        drop_wd=args.drop_wd,
                     )
                 else:
-                    outputs = generate_v2(
+                    _ = generate_v2(
                         model,
                         images,
                         semantic_rich=args.semantic_classes > 0,
                         use_cache=True,
                         per_token_sem_loss=args.per_token_sem_loss,
-                        drop_wd=False,
+                        drop_wd=args.drop_wd,
                     )
                 ender.record()
                 # WAIT FOR GPU SYNC

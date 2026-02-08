@@ -1,5 +1,3 @@
-import torch.utils.data
-
 from .poly_data import build as build_poly
 
 

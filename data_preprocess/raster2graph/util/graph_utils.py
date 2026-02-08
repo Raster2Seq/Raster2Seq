@@ -1,20 +1,15 @@
 import copy
-import math
 import random
 
 import networkx as nx
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
-
 from util.geom_utils import (
-    is_clockwise_or_not,
-    x_axis_angle,
     get_quadrant,
-    counter_degree,
-    rotate_degree_clockwise_from_counter_degree,
-    rotate_degree_counterclockwise_from_counter_degree,
+    is_clockwise_or_not,
     poly_area,
+    rotate_degree_counterclockwise_from_counter_degree,
+    x_axis_angle,
 )
 from util.metric_utils import get_results, get_results_float_with_semantic
 
@@ -69,7 +64,6 @@ def get_cycle_basis_and_semantic_deprecated(best_result):
     results = []
 
     for cycle_ind, cycle in enumerate(simple_cycles):
-
         points = [d_rev[ind] for ind in cycle]
         points.append(points[0])
 
@@ -253,8 +247,7 @@ def get_cycle_basis_and_semantic(best_result):
             simple_cycles_c = []
             simple_cycles_number_c = []
             simple_cycle_semantics_c = []
-            # print(c) # {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}
-            output_points_c = [p for p in output_points if d[p] in c]
+            # output_points_c = [p for p in output_points if d[p] in c]
             output_edges_c = [e for e in output_edges if d[e[0]] in c or d[e[1]] in c]
             output_edges_c_copy_for_traversing = copy.deepcopy(output_edges_c)
 
@@ -282,7 +275,6 @@ def get_cycle_basis_and_semantic(best_result):
                     simple_cycle_number.append(initial_point_number)
 
                     last_point = initial_point
-                    last_point_number = initial_point_number
 
                     current_point = None
                     current_point_number = None
@@ -296,13 +288,11 @@ def get_cycle_basis_and_semantic(best_result):
                     simple_cycle_number.append(current_point_number)
 
                     next_initial_point = copy.deepcopy(current_point)
-                    next_initial_point_number = copy.deepcopy(current_point_number)
 
                     next_point = None
                     next_point_number = None
 
                     while next_point != next_initial_point:
-
                         relevant_edges = []
                         for edge in output_edges_c:
                             if edge[0] == current_point or edge[1] == current_point:
@@ -310,7 +300,6 @@ def get_cycle_basis_and_semantic(best_result):
 
                         relevant_edges_degree = []
                         for relevant_edge in relevant_edges:
-
                             vec = None
                             if relevant_edge[0] == current_point:
                                 vec = (
@@ -328,22 +317,13 @@ def get_cycle_basis_and_semantic(best_result):
                             vec_degree = x_axis_angle(vec)
                             relevant_edges_degree.append(vec_degree)
 
-                        vec_from_current_point_to_last_point = None
                         vec_from_current_point_to_last_point_degree = None
                         for relevant_edge_ind, relevant_edge in enumerate(relevant_edges):
                             if relevant_edge == (current_point, last_point):
-                                vec_from_current_point_to_last_point = (
-                                    relevant_edge[1][0] - relevant_edge[0][0],
-                                    relevant_edge[1][1] - relevant_edge[0][1],
-                                )
                                 vec_from_current_point_to_last_point_degree = relevant_edges_degree[relevant_edge_ind]
                                 relevant_edges.remove(relevant_edge)
                                 relevant_edges_degree.remove(vec_from_current_point_to_last_point_degree)
                             elif relevant_edge == (last_point, current_point):
-                                vec_from_current_point_to_last_point = (
-                                    relevant_edge[0][0] - relevant_edge[1][0],
-                                    relevant_edge[0][1] - relevant_edge[1][1],
-                                )
                                 vec_from_current_point_to_last_point_degree = relevant_edges_degree[relevant_edge_ind]
                                 relevant_edges.remove(relevant_edge)
                                 relevant_edges_degree.remove(vec_from_current_point_to_last_point_degree)
@@ -416,7 +396,6 @@ def get_cycle_basis_and_semantic(best_result):
                             assert 0
 
                         last_point = current_point
-                        last_point_number = current_point_number
                         current_point = next_point
                         current_point_number = next_point_number
                         simple_cycle.append(current_point)
@@ -527,7 +506,6 @@ def get_cycle_basis_and_semantic_2(best_result):
             G.remove_edge(b[1], b[0])
 
     connected_components = list(nx.connected_components(G))
-    # print(connected_components)
     for c in connected_components:
         if len(c) == 1:
             pass
@@ -535,14 +513,8 @@ def get_cycle_basis_and_semantic_2(best_result):
             simple_cycles_c = []
             simple_cycles_number_c = []
             simple_cycle_semantics_c = []
-            # print(c) # {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}
-            output_points_c = [p for p in output_points if d[p] in c]
-            output_edges_c = [e for e in output_edges if d[e[0]] in c or d[e[1]] in c]  # 固定的边集，不会删除
-            output_edges_c_copy_for_traversing = copy.deepcopy(
-                output_edges_c
-            )  # 用于遍历以减少时间复杂度的边集，其中的边会删除
-            # print(output_points_c)
-            # print(output_edges_c)
+            output_edges_c = [e for e in output_edges if d[e[0]] in c or d[e[1]] in c]
+            output_edges_c_copy_for_traversing = copy.deepcopy(output_edges_c)
 
             for edge_c in output_edges_c:
                 if edge_c not in output_edges_c_copy_for_traversing:
@@ -568,7 +540,6 @@ def get_cycle_basis_and_semantic_2(best_result):
                     simple_cycle_number.append(initial_point_number)
 
                     last_point = initial_point
-                    last_point_number = initial_point_number
 
                     current_point = None
                     current_point_number = None
@@ -582,13 +553,11 @@ def get_cycle_basis_and_semantic_2(best_result):
                     simple_cycle_number.append(current_point_number)
 
                     next_initial_point = copy.deepcopy(current_point)
-                    next_initial_point_number = copy.deepcopy(current_point_number)
 
                     next_point = None
                     next_point_number = None
 
                     while next_point != next_initial_point:
-
                         relevant_edges = []
                         for edge in output_edges_c:
                             if edge[0] == current_point or edge[1] == current_point:
@@ -596,7 +565,6 @@ def get_cycle_basis_and_semantic_2(best_result):
 
                         relevant_edges_degree = []
                         for relevant_edge in relevant_edges:
-
                             vec = None
                             if relevant_edge[0] == current_point:
                                 vec = (
@@ -614,22 +582,13 @@ def get_cycle_basis_and_semantic_2(best_result):
                             vec_degree = x_axis_angle(vec)
                             relevant_edges_degree.append(vec_degree)
 
-                        vec_from_current_point_to_last_point = None
                         vec_from_current_point_to_last_point_degree = None
                         for relevant_edge_ind, relevant_edge in enumerate(relevant_edges):
                             if relevant_edge == (current_point, last_point):
-                                vec_from_current_point_to_last_point = (
-                                    relevant_edge[1][0] - relevant_edge[0][0],
-                                    relevant_edge[1][1] - relevant_edge[0][1],
-                                )
                                 vec_from_current_point_to_last_point_degree = relevant_edges_degree[relevant_edge_ind]
                                 relevant_edges.remove(relevant_edge)
                                 relevant_edges_degree.remove(vec_from_current_point_to_last_point_degree)
                             elif relevant_edge == (last_point, current_point):
-                                vec_from_current_point_to_last_point = (
-                                    relevant_edge[0][0] - relevant_edge[1][0],
-                                    relevant_edge[0][1] - relevant_edge[1][1],
-                                )
                                 vec_from_current_point_to_last_point_degree = relevant_edges_degree[relevant_edge_ind]
                                 relevant_edges.remove(relevant_edge)
                                 relevant_edges_degree.remove(vec_from_current_point_to_last_point_degree)
@@ -661,7 +620,6 @@ def get_cycle_basis_and_semantic_2(best_result):
                                 interior_angle_counterclockwise_degree_bigger,
                             )
                         )
-                        # print(quadrant_smaller_to_bigger_counterclockwise)
                         if interior_angle_counterclockwise.index(interior_angle_counterclockwise_degree_smaller) == 0:
                             pass
                         elif (
@@ -694,7 +652,6 @@ def get_cycle_basis_and_semantic_2(best_result):
                             assert 0
 
                         last_point = current_point
-                        last_point_number = current_point_number
                         current_point = next_point
                         current_point_number = next_point_number
                         simple_cycle.append(current_point)
@@ -703,7 +660,6 @@ def get_cycle_basis_and_semantic_2(best_result):
                     for point_number_ind, point_number in enumerate(simple_cycle_number):
                         if point_number_ind < len(simple_cycle_number) - 1:
                             edge_number = (point_number, simple_cycle_number[point_number_ind + 1])
-                            # print(simple_cycle_number)
                             if edge_number[0] < edge_number[1]:
                                 if (
                                     d_rev[edge_number[0]],
@@ -724,7 +680,6 @@ def get_cycle_basis_and_semantic_2(best_result):
                     simple_cycle_number.pop(-1)
                     polygon_counterclockwise = [(int(p[0]), -int(p[1])) for p in simple_cycle]
                     polygon_counterclockwise.pop(-1)
-                    # print('poly_area(polygon_counterclockwise)', poly_area(polygon_counterclockwise))
                     if poly_area(polygon_counterclockwise) > 0:
                         simple_cycles_c.append(simple_cycle)
                         simple_cycles_number_c.append(simple_cycle_number)
@@ -739,7 +694,6 @@ def get_cycle_basis_and_semantic_2(best_result):
                         del semantic_result[12]
 
                         this_cycle_semantic = sorted(semantic_result.items(), key=lambda d: d[1], reverse=True)
-                        # print(this_cycle_semantic)
                         this_cycle_result = None
                         if this_cycle_semantic[0][1] > this_cycle_semantic[1][1]:
                             this_cycle_result = this_cycle_semantic[0][0]
@@ -748,17 +702,11 @@ def get_cycle_basis_and_semantic_2(best_result):
                                 i[0] for i in this_cycle_semantic if i[1] == this_cycle_semantic[0][1]
                             ]
                             this_cycle_result = this_cycle_results[random.randint(0, len(this_cycle_results) - 1)]
-                        # print(this_cycle_result)
                         simple_cycle_semantics_c.append(this_cycle_result)
 
             simple_cycles.extend(simple_cycles_c)
             simple_cycles_number.extend(simple_cycles_number_c)
             simple_cycles_semantics.extend(simple_cycle_semantics_c)
-
-    # print([[(int(j[0]), int(j[1])) for j in i] for i in simple_cycles])
-
-    # print(len(simple_cycles_number))
-    # print(simple_cycles_semantics)
 
     return d_rev, simple_cycles, simple_cycles_semantics
 
@@ -801,7 +749,6 @@ def get_cycle_basis(best_result):
         else:
             simple_cycles_c = []
             simple_cycles_number_c = []
-            output_points_c = [p for p in output_points if d[p] in c]
             output_edges_c = [e for e in output_edges if d[e[0]] in c or d[e[1]] in c]
             output_edges_c_copy_for_traversing = copy.deepcopy(output_edges_c)
 
@@ -833,7 +780,6 @@ def get_cycle_basis(best_result):
                     simple_cycle_number.append(current_point_number)
 
                     last_point = initial_point
-                    last_point_number = initial_point_number
                     next_initial_point = copy.deepcopy(current_point)
                     next_point = None
 
@@ -861,22 +807,13 @@ def get_cycle_basis(best_result):
                             vec_degree = x_axis_angle(vec)
                             relevant_edges_degree.append(vec_degree)
 
-                        vec_from_current_point_to_last_point = None
                         vec_from_current_point_to_last_point_degree = None
                         for relevant_edge_ind, relevant_edge in enumerate(relevant_edges):
                             if relevant_edge == (current_point, last_point):
-                                vec_from_current_point_to_last_point = (
-                                    relevant_edge[1][0] - relevant_edge[0][0],
-                                    relevant_edge[1][1] - relevant_edge[0][1],
-                                )
                                 vec_from_current_point_to_last_point_degree = relevant_edges_degree[relevant_edge_ind]
                                 relevant_edges.remove(relevant_edge)
                                 relevant_edges_degree.remove(vec_from_current_point_to_last_point_degree)
                             elif relevant_edge == (last_point, current_point):
-                                vec_from_current_point_to_last_point = (
-                                    relevant_edge[0][0] - relevant_edge[1][0],
-                                    relevant_edge[0][1] - relevant_edge[1][1],
-                                )
                                 vec_from_current_point_to_last_point_degree = relevant_edges_degree[relevant_edge_ind]
                                 relevant_edges.remove(relevant_edge)
                                 relevant_edges_degree.remove(vec_from_current_point_to_last_point_degree)
@@ -903,7 +840,6 @@ def get_cycle_basis(best_result):
                             assert 0
 
                         last_point = current_point
-                        last_point_number = current_point_number
                         current_point = next_point
                         current_point_number = next_point_number
                         simple_cycle.append(current_point)
@@ -912,7 +848,6 @@ def get_cycle_basis(best_result):
                     for point_number_ind, point_number in enumerate(simple_cycle_number):
                         if point_number_ind < len(simple_cycle_number) - 1:
                             edge_number = (point_number, simple_cycle_number[point_number_ind + 1])
-                            # print(simple_cycle_number)
                             if edge_number[0] < edge_number[1]:
                                 if (
                                     d_rev[edge_number[0]],

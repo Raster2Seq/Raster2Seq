@@ -1,9 +1,8 @@
+import glob
 import json
 import os
-import glob
 import shutil
 from pathlib import Path
-from copy import copy
 
 
 def combine_json_files(input_pattern, data_path, split_type, output_file, start_image_id=0):
@@ -18,7 +17,6 @@ def combine_json_files(input_pattern, data_path, split_type, output_file, start_
     combined_data = {"images": [], "annotations": [], "categories": []}
 
     # Track image and annotation IDs to avoid duplicates
-    image_ids_seen = set()
     annotation_ids_seen = set()
 
     next_image_id = start_image_id
@@ -32,18 +30,13 @@ def combine_json_files(input_pattern, data_path, split_type, output_file, start_
 
     # Process each file
     for i, json_file in enumerate(json_files):
-        print(f"Processing file {i+1}/{len(json_files)}: {json_file}")
+        print(f"Processing file {i + 1}/{len(json_files)}: {json_file}")
 
         with open(json_file, "r") as f:
             data = json.load(f)
 
         # Store categories from the first file
         if i == 0 and data.get("categories"):
-            # save_list = []
-            # for key, value in CC5K_CLASS_MAPPING.items():
-            #     type_dict = {"supercategory": "room", "id": value, "name": key}
-            #     save_list.append(type_dict)
-            # combined_data["categories"] = save_list
             combined_data["categories"] = data["categories"]
 
         # empty annos
@@ -60,11 +53,9 @@ def combine_json_files(input_pattern, data_path, split_type, output_file, start_
                 continue
             image["id"] = next_image_id
             next_image_id += 1
-            # org_file_name = copy(image['file_name'])
             image["file_name"] = str(image["id"]).zfill(5) + ".png"
             org_file_name = os.path.basename(json_file).replace(".json", ".png")
             if image["file_name"] != org_file_name and os.path.exists(f"{data_path}/{split_type}/{org_file_name}"):
-                # shutil.copy(f"{data_path}/{split_type}/{org_file_name}", f"{data_path}/{split_type}_aux/{org_file_name}")
                 shutil.move(
                     f"{data_path}/{split_type}/{org_file_name}", f"{data_path}/{split_type}/{image['file_name']}"
                 )
@@ -116,7 +107,7 @@ if __name__ == "__main__":
         if split == "train":
             start_image_id = 0
         else:
-            start_image_id += len(list(Path(f"{args.input}/{splits[i-1]}").glob("*.png")))
+            start_image_id += len(list(Path(f"{args.input}/{splits[i - 1]}").glob("*.png")))
 
         combine_json_files(
             f"{args.input}/annotations_json/{split}/*.json",

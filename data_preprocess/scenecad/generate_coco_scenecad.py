@@ -1,16 +1,15 @@
 import argparse
 import json
-import numpy as np
-import cv2
 import os
 import sys
-from scenecad_utils import transform
+
+import cv2
+import numpy as np
+from scenecad_utils import generate_coco_dict, generate_density, normalize_annotations, transform
 from tqdm import tqdm
 
-from scenecad_utils import generate_density, normalize_annotations, generate_coco_dict
-
 sys.path.append("../.")
-from common_utils import read_scene_pc, export_density
+from common_utils import export_density, read_scene_pc
 
 
 def config():
@@ -99,7 +98,6 @@ def main(args):
 
     ### begin processing
     for scene in tqdm(scenes):
-
         # load pre-generated point cloud
         ply_path = os.path.join(SCANNET_RAW_PATH, "scans", scene, "%s_vh_clean_2.ply" % (scene))
 
@@ -184,5 +182,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     main(config())

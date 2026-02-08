@@ -1,23 +1,23 @@
 # Modified from Deformable DETR
 # Yuanwen Yue
 
+import copy
+import math
+
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-import math
-import numpy as np
-
-from util.misc import NestedTensor, nested_tensor_from_tensor_list, interpolate, inverse_sigmoid
 
 from datasets.poly_data import TokenType
+from util.misc import NestedTensor, nested_tensor_from_tensor_list
+
 from .backbone import build_backbone
-from .matcher import build_matcher
-from .losses import custom_L1_loss, MaskRasterizationLoss
-from .label_smoothing_loss import label_smoothed_nll_loss
 
 # from .deformable_transformer import build_deforamble_transformer
 from .deformable_transformer_v2 import build_deforamble_transformer
-import copy
+from .label_smoothing_loss import label_smoothed_nll_loss
+from .losses import MaskRasterizationLoss
 
 
 def _get_clones(module, N):
@@ -195,7 +195,6 @@ class RoomFormerV2(nn.Module):
             samples = nested_tensor_from_tensor_list(samples)
         features, pos = self.backbone(samples)
 
-        bs = samples.tensors.shape[0]
         srcs = []
         masks = []
         for l, feat in enumerate(features):
@@ -222,20 +221,17 @@ class RoomFormerV2(nn.Module):
                 pos.append(pos_l)
 
         query_embeds = None if self.query_embed is None else self.query_embed.weight
-        # tgt_embeds = self.tgt_embed.weight
         tgt_embeds = None
 
         hs, init_reference, inter_references, inter_classes = self.transformer(
             srcs, masks, pos, query_embeds, tgt_embeds, self.attention_mask, seq_kwargs
         )
 
-        num_layer = hs.shape[0]
-        outputs_class = inter_classes  # inter_classes.reshape(num_layer, bs, -1, inter_classes.size(3))
-        outputs_coord = inter_references  # inter_references.reshape(num_layer, bs, -1, inter_references.size(3), 2)
+        outputs_class = inter_classes
+        outputs_coord = inter_references
 
         out = {"pred_logits": outputs_class[-1], "pred_coords": outputs_coord[-1]}
 
-        # hack implementation of room label prediction, not compatible with auxiliary loss
         if self.room_class_embed is not None:
             outputs_room_class = self.room_class_embed(hs[-1])
             out = {
@@ -626,15 +622,6 @@ class SetCriterion(nn.Module):
         """
         assert "pred_logits" in outputs
         src_logits = outputs["pred_logits"]
-        bs = src_logits.shape[0]
-
-        # idx = self._get_src_permutation_idx(indices)
-        # target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
-        # target_classes = torch.full(src_logits.shape, self.num_classes-1,
-        #                             dtype=torch.float32, device=src_logits.device)
-        # target_classes[idx] = target_classes_o
-
-        # loss_ce = F.binary_cross_entropy_with_logits(src_logits, target_classes)
 
         target_classes = targets["token_labels"].to(src_logits.device)
         mask = (target_classes != -1).bool()
@@ -643,17 +630,11 @@ class SetCriterion(nn.Module):
         )
         losses = {"loss_ce": loss_ce}
 
-        # hack implementation of room label/door/window prediction
         if "pred_room_logits" in outputs:
             room_src_logits = outputs["pred_room_logits"]
-            # room_target_classes_o = torch.cat([t["room_labels"][J] for t, (_, J) in zip(targets, indices)]).to(room_src_logits)
-            # room_target_classes = torch.full(room_src_logits.shape[:2], self.semantic_classes-1,
-            #                             dtype=torch.int64, device=room_src_logits.device)
-            # room_target_classes[idx] = room_target_classes_o
             if not self.per_token_sem_loss:
                 mask = target_classes == 3  # cls token
                 room_target_classes = targets["target_polygon_labels"].to(room_src_logits.device)
-                # loss_ce_room = F.cross_entropy(room_src_logits[mask], room_target_classes[room_target_classes != -1])
                 loss_ce_room = label_smoothed_nll_loss(
                     room_src_logits[mask],
                     room_target_classes[room_target_classes != -1],
@@ -662,7 +643,6 @@ class SetCriterion(nn.Module):
                 )
             else:
                 room_target_classes = targets["target_polygon_labels"].to(room_src_logits.device)
-                # loss_ce_room = F.cross_entropy(room_src_logits[room_target_classes != -1], room_target_classes[room_target_classes != -1])
                 loss_ce_room = label_smoothed_nll_loss(
                     room_src_logits[room_target_classes != -1],
                     room_target_classes[room_target_classes != -1],
@@ -730,19 +710,12 @@ class SetCriterion(nn.Module):
         2. Dice loss for polygon rasterizated binary masks
         """
         assert "pred_coords" in outputs
-        # idx = self._get_src_permutation_idx(indices)
-        bs = outputs["pred_coords"].shape[0]
-        # src_polys = outputs['pred_coords'][idx]
         src_poly = outputs["pred_coords"]
         device = src_poly.device
         token_labels = targets["token_labels"].to(device)
         mask = (token_labels == 0).bool()
         target_polys = targets["target_seq"].to(device)
 
-        # target_polys = torch.cat([t['coords'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-        # target_len =  torch.cat([t['lengths'][i] for t, (_, i) in zip(targets, indices)], dim=0)
-
-        # loss_coords = custom_L1_loss(src_polys.flatten(1,2), target_polys, target_len)
         loss_coords = F.l1_loss(src_poly[mask], target_polys[mask])
 
         losses = {}
@@ -785,10 +758,6 @@ class SetCriterion(nn.Module):
              targets: list of dicts, such that len(targets) == batch_size.
                       The expected keys in each dict depends on the losses applied, see each loss' doc
         """
-        outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs" and k != "enc_outputs"}
-
-        # Retrieve the matching between the outputs of the last layer and the targets
-        # indices = self.matcher(outputs_without_aux, targets)
         indices = None
 
         # Compute all the requested losses
@@ -800,7 +769,6 @@ class SetCriterion(nn.Module):
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
         if "aux_outputs" in outputs:
             for i, aux_outputs in enumerate(outputs["aux_outputs"]):
-                # indices = self.matcher(aux_outputs, targets)
                 for loss in self.losses:
                     l_dict = self.get_loss(loss, aux_outputs, targets, indices)
                     l_dict = {k + f"_{i}": v for k, v in l_dict.items()}
@@ -808,15 +776,10 @@ class SetCriterion(nn.Module):
 
         if "enc_outputs" in outputs:
             enc_outputs = outputs["enc_outputs"]
-            # bin_targets = copy.deepcopy(targets)
-            # for bt in bin_targets:
-            #     bt['labels'] = torch.zeros_like(bt['labels'])
-            # indices = self.matcher(enc_outputs, bin_targets)
             indices = self.matcher(enc_outputs, targets)
             for loss in self.losses:
-                # l_dict = self.get_loss(loss, enc_outputs, bin_targets, indices)
                 l_dict = self.get_loss(loss, enc_outputs, targets, indices)
-                l_dict = {k + f"_enc": v for k, v in l_dict.items()}
+                l_dict = {k + "_enc": v for k, v in l_dict.items()}
                 losses.update(l_dict)
 
         return losses
@@ -895,14 +858,14 @@ def build(args, train=True, tokenizer=None):
     weight_dict["loss_dir"] = 1
 
     enc_weight_dict = {}
-    enc_weight_dict.update({k + f"_enc": v for k, v in weight_dict.items()})
+    enc_weight_dict.update({k + "_enc": v for k, v in weight_dict.items()})
     weight_dict.update(enc_weight_dict)
     # TODO this is a hack
     if args.aux_loss:
         aux_weight_dict = {}
         for i in range(args.dec_layers - 1):
             aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
-        aux_weight_dict.update({k + f"_enc": v for k, v in weight_dict.items()})
+        aux_weight_dict.update({k + "_enc": v for k, v in weight_dict.items()})
         weight_dict.update(aux_weight_dict)
 
     losses = ["labels", "polys", "cardinality"]

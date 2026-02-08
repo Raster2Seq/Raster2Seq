@@ -4,11 +4,12 @@ This code is an adaptation that uses Structured 3D for the code base.
 Reference: https://github.com/bertjiazheng/Structured3D
 """
 
+import json
+import os
+import sys
+
 import numpy as np
 from shapely.geometry import Polygon
-import os
-import json
-import sys
 
 sys.path.append("../data_preprocess")
 from common_utils import resort_corners
@@ -114,8 +115,8 @@ def parse_floor_plan_polys(annos):
             if annos["planes"][planeID]["type"] == "floor":
                 planes.append({"planeID": planeID, "type": semantic["type"]})
 
-        if semantic["type"] == "outwall":
-            outerwall_planes = semantic["planeID"]
+        # if semantic["type"] == "outwall":
+        #     outerwall_planes = semantic["planeID"]
 
     # extract hole vertices
     lines_holes = []
@@ -125,9 +126,8 @@ def parse_floor_plan_polys(annos):
                 lines_holes.extend(np.where(np.array(annos["planeLineMatrix"][planeID]))[0].tolist())
     lines_holes = np.unique(lines_holes)
 
-    # junctions on the floor
-    junctions = np.array([junc["coordinate"] for junc in annos["junctions"]])
-    junction_floor = np.where(np.isclose(junctions[:, -1], 0))[0]
+    ## junctions on the floor
+    # junctions = np.array([junc["coordinate"] for junc in annos["junctions"]])
 
     # construct each polygon
     polygons = []
@@ -136,18 +136,6 @@ def parse_floor_plan_polys(annos):
         junction_pairs = [np.where(np.array(annos["lineJunctionMatrix"][lineID]))[0].tolist() for lineID in lineIDs]
         polygon = convert_lines_to_vertices(junction_pairs)
         polygons.append([polygon[0], plane["type"]])
-
-    # outerwall_floor = []
-    # for planeID in outerwall_planes:
-    #     lineIDs = np.where(np.array(annos['planeLineMatrix'][planeID]))[0].tolist()
-    #     lineIDs = np.setdiff1d(lineIDs, lines_holes)
-    #     junction_pairs = [np.where(np.array(annos['lineJunctionMatrix'][lineID]))[0].tolist() for lineID in lineIDs]
-    #     for start, end in junction_pairs:
-    #         if start in junction_floor and end in junction_floor:
-    #             outerwall_floor.append([start, end])
-
-    # outerwall_polygon = convert_lines_to_vertices(outerwall_floor)
-    # polygons.append([outerwall_polygon[0], 'outwall'])
 
     return polygons
 

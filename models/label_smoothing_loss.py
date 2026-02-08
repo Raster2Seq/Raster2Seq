@@ -1,6 +1,5 @@
 import torch
 import torch.nn.functional as F
-from torch import nn
 
 
 def kl_loss(p, q):

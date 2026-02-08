@@ -1,9 +1,10 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import copy
-import numpy as np
 from contextlib import contextmanager
 from itertools import count
 from typing import List
+
+import numpy as np
 import torch
 from fvcore.transforms import HFlipTransform, NoOpTransform
 from torch import nn

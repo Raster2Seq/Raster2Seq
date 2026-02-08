@@ -1,9 +1,10 @@
-import torch
 import random
-import numpy as np
 from math import inf
-from floortrans.loaders import svg_utils
+
 import cv2
+import numpy as np
+import torch
+from floortrans.loaders import svg_utils
 
 
 class Compose(object):
@@ -223,7 +224,6 @@ class DictToTensor(object):
 
 
 class RotateNTurns(object):
-
     def rot_tensor(self, t, n):
         # One turn clock wise
         if n == 1:
@@ -527,7 +527,6 @@ class RandomCropToSizeTorch(object):
 
 
 class ColorJitterTorch(object):
-
     def __init__(self, b_var=0.4, c_var=0.4, s_var=0.4, dtype=torch.float32, version="dict"):
         self.b_var = b_var
         self.c_var = c_var
@@ -585,7 +584,6 @@ class ColorJitterTorch(object):
 
 
 class ResizePaddedTorch(object):
-
     def __init__(self, fill, size=(256, 256), both=True, dtype=torch.float32, data_format="tensor"):
         self.size = size
         self.width = size[0]

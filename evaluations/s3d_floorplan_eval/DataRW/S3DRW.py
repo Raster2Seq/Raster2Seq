@@ -1,9 +1,9 @@
-import numpy as np
-import cv2
-import torch
 import os
 import time
 
+import cv2
+import numpy as np
+import torch
 from s3d_floorplan_eval.DataRW.DataRW import DataRW
 from s3d_floorplan_eval.S3DLoader.S3DLoader import S3DLoader
 
@@ -46,8 +46,7 @@ class S3DRW(DataRW):
         else:
             assert False
 
-        # print(len(list(iter(self.s3d_loader.data))))
-        self.gt_sample = gt_sample = self.loader[scene_ind]
+        self.gt_sample = self.loader[scene_ind]
         self.gt_sample["density_map"] = torch.tensor(self.gt_sample["density_map"][None], device=self.device)
         self.gt_sample["room_map"] = torch.tensor(self.gt_sample["room_map"][None, :, :, None], device=self.device)
         self.gt_sample["wall_map"] = torch.tensor(self.gt_sample["wall_map"][None, :, :, None], device=self.device)
@@ -96,11 +95,8 @@ class S3DRW(DataRW):
                 max_area = cv2.contourArea(cont)
 
         # define main island contour approx. and hull
-        perimeter = cv2.arcLength(cnt, True)
         epsilon = 0.01 * cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, epsilon, True)
-
-        # approx = np.concatenate([approx, approx[0][None]], axis=0)
         approx = approx.astype(np.int32).reshape((1, -1, 2))
 
         if return_mask:

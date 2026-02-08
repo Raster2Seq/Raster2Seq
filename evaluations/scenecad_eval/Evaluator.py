@@ -4,15 +4,10 @@ This is a hack implementation for evaluation on SceneCAD
 Mostly copy-paste from Evaluator.py (from MonteFloor) with small modification
 """
 
-import os
-import torch
-import matplotlib.pyplot as plt
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial import Delaunay
-import os
-import shapely
-from shapely.geometry import Polygon, MultiPolygon, LineString, MultiLineString
+import torch
 
 corner_metric_thresh = 20
 angle_metric_thresh = 5
@@ -49,17 +44,11 @@ class Evaluator_SceneCAD:
                 cnt = cont
                 max_area = cv2.contourArea(cont)
 
-        perimeter = cv2.arcLength(cnt, True)
-        # epsilon = 0.01 * cv2.arcLength(cnt, True)
         epsilon = degree * cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, epsilon, True)
 
-        # approx = np.concatenate([approx, approx[0][None]], axis=0)
         approx = approx.astype(np.int32).reshape((-1, 2))
 
-        # approx_tensor = torch.tensor(approx, device=self.device)
-
-        # return approx_tensor
         if return_mask:
             room_filled_map = np.zeros((h, w))
             cv2.fillPoly(room_filled_map, [approx], color=1.0)
@@ -366,11 +355,9 @@ class Evaluator_SceneCAD:
         gt2pred_exists = [False] * len(gt_polys)
 
         for gt_ind, gt_map in enumerate(gt_room_map_list):
-
             best_iou = 0.0
             best_ind = -1
             for pred_ind, pred_map in enumerate(pred_room_map_list):
-
                 # intersection = (1 - ignore_mask_region) * ((pred_map + gt_map) == 2)
                 # union = (1 - ignore_mask_region) * ((pred_map + gt_map) >= 1)
                 intersection = (pred_map + gt_map) == 2

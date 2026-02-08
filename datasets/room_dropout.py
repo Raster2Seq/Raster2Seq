@@ -1,7 +1,8 @@
-import numpy as np
-import cv2
-from typing import List, Tuple, Optional
 import random
+from typing import List, Optional, Tuple
+
+import cv2
+import numpy as np
 from skimage.draw import polygon
 
 

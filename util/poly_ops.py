@@ -2,8 +2,8 @@
 Utilities for polygon manipulation.
 """
 
-import torch
 import numpy as np
+import torch
 
 
 def is_clockwise(points):

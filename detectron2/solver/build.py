@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Type, Union
+
 import torch
 from fvcore.common.param_scheduler import CosineParamScheduler, MultiStepParamScheduler
 

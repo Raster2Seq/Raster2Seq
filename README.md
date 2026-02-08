@@ -169,6 +169,15 @@ In finetuning stage, the models are trained to predict both structural and seman
 | Raster2Graph  | `tools/eval_r2g_finetune.sh`    |
 
 
+**Cross-evaluation**: 
+We perform cross-evaluation on three datasets, CubiCasa5K, Raster2Graph, and WAFFLE. For CubiCasa5K & Raster2Graph, we use the geometric evaluation on Room, Corner, Angle while for WAFFLE, we report IoU segmentation results.
+
+| Dataset       | Bash Script                  |
+|---------------|----------------------------------|
+| CubiCasa5K    | `tools/cross_eval_cc5k.sh`   |
+| Raster2Graph  | `tools/cross_eval_r2g.sh`    |
+| WAFFLE  | `tools/cross_eval_waffle.sh`      |
+
 ## Training
 Raster2Seq involves two training stages: 
 - (1) Pretraining without semantic room predictions

@@ -5,11 +5,12 @@ utils to process SceneCAD layout data
 
 import json
 import math
-import numpy as np
-from shapely.geometry import Polygon
 import os
 import sys
+
+import numpy as np
 import open3d as o3d
+from shapely.geometry import Polygon
 
 sys.path.append("../data_preprocess")
 from common_utils import is_clockwise, resort_corners
@@ -99,7 +100,6 @@ def get_floor(scan_name, scannet_planes_path, scans_transform_path, out_path):
     adj_v_before = upper_corner_idx
 
     while not adj_v_next == adj_v2:
-
         adjacent_edges_next = floor_egdes[(floor_egdes[:, 0] == adj_v_next) | (floor_egdes[:, 1] == adj_v_next)]
         adjacent_vertices = {e for l in adjacent_edges_next.tolist() for e in l}
         adjacent_vertices.remove(adj_v_next)
@@ -165,8 +165,6 @@ def get_floor_multiRoom(scan_name, scannet_planes_path, scans_transform_path, ou
 
     floor_points = verts[vert_idx]
 
-    pg = {"corners": floor_points[:, :2], "edges": floor_egdes}
-
     ## find most upper corner (x minimum)
     # upper_corner_idx = np.argmin(floor_points, 0)[0]
     # V2: find most upper corner (x+y minimum)
@@ -197,7 +195,6 @@ def get_floor_multiRoom(scan_name, scannet_planes_path, scans_transform_path, ou
     adj_v_before = upper_corner_idx
 
     while not adj_v_next == adj_v2:
-
         adjacent_edges_next = floor_egdes[(floor_egdes[:, 0] == adj_v_next) | (floor_egdes[:, 1] == adj_v_next)]
         adjacent_vertices = {e for l in adjacent_edges_next.tolist() for e in l}
         adjacent_vertices.remove(adj_v_next)
@@ -341,7 +338,6 @@ def generate_coco_dict(polygons, curr_instance_id, curr_img_id):
     coco_annotation_dict_list = []
 
     for poly_ind, polygon in enumerate(polygons):
-
         poly_shapely = Polygon(polygon)
         area = poly_shapely.area
 

@@ -3,21 +3,21 @@
 # ------------------------------------------------------------------------------------
 
 import copy
-from typing import Optional, List
 import math
-import numpy as np
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn, Tensor
-from torch.nn.init import xavier_uniform_, constant_, uniform_, normal_
 from einops import rearrange
+from torch import nn
+from torch.nn.init import constant_, normal_, xavier_uniform_
 
 from util.misc import inverse_sigmoid
-from .deformable_transformer import DeformableTransformerEncoderLayer, DeformableTransformerEncoder, MSDeformAttn
+
 from .bixattn import BiXAttnBlock, CAOneSidedBlock
-from .kv_cache import KVCache, VCache
 from .deformable_points import MSDeformablePoints
+from .deformable_transformer import DeformableTransformerEncoder, DeformableTransformerEncoderLayer, MSDeformAttn
+from .kv_cache import KVCache, VCache
 
 
 def Embedding(num_embeddings, embedding_dim, padding_idx=None, zero_init=False):

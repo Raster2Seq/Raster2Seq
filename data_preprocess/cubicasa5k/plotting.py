@@ -1,10 +1,9 @@
-import matplotlib.pyplot as plt
-from matplotlib import colors, cm
 import matplotlib.path as mplp
+import matplotlib.pyplot as plt
 import numpy as np
-import torch
+from matplotlib import cm, colors
+from shapely.geometry import Point, Polygon
 from skimage import draw
-from shapely.geometry import Polygon, Point
 
 
 def discrete_cmap_furukawa():
@@ -270,7 +269,6 @@ def draw_junction_from_dict(point_dict, width, height, size=1, fontsize=30):
     markersize_small = 15 * size
     for point_type, locations in point_dict.items():
         for loc in locations:
-
             x, y = loc
             lineLength = 20 * size
             lineWidth = 20 * size
@@ -682,7 +680,6 @@ def polygons_to_image(polygons, types, room_polygons, room_types, height, width)
     pol_icon_seg = np.zeros((height, width))
 
     for i, pol in enumerate(room_polygons):
-
         mask = shp_mask(pol, np.arange(width), np.arange(height))
 
         #         jj, ii = draw.polygon(pol[:, 1], pol[:, 0])

@@ -1,13 +1,7 @@
-import numpy as np
+import native_rasterizer
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-import pdb
-
 from torch.autograd import Function
-
-import native_rasterizer
 
 MODE_BOUNDARY = "boundary"
 MODE_MASK = "mask"
@@ -70,7 +64,7 @@ class SoftPolygon(nn.Module):
 
         self.inv_smoothness = inv_smoothness
 
-        if not (mode in SoftPolygon.MODES):
+        if mode not in SoftPolygon.MODES:
             raise ValueError("invalid mode: {0}".format(mode))
 
         self.mode = mode
@@ -124,7 +118,6 @@ class SoftPolygonPyTorch(nn.Module):
         self.inv_smoothness = inv_smoothness
 
     # vertices is N x P x 2
-    # todo, implement inside outside.
     def forward(self, vertices, width, height, p, color=False):
         device = vertices.device
         batch_size = vertices.size(0)
@@ -143,7 +136,6 @@ class SoftPolygonPyTorch(nn.Module):
         # do this "per dimension"
         distance_segments = []
         over_segments = []
-        color_segments = []
         for from_index in range(polygon_dimension):
             segment_result = torch.zeros((batch_size, height, width)).to(device)
             from_vertex = vertices[:, from_index].unsqueeze(-1).unsqueeze(-1)

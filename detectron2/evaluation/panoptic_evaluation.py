@@ -4,11 +4,12 @@ import io
 import itertools
 import json
 import logging
-import numpy as np
 import os
 import tempfile
 from collections import OrderedDict
 from typing import Optional
+
+import numpy as np
 from PIL import Image
 from tabulate import tabulate
 

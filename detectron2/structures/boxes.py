@@ -1,8 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import math
-import numpy as np
 from enum import IntEnum, unique
 from typing import List, Tuple, Union
+
+import numpy as np
 import torch
 from torch import device
 

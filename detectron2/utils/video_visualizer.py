@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
-import numpy as np
 from typing import List
+
+import numpy as np
 import pycocotools.mask as mask_util
 
 from detectron2.structures import Instances

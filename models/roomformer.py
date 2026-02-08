@@ -1,18 +1,19 @@
 # Modified from Deformable DETR
 # Yuanwen Yue
 
+import copy
+import math
+
 import torch
 import torch.nn.functional as F
 from torch import nn
-import math
 
-from util.misc import NestedTensor, nested_tensor_from_tensor_list, interpolate, inverse_sigmoid
+from util.misc import NestedTensor, nested_tensor_from_tensor_list
 
 from .backbone import build_backbone
-from .matcher import build_matcher
-from .losses import custom_L1_loss, MaskRasterizationLoss
 from .deformable_transformer import build_deforamble_transformer
-import copy
+from .losses import MaskRasterizationLoss, custom_L1_loss
+from .matcher import build_matcher
 
 
 def _get_clones(module, N):
@@ -258,7 +259,6 @@ class SetCriterion(nn.Module):
         """
         assert "pred_logits" in outputs
         src_logits = outputs["pred_logits"]
-        bs = src_logits.shape[0]
 
         idx = self._get_src_permutation_idx(indices)
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
@@ -307,7 +307,6 @@ class SetCriterion(nn.Module):
         """
         assert "pred_coords" in outputs
         idx = self._get_src_permutation_idx(indices)
-        bs = outputs["pred_coords"].shape[0]
         src_polys = outputs["pred_coords"][idx]
         target_polys = torch.cat([t["coords"][i] for t, (_, i) in zip(targets, indices)], dim=0)
         target_len = torch.cat([t["lengths"][i] for t, (_, i) in zip(targets, indices)], dim=0)
@@ -378,7 +377,7 @@ class SetCriterion(nn.Module):
             for loss in self.losses:
                 # l_dict = self.get_loss(loss, enc_outputs, bin_targets, indices)
                 l_dict = self.get_loss(loss, enc_outputs, targets, indices)
-                l_dict = {k + f"_enc": v for k, v in l_dict.items()}
+                l_dict = {k + "_enc": v for k, v in l_dict.items()}
                 losses.update(l_dict)
 
         return losses
@@ -432,14 +431,14 @@ def build(args, train=True):
     weight_dict["loss_dir"] = 1
 
     enc_weight_dict = {}
-    enc_weight_dict.update({k + f"_enc": v for k, v in weight_dict.items()})
+    enc_weight_dict.update({k + "_enc": v for k, v in weight_dict.items()})
     weight_dict.update(enc_weight_dict)
     # TODO this is a hack
     if args.aux_loss:
         aux_weight_dict = {}
         for i in range(args.dec_layers - 1):
             aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
-        aux_weight_dict.update({k + f"_enc": v for k, v in weight_dict.items()})
+        aux_weight_dict.update({k + "_enc": v for k, v in weight_dict.items()})
         weight_dict.update(aux_weight_dict)
 
     losses = ["labels", "polys", "cardinality"]

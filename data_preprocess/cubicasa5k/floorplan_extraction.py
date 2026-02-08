@@ -1,24 +1,21 @@
-import sys
-import os
-from pathlib import Path
-import glob
-import shutil
-
 import argparse
+import glob
+import json
+import os
+import sys
+from multiprocessing import Pool
+from pathlib import Path
+
 import cv2
 import numpy as np
-import json
-
 from shapely.geometry import Polygon
 from tqdm import tqdm
-from multiprocessing import Pool
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from common_utils import resort_corners
 from create_coco_cc5k import create_coco_bounding_box
 
-
-from util.plot_utils import plot_semantic_rich_floorplan_nicely, plot_semantic_rich_floorplan_opencv
+from util.plot_utils import plot_semantic_rich_floorplan_opencv
 
 
 def plot_floor(output_coco_polygons, categories_dict, img_w, img_h, save_path, door_window_index=[10, 9]):

@@ -11,6 +11,7 @@ import tempfile
 import time
 import warnings
 from collections import Counter
+
 import torch
 from fvcore.common.checkpoint import Checkpointer
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer

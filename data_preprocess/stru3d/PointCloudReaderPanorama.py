@@ -1,16 +1,13 @@
-import cv2
-import open3d as o3d
 import os
-from sklearn.preprocessing import normalize
-import json
-import matplotlib.pyplot as plt
+
+import cv2
 import numpy as np
+import open3d as o3d
 
 NUM_SECTIONS = -1
 
 
 class PointCloudReaderPanorama:
-
     def __init__(self, path, resolution="full", random_level=0, generate_color=False, generate_normal=False):
         self.path = path
         self.random_level = random_level
@@ -46,8 +43,8 @@ class PointCloudReaderPanorama:
     def generate_point_cloud(self, random_level=0, color=False, normal=False):
         coords = []
         colors = []
-        normals = []
         points = {}
+        # normals = []
 
         # Getting Coordinates
         for i in range(len(self.depth_paths)):
@@ -57,7 +54,7 @@ class PointCloudReaderPanorama:
 
             rgb_img = cv2.imread(self.rgb_paths[i])
             rgb_img = cv2.cvtColor(rgb_img, code=cv2.COLOR_BGR2RGB)
-            normal_img = cv2.imread(self.normal_paths[i])
+            # normal_img = cv2.imread(self.normal_paths[i])
 
             for x in range(0, depth_img.shape[0]):
                 for y in range(0, depth_img.shape[1]):
@@ -76,7 +73,6 @@ class PointCloudReaderPanorama:
                         coords.append(point + self.camera_centers[i])
                         colors.append(rgb_img[x, y])
                         # normals.append(normalize(normal_img[x, y].reshape(-1, 1)).ravel())
-            # break
 
         coords = np.asarray(coords)
         colors = np.asarray(colors) / 255.0
@@ -93,24 +89,6 @@ class PointCloudReaderPanorama:
         points["coords"] = coords
         points["colors"] = colors
         # points['normals'] = normals
-
-        # if color:
-        #     # Getting RGB color
-        #     for i in range(len(self.rgb_paths)):
-        #         rgb_img = cv2.imread(self.rgb_paths[i])
-        #         rgb_img = cv2.cvtColor(rgb_img, code=cv2.COLOR_BGR2RGB)
-        #         for x in range(0, rgb_img.shape[0], 2):
-        #             for y in range(0, rgb_img.shape[1], 2):
-        #                 colors.append(rgb_img[x, y])
-        #     points['colors'] = np.asarray(colors)/255.0
-        # if normal:
-        #     # Getting Normal
-        #     for i in range(len(self.normal_paths)):
-        #         normal_img = cv2.imread(self.normal_paths[i])
-        #         for x in range(0, normal_img.shape[0], 2):
-        #             for y in range(0, normal_img.shape[1], 2):
-        #                 normals.append(normalize(normal_img[x, y].reshape(-1, 1)).ravel())
-        #     points['normals'] = normals
 
         print("Pointcloud size:", points["coords"].shape[0])
         return points
@@ -210,11 +188,6 @@ class PointCloudReaderPanorama:
             colors = colors[indices]
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
-        with open(
-            "/media/sinisa/Sinisa_hdd_data/Sinisa_Projects/corridor_localisation/Datasets/Structured_3D_dataset/Structured3D/Structured3D_0/Structured3D/train/scene_00015/annotation_3d.json"
-        ) as file:
-            annos = json.load(file)
-
         # wireframe_geo_list = visualize_wireframe(annos, vis=False, ret=True)
         # o3d.visualization.draw_geometries([pcd] + wireframe_geo_list)
         # o3d.visualization.draw_geometries([pcd])
@@ -231,7 +204,6 @@ class PointCloudReaderPanorama:
         o3d.visualization.draw_geometries([pcd])
 
         if export_path is not None:
-
             o3d.io.write_point_cloud(export_path, pcd)
 
         # o3d.visualization.draw_geometries([pcd])

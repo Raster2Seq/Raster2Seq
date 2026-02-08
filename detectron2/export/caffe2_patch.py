@@ -2,6 +2,7 @@
 
 import contextlib
 from unittest import mock
+
 import torch
 
 from detectron2.modeling import poolers

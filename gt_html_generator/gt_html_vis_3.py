@@ -1,6 +1,6 @@
-import os
 import json
-from glob import glob
+import os
+
 from html4vision import Col, imagetable
 
 org_root_path = "data/coco_cubicasa5k_nowalls_v4-2_refined"

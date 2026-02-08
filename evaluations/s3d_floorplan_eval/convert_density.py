@@ -1,6 +1,7 @@
 import os
-import numpy as np
+
 import cv2
+import numpy as np
 
 source = "../Structured3D/montefloor_data/test/"
 dst = "./viz_density"

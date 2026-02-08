@@ -1,42 +1,25 @@
 import gc
-import sys
 import os
+import sys
 
 print(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import json
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
 import argparse
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
-from shapely.geometry import Polygon
+import json
 import shutil
-import cv2
 from multiprocessing import Pool
 
-from util.graph_utils import tensors_to_graphs_batch, get_cycle_basis_and_semantic, get_cycle_basis
-from util.data_utils import (
-    data_to_cuda,
-    delete_graphs,
-    get_given_layers_random_region,
-    get_random_region_targets,
-    draw_given_layers_on_tensors_random_region,
-    initialize_tensors,
-    nms,
-    random_keep,
-    is_stop,
-    draw_preds_on_tensors,
-    edge_inside,
-    point_inside,
-    remove_points,
-    remove_edge,
-    get_edges_amount,
-)
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from datasets.dataset import MyDataset
+from matplotlib.patches import Patch
+from shapely.geometry import Polygon
+from tqdm import tqdm
+from util.data_utils import edge_inside
+from util.graph_utils import get_cycle_basis_and_semantic, tensors_to_graphs_batch
 
 mean = [0.920, 0.913, 0.891]
 std = [0.214, 0.216, 0.228]
@@ -457,8 +440,8 @@ if __name__ == "__main__":
     def wrapper(scene_id):
         try:
             image_set = dataset[scene_id]
-        except:
-            print(f"Error processing scene {scene_id}. Skipping...")
+        except Exception as e:
+            print(f"Error processing scene {scene_id}: {e}. Skipping...")
             return
         process_floorplan(image_set, split, args.dataset_path, args.output_dir, save_aux_dir, vis_fp=scene_id < 100)
 

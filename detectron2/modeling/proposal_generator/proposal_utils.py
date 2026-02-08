@@ -2,6 +2,7 @@
 import logging
 import math
 from typing import List, Tuple, Union
+
 import torch
 
 from detectron2.layers import batched_nms, cat, move_device_like

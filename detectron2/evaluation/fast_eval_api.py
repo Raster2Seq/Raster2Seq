@@ -1,8 +1,9 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import copy
 import logging
-import numpy as np
 import time
+
+import numpy as np
 from pycocotools.cocoeval import COCOeval
 
 from detectron2 import _C

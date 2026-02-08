@@ -6,14 +6,13 @@
 Backbone modules.
 """
 
-from collections import OrderedDict
+from typing import Dict, List
 
 import torch
 import torch.nn.functional as F
 import torchvision
 from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
-from typing import Dict, List
 
 from util.misc import NestedTensor
 
@@ -62,7 +61,6 @@ class FrozenBatchNorm2d(torch.nn.Module):
 
 
 class BackboneBase(nn.Module):
-
     def __init__(self, backbone: nn.Module, train_backbone: bool, return_interm_layers: bool):
         super().__init__()
         for name, parameter in backbone.named_parameters():

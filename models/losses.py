@@ -3,16 +3,13 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from detectron2.structures.instances import Instances
-from detectron2.utils.events import get_event_storage
-
 from util.poly_ops import get_all_order_corners
 
 try:
     from diff_ras.polygon import SoftPolygon
 except ImportError:
     SoftPolygon = None
-from util.bf_utils import get_union_box, rasterize_instances, POLY_LOSS_REGISTRY
+from util.bf_utils import POLY_LOSS_REGISTRY, rasterize_instances
 
 
 def custom_L1_loss(src_polys, target_polys, target_len):
@@ -150,7 +147,6 @@ class MaskRasterizationLoss(nn.Module):
         target_masks = []
         pred_masks = []
         for i in range(len(targets)):
-
             # tgt_poly_single = targets[i, :target_len[i]].view(-1, 2).unsqueeze(0)
             # pred_poly_single = preds[i, :target_len[i]].view(-1, 2).unsqueeze(0)
             tgt_poly_single = targets[i][: target_len[i]].view(-1, 2).unsqueeze(0)
@@ -233,16 +229,11 @@ class MaskRasterizationCost(nn.Module):
         return ret
 
     def forward(self, preds, targets, target_len, lid=0):
-
         resolution = self.rasterize_at[lid]
-
-        target_masks = []
+        cost_mask = torch.zeros([preds.shape[0], targets.shape[0]], device=preds.device)
         pred_masks = []
 
-        cost_mask = torch.zeros([preds.shape[0], targets.shape[0]], device=preds.device)
-
         for i in range(targets.shape[0]):
-
             tgt_poly_single = targets[i, : target_len[i]].view(-1, 2).unsqueeze(0)
             pred_poly_all = preds[:, : target_len[i]].view(preds.shape[0], -1, 2)
 

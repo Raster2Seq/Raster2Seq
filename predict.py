@@ -1,32 +1,22 @@
 import argparse
-import datetime
-import json
-import random
-import os
-import time
-from pathlib import Path
 import copy
-from tqdm import trange, tqdm
+import json
+import os
+import random
 
 import cv2
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
-from detectron2.data import transforms as T
-import torchvision
-
 from PIL import Image
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm, trange
 
-import util.misc as utils
-from datasets.transforms import ResizeAndPad
-from datasets import build_dataset
-from datasets.data_utils import sort_polygons
 from datasets.discrete_tokenizer import DiscreteTokenizer
-from engine import evaluate_floor, evaluate_floor_v2, plot_density_map, plot_floorplan_with_regions
-from util.plot_utils import plot_semantic_rich_floorplan_opencv
-from util.plot_utils import S3D_LABEL, CC5K_LABEL, auto_crop_whitespace
-from engine import generate, generate_v2
+from datasets.transforms import ResizeAndPad
+from detectron2.data import transforms as T
+from engine import generate, generate_v2, plot_density_map
 from models import build_model
+from util.plot_utils import CC5K_LABEL, S3D_LABEL, auto_crop_whitespace, plot_semantic_rich_floorplan_opencv
 
 
 class ImageDataset(Dataset):
@@ -178,9 +168,12 @@ def get_args_parser():
         help="if true, the query in one room will not be allowed to attend other room",
     )
     parser.add_argument(
-        "--semantic_classes", default=-1, type=int, help="Number of classes for semantically-rich floorplan:  \
+        "--semantic_classes",
+        default=-1,
+        type=int,
+        help="Number of classes for semantically-rich floorplan:  \
                         1. default -1 means non-semantic floorplan \
-                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty"
+                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty",
     )
     parser.add_argument(
         "--disable_poly_refine",
@@ -392,12 +385,8 @@ def main(args):
                 is_sem=args.semantic_classes > 0,
                 img_w=image_size * args.image_scale,
                 img_h=image_size * args.image_scale,
-                # img_w=image_size, img_h=image_size,
                 scale=args.image_scale,
             )
-
-            # floorplan_map2 = plot_floorplan_with_regions(pred_rm, scale=image_size*args.image_scale, matching_labels=pred_cls,
-            #                             regions_type=pred_cls, plot_text=args.plot_text, semantics_label_mapping=semantics_label_mapping)
 
             image = x[j].permute(1, 2, 0).cpu().numpy() * 255
             if args.crop_white_space:
@@ -407,11 +396,9 @@ def main(args):
                     interpolation=cv2.INTER_NEAREST,
                 )
                 image, cropped_box = auto_crop_whitespace(image)
-                # _x,_y,_w,_h = [ele * args.image_scale for ele in cropped_box]
                 _x, _y, _w, _h = [ele for ele in cropped_box]
 
                 floorplan_map = floorplan_map[_y : _y + _h, _x : _x + _w].copy()
-                floorplan_map2 = floorplan_map[_y : _y + _h, _x : _x + _w].copy()
 
             # Ensure images are not empty before saving
             if pred_room_map is not None and pred_room_map.size > 0:
@@ -429,11 +416,6 @@ def main(args):
             else:
                 print("Warning: image is empty, skipping save.")
 
-            # cv2.imwrite(os.path.join(save_dir, '{}_pred_room_map.png'.format(fn)), pred_room_map)
-            # cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan.png'.format(fn)), floorplan_map)
-            # cv2.imwrite(os.path.join(save_dir, '{}.png'.format(fn)), image)
-            # cv2.imwrite(os.path.join(save_dir, '{}_pred_floorplan_nice.png'.format(fn)), floorplan_map2)
-
             if args.save_pred:
                 # Save room_polys as JSON
                 json_path = os.path.join(save_dir, "jsons", "{}.json".format(fn))
@@ -442,8 +424,6 @@ def main(args):
                 os.makedirs(os.path.dirname(npy_path), exist_ok=True)
                 polys_list = [poly.astype(float).tolist() for poly in pred_rm]
                 types_list = pred_cls
-                # else:
-                #     types_list = [-1] * len(polys_list)
 
                 if not args.save_anchors:
                     output_json = [

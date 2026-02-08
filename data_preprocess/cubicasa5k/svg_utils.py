@@ -1,41 +1,9 @@
 import math
-import numpy as np
-from xml.dom import minidom
-from skimage.draw import polygon
-from svgpathtools import parse_path
 from logging import warning
 
-
-def get_labels(path, height, width):
-    svg = minidom.parse(path)
-    walls = np.empty((height, width), dtype=np.uint8)
-    walls.fill(len(rooms))
-    icons = np.zeros((height, width), dtype=np.uint8)
-    for e in svg.getElementsByTagName("g"):
-        if e.getAttribute("id") == "Wall":
-            rr, cc = get_polygon(e)
-            walls[rr, cc] = 0
-
-        if e.getAttribute("id") == "Window":
-            rr, cc = get_polygon(e)
-            icons[rr, cc] = 1
-
-        if e.getAttribute("id") == "Door":
-            # How to reperesent empty door space
-            rr, cc = get_polygon(e)
-            icons[rr, cc] = 2
-
-        if "FixedFurniture " in e.getAttribute("class"):
-            num = get_icon_number(e)
-            rr, cc = get_icon(e)
-            icons[rr, cc] = num
-
-        if "Space " in e.getAttribute("class"):
-            num = get_room_number(e)
-            rr, cc = get_polygon(e)
-            walls[rr, cc] = num
-
-    return walls, icons
+import numpy as np
+from skimage.draw import polygon
+from svgpathtools import parse_path
 
 
 def get_room_number(e, rooms):
@@ -529,7 +497,7 @@ class PolygonWall(Wall):
     def get_width(self, X, Y, direction):
         _, _, p1, p2 = self._get_min_points(X, Y)
 
-        if direction is "H":
+        if direction == "H":
             return (abs(p1[0][1] - p1[1][1]) + abs(p2[0][1] - p2[1][1])) / 2
         elif "V":
             return (abs(p1[0][0] - p1[1][0]) + abs(p2[0][0] - p2[1][0])) / 2
@@ -600,7 +568,7 @@ class PolygonWall(Wall):
             return None
 
     def _get_min_points(self, X, Y):
-        assert len(X) is 4 and len(Y) is 4
+        assert len(X) == 4 and len(Y) == 4
         length = len(X)
         min_dist1 = np.inf
         min_dist2 = np.inf

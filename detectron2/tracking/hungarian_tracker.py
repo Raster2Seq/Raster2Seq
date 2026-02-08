@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # Copyright 2004-present Facebook. All Rights Reserved.
 import copy
-import numpy as np
 from typing import Dict
+
+import numpy as np
 import torch
 from scipy.optimize import linear_sum_assignment
 

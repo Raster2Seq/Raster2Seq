@@ -9,10 +9,9 @@ Script to extract floorplan from 3D layout
 """
 
 import argparse
-from traceback import print_tb
-import numpy as np
 import os
 
+import numpy as np
 from scenecad_utils import get_floor
 
 

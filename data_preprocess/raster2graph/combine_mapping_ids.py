@@ -1,5 +1,4 @@
 import json
-import os
 
 
 def generate_combined_mapping(file_mapping_path, image_id_mapping_path, output_path):

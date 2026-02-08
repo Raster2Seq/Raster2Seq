@@ -1,36 +1,25 @@
 import argparse
-import datetime
-import json
-import random
 import os
-import time
+import random
+from collections import defaultdict
 from pathlib import Path
 
-from collections import defaultdict
-
-import plotly.graph_objects as go
+import cv2
 import numpy as np
+import plotly.graph_objects as go
 import torch
 from torch.utils.data import DataLoader
-import util.misc as utils
+
 from datasets import build_dataset
-from models import build_model
-import cv2
-
-from datasets import get_dataset_class_labels
-from datasets.data_utils import sort_polygons, plot_polygons
-
-from util.poly_ops import pad_gt_polys
+from datasets.data_utils import sort_polygons
 from util.plot_utils import (
+    CC5K_LABEL,
+    S3D_LABEL,
+    auto_crop_whitespace,
     plot_room_map,
-    plot_score_map,
-    plot_floorplan_with_regions,
-    plot_semantic_rich_floorplan,
+    plot_semantic_rich_floorplan_opencv,
     plot_semantic_rich_floorplan_tight,
-    plot_semantic_rich_floorplan_nicely,
 )
-from util.plot_utils import plot_semantic_rich_floorplan_opencv, plot_semantic_rich_floorplan_opencv_figure
-from util.plot_utils import S3D_LABEL, CC5K_LABEL, auto_crop_whitespace
 
 
 def unnormalize_image(x):
@@ -64,7 +53,6 @@ def plot_gt_floor(
         door_window_index = []
 
     for batched_inputs, _ in data_loader:
-
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
@@ -79,7 +67,6 @@ def plot_gt_floor(
                     density_map = np.transpose((samples[i] * 255).cpu().numpy(), [1, 2, 0])
                     density_map = np.repeat(density_map, 3, axis=2)
 
-                    gt_corner_map = np.zeros([args.image_size, args.image_size, 3])
                     for j, poly in enumerate(gt_inst.gt_masks.polygons):
                         corners = poly[0].reshape(-1, 2)
                         if len(corners) < 3:
@@ -87,23 +74,8 @@ def plot_gt_floor(
                         gt_polys.append(corners)
 
                     gt_room_polys = [np.array(r) for r in gt_polys]
-                    # gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=512)
-                    # if crop_white_space:
-                    #     image, cropped_box = auto_crop_whitespace(image)
-                    #     x,y,w,h = cropped_box
-                    #     gt_floorplan_map = gt_floorplan_map[y:y+h, x:x+w].copy()
-                    # cv2.imwrite(os.path.join(output_dir, '{}_floor_nosem.png'.format(scene_ids[i])), gt_floorplan_map)
-
-                    # gt_room_polys, sorted_indices = sort_polygons(gt_room_polys)
-                    # plot_room_polys = []
-                    # for poly in gt_room_polys:
-                    #     poly_cp = poly.copy()
-                    #     poly_cp[:,1] = 255 - poly_cp[:,1]
-                    #     plot_room_polys.append(poly_cp)
-                    # plot_polygons(plot_room_polys, save_path=f"{output_dir}/{scene_ids[i]}_sorted_polygons.png")
-
                     gt_polygons_labels = gt_inst.gt_classes.cpu().numpy()
-                    # gt_polygons_labels = [gt_polygons_labels[_idx] for _idx in sorted_indices]
+
                     gt_sem_rich = []
                     for poly, poly_type in zip(gt_room_polys, gt_polygons_labels):
                         gt_sem_rich.append([poly, poly_type])
@@ -206,7 +178,6 @@ def plot_polys(data_loader, device, output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
     for batched_inputs, _ in data_loader:
-
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
@@ -241,10 +212,8 @@ def plot_gt_image(data_loader, device, output_dir, crop_white_space=False):
         os.makedirs(output_dir, exist_ok=True)
 
     for batched_inputs, _ in data_loader:
-
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
-        gt_instances = [x["instances"].to(device) for x in batched_inputs]
 
         for i in range(len(samples)):
             density_map = np.transpose((samples[i]).cpu().numpy(), [1, 2, 0])
@@ -261,8 +230,6 @@ def plot_gt_image(data_loader, device, output_dir, crop_white_space=False):
                 )
                 density_map, _ = auto_crop_whitespace(image=density_map, color_invert=True)
 
-            # # plot predicted polygon overlaid on the density map
-            # pred_room_map = np.clip(pred_room_map + density_map, 0, 255)
             cv2.imwrite(os.path.join(output_dir, "{}_gt_image.png".format(scene_ids[i])), density_map)
 
 
@@ -337,14 +304,10 @@ def loop_data(data_loader, eval_set, device, output_dir):
     count_room_dict = defaultdict(lambda: 0)
     count_length_dict = defaultdict(lambda: 0)
     for batched_inputs, batched_extras in data_loader:
-
         samples = [x["image"].to(device) for x in batched_inputs]
-        scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
-
         for i in range(len(samples)):
             if batched_extras is not None:
-                # t = batched_extras['mask'][i].sum().item()
                 t = (batched_extras["token_labels"][i] == 0).sum().item()
                 count_length_dict[t] += 1
             room_polys = gt_instances[i].gt_masks.polygons
@@ -476,9 +439,12 @@ def get_args_parser():
         help="if true, the query in one room will not be allowed to attend other room",
     )
     parser.add_argument(
-        "--semantic_classes", default=-1, type=int, help="Number of classes for semantically-rich floorplan:  \
+        "--semantic_classes",
+        default=-1,
+        type=int,
+        help="Number of classes for semantically-rich floorplan:  \
                         1. default -1 means non-semantic floorplan \
-                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty"
+                        2. 19 for Structured3D: 16 room types + 1 door + 1 window + 1 empty",
     )
     parser.add_argument(
         "--use_room_attn_at_last_dec_layer",
