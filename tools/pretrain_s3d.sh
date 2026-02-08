@@ -9,7 +9,8 @@ COO_COEFF=20
 SEQ_LEN=512
 NUM_BINS=32
 CONVERTER=v3
-JOB=s3d_res256
+
+JOB=s3dbw_res256
 OUTPUT_DIR=save_models
 
 WANDB_MODE=online python -m torch.distributed.run --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT main_ddp.py --dataset_name=stru3d \

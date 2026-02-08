@@ -130,6 +130,14 @@ Our model checkpoints can be found in table below:
         <a href="https://drive.google.com/file/d/1ZI4hs1iKk2y84S2dpsDHb40wCOPOGrtj/view?usp=sharing">Semantic Model</a>
       </td>
     </tr>
+    <tr>
+      <td>Structured3D-DensityMap</td>
+      <td>99.0 & 99.1</td>
+      <td>
+        <a href="https://drive.google.com/file/d/1QSO5zzz5yjbE1aDhSwSVNjjzRC_nmLIA/view?usp=sharing">Structured Model</a> & 
+        <a href="https://drive.google.com/file/d/1ORajiX4NungTd8AJPEPINCPiITIeIAF3/view?usp=sharing">Semantic Model</a>
+      </td>
+    </tr>
   </tbody>
 </table>
 
@@ -145,6 +153,7 @@ To run inference, we have provided these following bash scripts:
 | CubiCasa5K    | `tools/predict_cc5k.sh`   |
 | Raster2Graph  | `tools/predict_r2g.sh`    |
 | WAFFLE        | `tools/predict_waffle.sh`|
+| Structured3D-DensityMap  | `tools/predict_s3d_density.sh`      |
 
 > For WAFFLE, we use CubiCasa5K pretrained checkpoints for the inference.
 
@@ -155,18 +164,20 @@ In pretraining stage, the models are trained to predict only structural outputs,
 
 | Dataset       | Bash Script                  |
 |---------------|----------------------------------|
-| Structured3D  | `tools/eval_s3d_rgb_pretrain.sh`      |
+| Structured3D  | `tools/eval_s3d_pretrain.sh`      |
 | CubiCasa5K    | `tools/eval_cc5k_pretrain.sh`   |
 | Raster2Graph  | `tools/eval_r2g_pretrain.sh`    |
+| Structured3D-DensityMap  | `tools/eval_s3d_rgb_pretrain.sh`      |
 
 ### Semantic floorplan reconstruction
 In finetuning stage, the models are trained to predict both structural and semantic outputs. Here, we use checkpoints from semantic models.
 
 | Dataset       | Bash Script                  |
 |---------------|----------------------------------|
-| Structured3D  | `tools/eval_s3d_rgb_finetune.sh`      |
+| Structured3D  | `tools/eval_s3d_finetune.sh`      |
 | CubiCasa5K    | `tools/eval_cc5k_finetune.sh`   |
 | Raster2Graph  | `tools/eval_r2g_finetune.sh`    |
+| Structured3D-DensityMap  | `tools/eval_s3d_density_finetune.sh`      |
 
 
 **Cross-evaluation**: 

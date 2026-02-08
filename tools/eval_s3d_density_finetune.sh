@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
 
-DATA=data/stru3d/
-FOLDER=test
 CKPT=checkpoints/s3dd_sem_res256_ep0699.pth
-
-python predict.py \
-               --dataset_name=stru3d \
-               --dataset_root=${DATA}/${FOLDER} \
+python eval.py --dataset_name=stru3d \
+               --dataset_root=data/stru3d \
+               --eval_set=test \
                --checkpoint=${CKPT} \
-               --output_dir=pred_outputs/s3dd_${FOLDER}_preds \
+               --output_dir=eval_outputs/s3dd_sem_results \
                --semantic_classes=19 \
                --input_channels 1 \
                --poly2seq \
@@ -16,6 +13,7 @@ python predict.py \
                --num_bins 32 \
                --disable_poly_refine \
                --dec_attn_concat_src \
-               --use_anchor \
                --ema4eval \
+               --use_anchor \
+               --per_token_sem_loss \
                --save_pred
