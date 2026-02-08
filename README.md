@@ -201,6 +201,7 @@ Raster2Seq involves two training stages:
 | Structured3D  | `tools/pretrain_s3d.sh`      |
 | CubiCasa5K    | `tools/pretrain_cc5k.sh`   |
 | Raster2Graph  | `tools/pretrain_r2g.sh`    |
+| Structured3D-DensityMap  | `tools/pretrain_s3d_density.sh` |
 
 
 ### Finetuning:
@@ -210,7 +211,7 @@ Raster2Seq involves two training stages:
 | Structured3D  | `tools/finetune_s3d.sh`      |
 | CubiCasa5K    | `tools/finetune_cc5k.sh`   |
 | Raster2Graph  | `tools/finetune_r2g.sh`    |
-
+| Structured3D-DensityMap  | `tools/finetune_s3d_density.sh` |
 
 
 ## Acknowledgment
