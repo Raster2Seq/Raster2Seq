@@ -159,7 +159,7 @@ To download, use `gdown --fuzzy <url>` or our provided script [tools/download_ch
       <td>Raster2Graph</td>
       <td>98.1</td>
       <td>
-        <a href="">Semantic Model</a>
+        <a href="https://drive.google.com/file/d/1oSUwzAzytKwwDkeaGA3_QN96HGUM4Cdn/view?usp=sharing">Semantic Model</a>
       </td>
     </tr>
   </tbody>
