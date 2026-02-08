@@ -3,6 +3,7 @@
 DATA=data/waffle_benchmark_processed/
 SPLIT=test 
 
+##### Trained on CubiCasa5K dataset, test on WAFFLE
 NAME=cc5k_waffle_${SPLIT}_preds
 SAVE_DIR=cross_eval_outputs/${NAME}
 CKPT=checkpoints/cc5k_sem_res256_ep0499.pth
@@ -24,15 +25,13 @@ python predict.py \
    --drop_wd \
    --one_color
 
-python clipseg_eval_script.py clipseg_eval/config.yaml 0 \
-   ${SAVE_DIR}/jsons
+python eval_seg.py evaluations/clipseg_eval/config.yaml 0 \
+   ${SAVE_DIR}/checkpoints/jsons
 
-
+##### Trained on Raster2Graph dataset, test on WAFFLE
 NAME=r2g_waffle_${SPLIT}_preds
 SAVE_DIR=cross_eval_outputs/${NAME}
-CKPT=checkpoints/r2g_sem_res256_ep0749.pth
-
-
+CKPT=checkpoints/r2g_sem_res256_ep0549.pth
 python predict.py \
    --dataset_root=${DATA}/${SPLIT} \
    --checkpoint=${CKPT} \
@@ -51,5 +50,5 @@ python predict.py \
    --drop_wd \
    --one_color
 
-python clipseg_eval_script.py clipseg_eval/config.yaml 0 \
-   ${SAVE_DIR}/jsons
+python eval_seg.py evaluations/clipseg_eval/config.yaml 0 \
+   ${SAVE_DIR}/checkpoints/jsons

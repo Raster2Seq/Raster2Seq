@@ -8,7 +8,7 @@ python predict.py \
    --dataset_name=r2g \
    --dataset_root=${DATA}/${FOLDER} \
    --checkpoint=${CKPT} \
-   --output_dir=r2g_${FOLDER}_preds \
+   --output_dir=pred_outputs/r2g_${FOLDER}_preds \
    --semantic_classes=13 \
    --input_channels 3 \
    --poly2seq \

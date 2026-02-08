@@ -3,7 +3,7 @@
 # ------------------------------------------------------------------------------------
 
 from .roomformer import build
-from .roomformer_v2 import build as build_v2
+from .raster2seq import build as build_v2
 
 
 def build_model(args, train=True, tokenizer=None):

@@ -1,12 +1,12 @@
 import json
 import os
 
+import numpy as np
 import cv2
 import torch
-import torch.utils.data.distributed
-from numpy import np
-from s3d_floorplan_eval.S3DLoader.s3d_utils import generate_floorplan, parse_floor_plan_polys
 from torch.utils.data import DataLoader, Dataset
+
+from s3d_floorplan_eval.S3DLoader.s3d_utils import generate_floorplan, parse_floor_plan_polys
 
 
 class S3DLoader(object):
@@ -32,29 +32,22 @@ class S3DLoader(object):
         if mode == "train":
             self.dataset = self.create_dataset(args, mode, generate_input_candidates)
             self.augment = True
-
             self.data = DataLoader(
                 self.dataset, self.batch_size, drop_last=True, collate_fn=self.collate_fn, shuffle=True
             )
-
             self.sample_n = len(self.dataset)
 
         elif mode == "online_eval" or mode == "test":
             self.dataset = self.create_dataset(args, mode, generate_input_candidates)
             self.augment = False
-            # self.batch_size = 4
-
             self.sample_n = len(self.dataset)
-
             self.data = DataLoader(self.dataset, self.batch_size, drop_last=True, collate_fn=self.collate_fn)
 
         elif mode == "test":
             self.dataset = self.create_dataset(args, mode)
             self.augment = False
             self.batch_size = 1
-
             self.sample_n = 20
-
             self.data = DataLoader(
                 self.dataset, self.batch_size, num_workers=1, drop_last=True, collate_fn=self.collate_fn
             )
@@ -92,13 +85,11 @@ class S3DLoader(object):
         return torch_sample
 
     def create_dataset(self, args, mode, generate_input_candidates):
-        # dataset_path = "../Structured3D/montefloor_data"
         self.args = args
         dataset_path = args.dataset_path
 
         if mode == "train":
             scenes_path = os.path.join(dataset_path, "train")
-
             dataset = S3DDataset(
                 args,
                 scenes_path,
@@ -110,14 +101,11 @@ class S3DLoader(object):
 
         elif mode == "online_eval":
             scenes_path = os.path.join(dataset_path, "val")
-
             dataset = S3DDataset(
                 args, scenes_path, None, num_scenes=250, generate_input_candidates=generate_input_candidates, mode=mode
             )
         elif mode == "test":
             scenes_path = os.path.join(dataset_path, "test")
-            # scenes_path = os.path.join(dataset_path, "val")
-
             dataset = S3DDataset(
                 args, scenes_path, None, num_scenes=250, generate_input_candidates=generate_input_candidates, mode=mode
             )
@@ -212,7 +200,6 @@ class S3DDataset(Dataset):
             torch_sample = {}
 
             room_map = torch.tensor(np.array(sample["room_map"]), device=self.device)[None]
-            # room_map = kornia.morphology.dilation(room_map[:, None], kernel=torch.ones((5, 5), device=self.device))[:,0]
 
             torch_sample["room_map"] = room_map
 
@@ -226,7 +213,6 @@ class S3DDataset(Dataset):
             else:
                 torch_sample["density_map"] = torch.tensor(np.array(sample["density_map"]), device=self.device)[None]
             torch_sample["wall_map"] = torch.tensor(np.array(sample["wall_map"]), device=self.device)[None]
-            # torch_sample['room_map'] = torch.tensor(np.array(sample['room_map']), device=self.device)[None]
             torch_sample["polygons_list"] = [
                 torch.tensor(poly, device=self.device)[None] for poly in sample["polygons_list"]
             ]

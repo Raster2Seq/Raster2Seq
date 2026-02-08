@@ -2,7 +2,7 @@
 
 DATA=data/waffle/data/original_size_images/
 FOLDER=00000
-CKPT=cc5k_sem_res256_ep0499.pth
+CKPT=checkpoints/cc5k_sem_res256_ep0499.pth
 
 python predict.py \
     --dataset_root=${DATA}/${FOLDER} \

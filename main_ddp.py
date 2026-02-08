@@ -18,12 +18,12 @@ from torch.utils.data.distributed import DistributedSampler
 import util.misc as utils
 import wandb
 from datasets import build_dataset
-from engine import evaluate, evaluate_v2, train_one_epoch
+from engine import evaluate, train_one_epoch
 from models import build_model
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser("RoomFormer", add_help=False)
+    parser = argparse.ArgumentParser("Raster2Seq training script", add_help=False)
     parser.add_argument("--lr", default=2e-4, type=float)
     parser.add_argument("--lr_backbone_names", default=["backbone.0"], type=str, nargs="+")
     parser.add_argument("--lr_backbone", default=2e-5, type=float)
@@ -37,7 +37,6 @@ def get_args_parser():
 
     parser.add_argument("--sgd", action="store_true")
 
-    # new
     parser.add_argument("--input_channels", default=1, type=int)
     parser.add_argument("--start_from_checkpoint", default="", help="resume from checkpoint")
     parser.add_argument("--image_norm", action="store_true")
@@ -54,14 +53,13 @@ def get_args_parser():
     parser.add_argument("--disable_wd_as_line", action="store_true")
     parser.add_argument("--wd_only", action="store_true")
     parser.add_argument("--converter_version", type=str, default="v1")
-    parser.add_argument("--model_version", type=str, default="v1")
     parser.add_argument("--freeze_anchor", action="store_true")
     parser.add_argument("--inject_cls_embed", action="store_true")
     parser.add_argument(
         "--random_drop_rate", type=float, default=0.0, help="randomly drop some polygons during training"
     )
 
-    # poly2seq
+    # raster2seq
     parser.add_argument("--poly2seq", action="store_true")
     parser.add_argument("--seq_len", type=int, default=1024)
     parser.add_argument("--num_bins", type=int, default=64)
@@ -207,7 +205,7 @@ def main(args):
     # setup wandb for logging
     if rank == 0:
         utils.setup_wandb()
-        wandb.init(project="RoomFormer", resume="allow", id=args.run_name, dir="./wandb")
+        wandb.init(project="Raster2Seq", resume="allow", id=args.run_name, dir="./wandb")
         # wandb.run.name = args.run_name
 
     # build dataset and dataloader
@@ -218,17 +216,10 @@ def main(args):
         args.vocab_size = dataset_train.get_vocab_size()
         tokenizer = dataset_train.get_tokenizer()
 
-    # sampler_train = torch.utils.data.RandomSampler(dataset_train)
-    # sampler_val = torch.utils.data.SequentialSampler(dataset_val)
-
     # overfit one sample
     if args.debug:
         dataset_val = torch.utils.data.Subset(copy.deepcopy(dataset_val), [0])
-        dataset_train = copy.deepcopy(dataset_val)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
-
-        # dataset_train = torch.utils.data.Subset(copy.deepcopy(dataset_train), [2371])
-        # dataset_val = copy.deepcopy(dataset_train)  # torch.utils.data.Subset(copy.deepcopy(dataset_val), [10])
-        dataset_val[0]
+        dataset_train = copy.deepcopy(dataset_val)
 
     sampler_train = DistributedSampler(
         dataset_train, num_replicas=dist.get_world_size(), rank=rank, shuffle=True, seed=args.seed
@@ -420,20 +411,13 @@ def main(args):
             args.start_epoch = checkpoint["epoch"] + 1
 
         # # check the resumed model
-        # if not args.poly2seq:
-        #     test_stats = evaluate(
-        #         model, criterion, args.dataset_name, data_loader_val, device
-        #     )
-        # else:
-        #     test_stats = evaluate_v2(
-        #         model, criterion, args.dataset_name, data_loader_val, device, poly2seq=args.poly2seq
-        #     )
+        # test_stats = evaluate(
+        #     model, criterion, args.dataset_name, data_loader_val, device, poly2seq=args.poly2seq
+        # )
         dist.barrier()
 
     if args.start_from_checkpoint:
         checkpoint = torch.load(args.start_from_checkpoint, map_location="cpu")["model"]
-        # if checkpoint['model']['module.backbone.0.body.conv1.weight'].size(1) != args.input_channels:
-        #     checkpoint['model']['module.backbone.0.body.conv1.weight'] = checkpoint['model']['module.backbone.0.body.conv1.weight'].repeat(1, args.input_channels, 1, 1)
         for key, value in checkpoint.items():
             if key.startswith("class_embed"):
                 if checkpoint[key].size(0) != model.module.num_classes:
@@ -562,33 +546,20 @@ def main(args):
         # eval every 20
         if (epoch + 1) % args.eval_every_epoch == 0:
             eval_model = model if not args.ema4eval else ema
-            if not args.poly2seq:
-                test_stats = evaluate(
-                    eval_model,
-                    criterion,
-                    args.dataset_name,
-                    data_loader_val,
-                    device,
-                    plot_density=True,
-                    output_dir=output_dir,
-                    epoch=epoch,
-                    poly2seq=args.poly2seq,
-                )
-            else:
-                test_stats = evaluate_v2(
-                    eval_model,
-                    criterion,
-                    args.dataset_name,
-                    data_loader_val,
-                    device,
-                    plot_density=True,
-                    output_dir=output_dir,
-                    epoch=epoch,
-                    poly2seq=args.poly2seq,
-                    add_cls_token=args.add_cls_token,
-                    per_token_sem_loss=args.per_token_sem_loss,
-                    wd_as_line=not args.disable_wd_as_line,
-                )
+            test_stats = evaluate(
+                eval_model,
+                criterion,
+                args.dataset_name,
+                data_loader_val,
+                device,
+                plot_density=True,
+                output_dir=output_dir,
+                epoch=epoch,
+                poly2seq=args.poly2seq,
+                add_cls_token=args.add_cls_token,
+                per_token_sem_loss=args.per_token_sem_loss,
+                wd_as_line=not args.disable_wd_as_line,
+            )
             log_stats.update(**{f"test_{k}": v for k, v in test_stats.items()})
 
             val_log_dict = {
@@ -637,7 +608,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("RoomFormer training script", parents=[get_args_parser()])
+    parser = argparse.ArgumentParser("Raster2Seq training script", parents=[get_args_parser()])
     args = parser.parse_args()
     now = datetime.datetime.now()
     # run_id = now.strftime("%Y-%m-%d-%H-%M-%S")

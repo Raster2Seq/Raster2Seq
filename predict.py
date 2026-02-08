@@ -14,7 +14,7 @@ from tqdm import tqdm, trange
 from datasets.discrete_tokenizer import DiscreteTokenizer
 from datasets.transforms import ResizeAndPad
 from detectron2.data import transforms as T
-from engine import generate, generate_v2, plot_density_map
+from engine import generate, plot_density_map
 from models import build_model
 from util.plot_utils import CC5K_LABEL, S3D_LABEL, auto_crop_whitespace, plot_semantic_rich_floorplan_opencv
 
@@ -66,10 +66,9 @@ class ImageDataset(Dataset):
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser("RoomFormer", add_help=False)
+    parser = argparse.ArgumentParser("Raster2Seq prediction script", add_help=False)
     parser.add_argument("--batch_size", default=10, type=int)
 
-    # new
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--input_channels", default=1, type=int)
     parser.add_argument("--image_norm", action="store_true")
@@ -87,9 +86,8 @@ def get_args_parser():
     parser.add_argument("--image_scale", type=int, default=2)
     parser.add_argument("--one_color", action="store_true")
     parser.add_argument("--crop_white_space", action="store_true")
-    parser.add_argument("--save_anchors", action="store_true")
 
-    # poly2seq
+    # raster2seq
     parser.add_argument("--poly2seq", action="store_true")
     parser.add_argument("--seq_len", type=int, default=1024)
     parser.add_argument("--num_bins", type=int, default=64)
@@ -335,32 +333,21 @@ def main(args):
         starter.record()
         x = batch_images["image"].to(device)
         filenames = batch_images["file_name"]
-        if not args.poly2seq:
-            outputs = generate(
-                model,
-                x,
-                semantic_rich=args.semantic_classes > 0,
-                drop_wd=args.drop_wd,
-            )
-        else:
-            outputs = generate_v2(
-                model,
-                x,
-                semantic_rich=args.semantic_classes > 0,
-                use_cache=True,
-                per_token_sem_loss=args.per_token_sem_loss,
-                drop_wd=args.drop_wd,
-                return_anchors=args.save_anchors,
-            )
+        outputs = generate(
+            model,
+            x,
+            semantic_rich=args.semantic_classes > 0,
+            use_cache=True,
+            per_token_sem_loss=args.per_token_sem_loss,
+            drop_wd=args.drop_wd,
+            poly2seq=args.poly2seq,
+        )
         ender.record()
         torch.cuda.synchronize()
         total_time += starter.elapsed_time(ender) / len(data_loader_eval)
 
         pred_rooms = outputs["room"]
         pred_labels = outputs["labels"]
-
-        # _, sorted_indices = sort_polygons(pred_rooms)
-        # pred_rooms = [ for p in pred_rooms]
 
         image_size = x.shape[-2]
         for j, (pred_rm, pred_cls) in enumerate(zip(pred_rooms, pred_labels)):
@@ -425,29 +412,15 @@ def main(args):
                 polys_list = [poly.astype(float).tolist() for poly in pred_rm]
                 types_list = pred_cls
 
-                if not args.save_anchors:
-                    output_json = [
-                        {
-                            "image_id": fn,
-                            "segmentation": polys_list[instance_id],
-                            "category_id": int(types_list[instance_id]),
-                            "id": instance_id,
-                        }
-                        for instance_id in range(len(polys_list))
-                    ]
-                else:
-                    image_anchors = outputs["anchors"][j]
-                    output_json = [
-                        {
-                            "image_id": fn,
-                            "segmentation": polys_list[instance_id],
-                            "category_id": int(types_list[instance_id]),
-                            "id": instance_id,
-                            "anchors": image_anchors[instance_id],
-                        }
-                        for instance_id in range(len(polys_list))
-                    ]
-
+                output_json = [
+                    {
+                        "image_id": fn,
+                        "segmentation": polys_list[instance_id],
+                        "category_id": int(types_list[instance_id]),
+                        "id": instance_id,
+                    }
+                    for instance_id in range(len(polys_list))
+                ]
                 with open(json_path, "w") as json_file:
                     json.dump(output_json, json_file)
 
@@ -458,7 +431,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("RoomFormer evaluation script", parents=[get_args_parser()])
+    parser = argparse.ArgumentParser("Raster2Seq prediction script", parents=[get_args_parser()])
     args = parser.parse_args()
 
     if args.debug:

@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 
+DATA=data/coco_s3d_bw
+FOLDER=test
+
 CKPT=checkpoints/s3dbw_sem_res256_ep0449.pth
 python eval.py --dataset_name=stru3d \
-   --dataset_root=data/coco_s3d_bw \
-   --eval_set=test \
+   --dataset_root=${DATA} \
+   --eval_set=${FOLDER} \
    --checkpoint=${CKPT} \
    --output_dir=eval_outputs/s3dbw_sem_results \
    --semantic_classes=19 \
@@ -13,7 +16,7 @@ python eval.py --dataset_name=stru3d \
    --num_bins 32 \
    --disable_poly_refine \
    --dec_attn_concat_src \
-   --ema4eval \
    --use_anchor \
    --per_token_sem_loss \
+   --ema4eval \
    --save_pred

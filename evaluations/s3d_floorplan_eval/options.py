@@ -22,7 +22,7 @@ class MCSSOptions:
             "--dataset_path",
             type=str,
             help="the name of the MonteFloorNet model",
-            default="s3d_floorplan_eval/montefloor_data",
+            default="evaluations/s3d_floorplan_eval/montefloor_data",
         )
 
         self.parser.add_argument(

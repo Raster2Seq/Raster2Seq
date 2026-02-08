@@ -19,11 +19,11 @@ from s3d_floorplan_eval.DataRW.S3DRW import S3DRW
 from s3d_floorplan_eval.DataRW.wrong_annotatios import wrong_s3d_annotations_list
 from s3d_floorplan_eval.Evaluator.Evaluator import Evaluator
 from s3d_floorplan_eval.options import MCSSOptions
-from scenecad_eval.Evaluator import Evaluator_SceneCAD
 
 from datasets import get_dataset_class_labels
 from util.eval_utils import compute_f1
 from util.plot_utils import (
+    concat_floorplan_maps,
     plot_density_map,
     plot_floorplan_with_regions,
     plot_semantic_rich_floorplan_opencv,
@@ -47,6 +47,26 @@ def train_one_epoch(
     ema_model=None,
     **kwargs,
 ):
+    """
+    Trains the model for one epoch using the provided data loader, criterion, and optimizer.
+    This function iterates over the data loader, computes losses, performs backpropagation,
+    applies gradient clipping if specified, updates the model parameters, and optionally
+    updates an EMA model. It logs various metrics including loss, learning rate, and gradient norm.
+    Args:
+        model (torch.nn.Module): The neural network model to be trained.
+        criterion (torch.nn.Module): The loss criterion used to compute the loss.
+        data_loader (Iterable): An iterable data loader yielding batches of inputs and extras.
+        optimizer (torch.optim.Optimizer): The optimizer used to update model parameters.
+        device (torch.device): The device (CPU or GPU) on which to perform computations.
+        epoch (int): The current epoch number, used for logging.
+        max_norm (float, optional): Maximum norm for gradient clipping. If 0, no clipping is applied. Defaults to 0.
+        poly2seq (bool, optional): If True, uses batched_extras as room_targets and passes them to the model. Defaults to False.
+        ema_model (optional): Exponential moving average model to update, if provided. Defaults to None.
+        **kwargs: Additional keyword arguments, such as 'drop_rate' for padding ground truth polygons.
+    Returns:
+        dict: A dictionary containing the global averages of logged metrics (e.g., loss, lr, grad_norm).
+    """
+    
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -59,9 +79,6 @@ def train_one_epoch(
     for batched_inputs, batched_extras in metric_logger.log_every(data_loader, print_freq, header):
         samples = [x["image"].to(device) for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
-        # print("length: ", batched_extras['mask'].sum(1).tolist())
-        # print("Max #polys: ", max([len(gt_instances[i].gt_masks.polygons) for i in range(len(gt_instances))]))
-        # print("Max #corners: ", max([gt_instances[i].gt_masks.polygons for i in range(gt_instances)]))
         if not poly2seq:
             room_targets = pad_gt_polys(
                 gt_instances,
@@ -121,211 +138,44 @@ def evaluate(
     output_dir=None,
     epoch=None,
     poly2seq: bool = False,
-):
-    model.eval()
-    criterion.eval()
-
-    if dataset_name == "stru3d":
-        door_window_index = [16, 17]
-    elif dataset_name == "cubicasa":
-        door_window_index = [10, 9]
-    else:
-        door_window_index = []
-
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    header = "Test:"
-    model_obj = model if not hasattr(model, "module") else model.module
-
-    for batched_inputs, batched_extras in metric_logger.log_every(data_loader, 10, header):
-        samples = [x["image"].to(device) for x in batched_inputs]
-        scene_ids = [x["image_id"] for x in batched_inputs]
-        gt_instances = [x["instances"].to(device) for x in batched_inputs]
-        if not poly2seq:
-            room_targets = pad_gt_polys(
-                gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], drop_rate=0.0, device=device
-            )
-            outputs = model(samples)
-        else:
-            room_targets = batched_extras
-            outputs = model(samples, batched_extras)
-
-        image_size = samples[0].size(2)
-        loss_dict = criterion(outputs, room_targets)
-        weight_dict = criterion.weight_dict
-
-        bs = outputs["pred_logits"].shape[0]
-        pred_logits = outputs["pred_logits"]
-        pred_corners = outputs["pred_coords"]
-        if poly2seq:
-            pass
-        else:
-            fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
-
-        if "pred_room_logits" in outputs:
-            prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
-            _, pred_room_label = prob[..., :-1].max(-1)
-
-        # process per scene
-        for i in range(bs):
-            if dataset_name == "stru3d":
-                if int(scene_ids[i]) in wrong_s3d_annotations_list:
-                    continue
-                curr_opts = copy.deepcopy(opts)
-                curr_opts.scene_id = "scene_0" + str(scene_ids[i])
-                curr_data_rw = S3DRW(curr_opts, mode="online_eval")
-                evaluator = Evaluator(curr_data_rw, curr_opts)
-            elif dataset_name == "scenecad":
-                gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1, 2).astype(np.int32)]
-                evaluator = Evaluator_SceneCAD()
-            elif dataset_name == "rplan":
-                gt_polys = [x[0].reshape(-1, 2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
-                gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
-                gt_window_doors = []
-                gt_window_doors_types = []
-                evaluator = Evaluator_RPlan()
-            elif dataset_name in ["cubicasa", "r2g"]:
-                gt_polys, gt_polys_types = [], []
-                gt_window_doors = []
-                gt_window_doors_types = []
-                for gt_poly, gt_id in zip(
-                    gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()
-                ):
-                    gt_poly = gt_poly[0].reshape(-1, 2).astype(np.int32)
-                    if gt_id in door_window_index:
-                        gt_window_doors.append(gt_poly)
-                        gt_window_doors_types.append(gt_id)
-                    else:
-                        gt_polys.append(gt_poly)
-                        gt_polys_types.append(gt_id)
-                evaluator = Evaluator_RPlan()
-
-            print("Running Evaluation for scene %s" % scene_ids[i])
-
-            fg_mask_per_scene = fg_mask[i]
-            pred_corners_per_scene = pred_corners[i]
-
-            room_polys = []
-
-            semantic_rich = "pred_room_logits" in outputs
-            if semantic_rich:
-                room_types = []
-                window_doors = []
-                window_doors_types = []
-                pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
-
-            # process per room
-            for j in range(fg_mask_per_scene.shape[0]):
-                fg_mask_per_room = fg_mask_per_scene[j]
-                pred_corners_per_room = pred_corners_per_scene[j]
-                valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
-                if len(valid_corners_per_room) > 0:
-                    corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
-                    corners = np.around(corners).astype(np.int32)
-
-                    if not semantic_rich:
-                        # only regular rooms
-                        if len(corners) >= 4 and Polygon(corners).area >= 100:
-                            room_polys.append(corners)
-                    else:
-                        # regular rooms
-                        if pred_room_label_per_scene[j] not in door_window_index:
-                            if len(corners) >= 4 and Polygon(corners).area >= 100:
-                                room_polys.append(corners)
-                                room_types.append(pred_room_label_per_scene[j])
-                        # window / door
-                        elif len(corners) == 2:
-                            window_doors.append(corners)
-                            window_doors_types.append(pred_room_label_per_scene[j])
-
-            if not semantic_rich:
-                pred_room_label_per_scene = len(room_polys) * [-1]
-
-            if dataset_name == "stru3d":
-                if not semantic_rich:
-                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys)
-                else:
-                    quant_result_dict_scene = evaluator.evaluate_scene(
-                        room_polys=room_polys,
-                        room_types=room_types,
-                        window_door_lines=window_doors,
-                        window_door_lines_types=window_doors_types,
-                    )
-            elif dataset_name == "scenecad":
-                quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
-
-            elif dataset_name in ["rplan", "cubicasa", "r2g"]:
-                if not semantic_rich:
-                    quant_result_dict_scene = evaluator.evaluate_scene(
-                        room_polys=room_polys,
-                        gt_polys=gt_polys,
-                        room_types=None,
-                        gt_polys_types=gt_polys_types,
-                        img_size=(image_size, image_size),
-                    )
-                else:
-                    quant_result_dict_scene = evaluator.evaluate_scene(
-                        room_polys=room_polys,
-                        gt_polys=gt_polys,
-                        room_types=room_types,
-                        gt_polys_types=gt_polys_types,
-                        window_door_lines=window_doors,
-                        gt_window_doors_list=gt_window_doors,
-                        window_door_lines_types=window_doors_types,
-                        gt_window_doors_type_list=gt_window_doors_types,
-                        img_size=(image_size, image_size),
-                    )
-
-            if "room_iou" in quant_result_dict_scene:
-                metric_logger.update(room_iou=quant_result_dict_scene["room_iou"])
-
-            metric_logger.update(room_prec=quant_result_dict_scene["room_prec"])
-            metric_logger.update(room_rec=quant_result_dict_scene["room_rec"])
-            metric_logger.update(corner_prec=quant_result_dict_scene["corner_prec"])
-            metric_logger.update(corner_rec=quant_result_dict_scene["corner_rec"])
-            metric_logger.update(angles_prec=quant_result_dict_scene["angles_prec"])
-            metric_logger.update(angles_rec=quant_result_dict_scene["angles_rec"])
-
-            if semantic_rich:
-                metric_logger.update(room_sem_prec=quant_result_dict_scene["room_sem_prec"])
-                metric_logger.update(room_sem_rec=quant_result_dict_scene["room_sem_rec"])
-                metric_logger.update(window_door_prec=quant_result_dict_scene["window_door_prec"])
-                metric_logger.update(window_door_rec=quant_result_dict_scene["window_door_rec"])
-
-        # plot last sample
-        if plot_density and len(room_polys) > 0:
-            pred_room_map = plot_density_map(samples[i], image_size, room_polys, pred_room_label_per_scene)
-            cv2.imwrite(os.path.join(output_dir, "{}_pred_room_map_{}.png".format(scene_ids[i], epoch)), pred_room_map)
-
-            plot_density = False  # only plot once
-
-        loss_dict_scaled = {k: v * weight_dict[k] for k, v in loss_dict.items() if k in weight_dict}
-        loss_dict_unscaled = {f"{k}_unscaled": v for k, v in loss_dict.items()}
-        metric_logger.update(loss=sum(loss_dict_scaled.values()), **loss_dict_scaled, **loss_dict_unscaled)
-
-    print("Averaged stats:", metric_logger)
-
-    stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-
-    return stats
-
-
-@torch.no_grad()
-def evaluate_v2(
-    model,
-    criterion,
-    dataset_name,
-    data_loader,
-    device,
-    plot_density=False,
-    output_dir=None,
-    epoch=None,
-    poly2seq: bool = False,
     add_cls_token=False,
     per_token_sem_loss=False,
     wd_as_line=True,
 ):
+    """
+    Evaluates the model on a given dataset during training, computing losses and various metrics such as room IoU, 
+    precision, recall, corner precision/recall, angle precision/recall, and semantic metrics if applicable.
+
+    This function supports two evaluation modes:
+    - Non-poly2seq mode (poly2seq=False): RoomFormer evaluation with fg_mask filtering
+    - Poly2seq mode (poly2seq=True): Raster2Seq evaluation with sequence-based predictions
+
+    Args:
+        model: The neural network model to evaluate.
+        criterion: The loss criterion used for evaluation.
+        dataset_name (str): Name of the dataset (e.g., "stru3d", "cubicasa", "r2g", "waffle").
+        data_loader: DataLoader providing batches of input data.
+        device: The device (e.g., CPU or GPU) to run the evaluation on.
+        plot_density (bool, optional): If True, plots a density map for the last sample. Defaults to False.
+        output_dir (str, optional): Directory to save output plots if plot_density is True. Defaults to None.
+        epoch (int, optional): Current epoch number, used in plot filenames. Defaults to None.
+        poly2seq (bool, optional): If True, uses sequence-based prediction mode with forward_inference.
+                                   If False, uses mask-based filtering with fg_mask. Defaults to False.
+        add_cls_token (bool, optional): If True, accounts for class tokens in sequence processing. 
+                                        Only used when poly2seq=True. Defaults to False.
+        per_token_sem_loss (bool, optional): If True, computes semantic loss per token using voting.
+                                             Only used when poly2seq=True. Defaults to False.
+        wd_as_line (bool, optional): If True, treats windows/doors as lines based on corner count.
+                                     If False, uses semantic class. Only used when poly2seq=True. Defaults to True.
+
+    Returns:
+        dict: A dictionary containing averaged evaluation statistics, including losses and metrics like room_iou,
+        room_prec, room_rec, corner_prec, corner_rec, angles_prec, angles_rec, and semantic metrics if applicable.
+    """
+    
     model.eval()
     criterion.eval()
+
     if dataset_name == "stru3d":
         door_window_index = [16, 17]
     elif dataset_name == "cubicasa":
@@ -341,6 +191,7 @@ def evaluate_v2(
         samples = [x["image"].to(device) for x in batched_inputs]
         scene_ids = [x["image_id"] for x in batched_inputs]
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
+
         if not poly2seq:
             room_targets = pad_gt_polys(
                 gt_instances, model_obj.num_queries_per_poly, samples[0].shape[1], drop_rate=0.0, device=device
@@ -352,29 +203,33 @@ def evaluate_v2(
             room_targets = batched_extras
             outputs = model(samples, batched_extras)
 
+        image_size = samples[0].size(2)
         loss_dict = criterion(outputs, room_targets)
         weight_dict = criterion.weight_dict
 
-        image_size = samples[0].size(2)
         if poly2seq:
             outputs = model_obj.forward_inference(samples)
             pred_corners = outputs["gen_out"]
-            bs = outputs["pred_logits"].shape[0]
+            np_softmax = lambda x: np.exp(x) / np.sum(np.exp(x), axis=-1, keepdims=True)
+            fg_mask = None
         else:
-            bs = outputs["pred_logits"].shape[0]
+            pred_logits = outputs["pred_logits"]
             pred_corners = outputs["pred_coords"]
+            fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
+
+        bs = outputs["pred_logits"].shape[0]
 
         if "pred_room_logits" in outputs:
-            prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
+            pred_room_logits = outputs["pred_room_logits"]
+            prob = torch.nn.functional.softmax(pred_room_logits, -1)
             _, pred_room_label = prob[..., :-1].max(-1)
 
         # process per scene
         for i in range(bs):
+            # Prepare ground truth data
             gt_polys, gt_polys_types = [], []
             gt_window_doors = []
             gt_window_doors_types = []
-            if len(gt_instances[i]) == 0:
-                continue
             for gt_poly, gt_id in zip(
                 gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()
             ):
@@ -386,111 +241,34 @@ def evaluate_v2(
                     gt_polys.append(gt_poly)
                     gt_polys_types.append(gt_id)
 
+            # Create evaluator based on dataset
             if dataset_name == "stru3d":
                 if int(scene_ids[i]) in wrong_s3d_annotations_list:
                     continue
                 curr_opts = copy.deepcopy(opts)
                 curr_opts.scene_id = "scene_0" + str(scene_ids[i])
                 curr_data_rw = S3DRW(curr_opts, mode="online_eval")
-                evaluator = Evaluator(curr_data_rw, curr_opts, disable_overlapping_filter=True)
-            elif dataset_name == "scenecad":
-                gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1, 2).astype(np.int32)]
-                evaluator = Evaluator_SceneCAD(disable_overlapping_filter=True)
-            elif dataset_name == "rplan":
-                gt_polys = [x[0].reshape(-1, 2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
-                gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
-                gt_window_doors = []
-                gt_window_doors_types = []
-                evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
+                evaluator = Evaluator(curr_data_rw, curr_opts, disable_overlapping_filter=poly2seq)
             elif dataset_name in ["cubicasa", "r2g", "waffle"]:
-                evaluator = Evaluator_RPlan(disable_overlapping_filter=True, wd_as_line=wd_as_line)
+                evaluator = Evaluator_RPlan(disable_overlapping_filter=poly2seq, wd_as_line=wd_as_line)
 
             print("Running Evaluation for scene %s" % scene_ids[i])
 
-            pred_corners_per_scene = pred_corners[i]
-
             room_polys = []
-
             semantic_rich = "pred_room_logits" in outputs
+
             if semantic_rich:
                 room_types = []
                 window_doors = []
                 window_doors_types = []
-                pred_room_label_per_scene = pred_room_label[i].cpu().numpy().tolist()
 
-            all_room_polys = []
-            tmp = []
-            all_length_list = [0]
-            for j in range(len(pred_corners_per_scene)):
-                if isinstance(pred_corners_per_scene[j], int):
-                    if pred_corners_per_scene[j] == 2 and tmp:  # sep
-                        all_room_polys.append(tmp)
-                        all_length_list.append(len(tmp) + 1 + add_cls_token)
-                        tmp = []
-                    continue
-                tmp.append(pred_corners_per_scene[j])
 
-            if len(tmp):
-                all_room_polys.append(tmp)
-                all_length_list.append(len(tmp) + 1 + add_cls_token)
-            start_poly_indices = np.cumsum(all_length_list)
-
-            final_pred_classes = []
-            for j, poly in enumerate(all_room_polys):
-                if len(poly) < 2:
-                    continue
-                corners = np.array(poly, dtype=np.float32) * (image_size - 1)
-                corners = np.around(corners).astype(np.int32)
-
-                if not semantic_rich:
-                    # only regular rooms
-                    if len(corners) >= 4:  # and Polygon(corners).area >= 100:
-                        room_polys.append(corners)
-                else:
-                    if per_token_sem_loss:
-                        pred_classes, counts = np.unique(
-                            pred_room_label_per_scene[start_poly_indices[j] : start_poly_indices[j + 1]][:-1],
-                            return_counts=True,
-                        )
-                        pred_class = pred_classes[np.argmax(counts)]
-                    else:
-                        pred_class = pred_room_label_per_scene[
-                            start_poly_indices[j + 1] - 1
-                        ]  # get last cls token in the seq
-                    final_pred_classes.append(pred_class)
-
-                    # if len(corners)>=4:
-                    #     # if len(corners)>=4 and Polygon(corners).area >= 100:
-                    #     room_polys.append(corners)
-                    #     room_types.append(pred_class)
-                    # # window / door
-                    # elif len(corners)==2:
-                    #     window_doors.append(corners)
-                    #     window_doors_types.append(pred_class)
-
-                    if wd_as_line:
-                        # regular rooms
-                        if len(corners) >= 4:
-                            # if len(corners)>=4 and Polygon(corners).area >= 100:
-                            room_polys.append(corners)
-                            room_types.append(pred_class)
-                        # window / door
-                        elif len(corners) == 2:
-                            window_doors.append(corners)
-                            window_doors_types.append(pred_class)
-                    else:
-                        # regular rooms
-                        if pred_class not in door_window_index:
-                            room_polys.append(corners)
-                            room_types.append(pred_class)
-                        else:
-                            window_doors.append(corners)
-                            window_doors_types.append(pred_class)
-
-            if not semantic_rich:
-                pred_room_label_per_scene = len(all_room_polys) * [-1]
-            else:
-                pred_room_label_per_scene = final_pred_classes
+            scene_outputs = _process_predictions(pred_corners, i, semantic_rich, poly2seq, fg_mask, image_size, pred_room_label if semantic_rich else None, pred_room_logits if semantic_rich else None, dataset_name, add_cls_token, per_token_sem_loss, wd_as_line, door_window_index, dataset_name)
+            room_polys = scene_outputs["room_polys"]
+            room_types = scene_outputs["room_types"]
+            window_doors = scene_outputs["window_doors"]
+            window_doors_types = scene_outputs["window_doors_types"]
+            pred_room_label_per_scene = scene_outputs["pred_room_label_per_scene"]
 
             if dataset_name == "stru3d":
                 if not semantic_rich:
@@ -502,10 +280,7 @@ def evaluate_v2(
                         window_door_lines=window_doors,
                         window_door_lines_types=window_doors_types,
                     )
-            elif dataset_name == "scenecad":
-                quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
-
-            elif dataset_name in ["rplan", "cubicasa", "r2g", "waffle"]:
+            elif dataset_name in ["cubicasa", "r2g", "waffle"]:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(
                         room_polys=room_polys,
@@ -547,7 +322,6 @@ def evaluate_v2(
         if plot_density and len(room_polys) > 0:
             pred_room_map = plot_density_map(samples[i], image_size, room_polys, pred_room_label_per_scene)
             cv2.imwrite(os.path.join(output_dir, "{}_pred_room_map_{}.png".format(scene_ids[i], epoch)), pred_room_map)
-
             plot_density = False  # only plot once
 
         loss_dict_scaled = {k: v * weight_dict[k] for k, v in loss_dict.items() if k in weight_dict}
@@ -560,6 +334,172 @@ def evaluate_v2(
 
     return stats
 
+
+def _process_predictions(
+    pred_corners, 
+    i, 
+    semantic_rich, 
+    poly2seq, 
+    fg_mask, 
+    image_size, 
+    pred_room_label,
+    pred_room_logits, 
+    add_cls_token, 
+    per_token_sem_loss, 
+    wd_as_line, 
+    door_window_index,
+    dataset_name,
+):
+    """
+    Processes predictions for room layouts, extracting polygons for rooms, windows, and doors.
+    This function handles two main modes: non-poly2seq (mask-based) and poly2seq (sequence-based).
+    It filters and validates predicted corners based on various conditions, computes room types
+    and window/door types if semantic information is rich, and ensures polygons meet area thresholds.
+
+    Args:
+        pred_corners (list or tensor): Predicted corner coordinates for scenes or sequences.
+        i (int): Index of the current scene in the batch.
+        semantic_rich (bool): Whether to include semantic information (room types, window/door types).
+        poly2seq (bool): Whether the predictions are in sequence format (poly2seq mode).
+        fg_mask (tensor): Foreground masks for valid corners per room (used in non-poly2seq mode).
+        image_size (int): Size of the image (used for scaling coordinates).
+        pred_room_label (tensor): Predicted room labels for the scene.
+        pred_room_logits (tensor): Logits for room predictions.
+        add_cls_token (int): Number of CLS tokens added in sequences (used in poly2seq mode).
+        per_token_sem_loss (bool): Whether to compute semantic loss per token (affects class aggregation).
+        wd_as_line (bool): Whether to treat windows/doors as lines (affects classification logic).
+        door_window_index (list or dict): Indices or mapping for door/window classes.
+        dataset_name (str): Name of the dataset being processed.
+
+    Returns:
+        dict: A dictionary containing:
+            - "room_polys" (list of np.ndarray): List of valid room polygons (scaled and rounded).
+            - "room_types" (list or None): List of room types if semantic_rich, else None.
+            - "window_doors" (list or None): List of window/door polygons if semantic_rich, else None.
+            - "window_doors_types" (list or None): List of window/door types if semantic_rich, else None.
+            - "pred_room_label_per_scene" (list): Processed room labels for the scene.
+    """
+
+    np_softmax = lambda x: np.exp(x) / np.sum(np.exp(x), axis=-1, keepdims=True)
+    pred_corners_per_scene = pred_corners[i]
+    room_polys = []
+
+    if semantic_rich:
+        room_types = []
+        window_doors = []
+        window_doors_types = []
+
+        pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
+        pred_room_logit_per_scene = pred_room_logits[i].cpu().numpy()
+
+    # Process predictions based on mode
+    if not poly2seq:
+        fg_mask_per_scene = fg_mask[i]
+
+        # process per room
+        for j in range(fg_mask_per_scene.shape[0]):
+            fg_mask_per_room = fg_mask_per_scene[j]
+            pred_corners_per_room = pred_corners_per_scene[j]
+            valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
+            if len(valid_corners_per_room) > 0:
+                corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
+                corners = np.around(corners).astype(np.int32)
+
+                if not semantic_rich:
+                    # only regular rooms
+                    if len(corners) >= 4 and Polygon(corners).area >= 100:
+                        room_polys.append(corners)
+                else:
+                    # regular rooms
+                    if len(corners) >= 3 and Polygon(corners).area >= 100:
+                        room_polys.append(corners)
+                        room_types.append(pred_room_label_per_scene[j])
+                    # window / door
+                    elif len(corners) == 2:
+                        window_doors.append(corners)
+                        window_doors_types.append(pred_room_label_per_scene[j])
+
+        if not semantic_rich:
+            pred_room_label_per_scene = len(room_polys) * [-1]
+    else:
+        # poly2seq mode: sequence-based processing
+        all_room_polys = []
+        tmp = []
+        all_length_list = [0]
+
+        for j in range(len(pred_corners_per_scene)):
+            if isinstance(pred_corners_per_scene[j], int):
+                if pred_corners_per_scene[j] == 2 and tmp:  # sep
+                    all_room_polys.append(tmp)
+                    all_length_list.append(len(tmp) + 1 + add_cls_token)
+                    tmp = []
+                continue
+            tmp.append(pred_corners_per_scene[j])
+
+        if len(tmp):
+            all_room_polys.append(tmp)
+            all_length_list.append(len(tmp) + 1 + add_cls_token)
+
+        start_poly_indices = np.cumsum(all_length_list)
+
+        final_pred_classes = []
+        for j, poly in enumerate(all_room_polys):
+            if len(poly) < 2:
+                continue
+            corners = np.array(poly, dtype=np.float32) * (image_size - 1)
+            corners = np.around(corners).astype(np.int32)
+
+            if not semantic_rich:
+                # only regular rooms
+                if len(corners) >= 4 and Polygon(corners).area >= 100:
+                    room_polys.append(corners)
+            else:
+                if per_token_sem_loss:
+                    pred_classes, counts = np.unique(
+                        pred_room_label_per_scene[start_poly_indices[j] : start_poly_indices[j + 1]][:-1],
+                        return_counts=True,
+                    )
+                    pred_class = pred_classes[np.argmax(counts)]
+                    pred_logit = pred_room_logit_per_scene[start_poly_indices[j] : start_poly_indices[j + 1]][:-1]
+                else:
+                    pred_class = pred_room_label_per_scene[
+                        start_poly_indices[j + 1] - 1
+                    ]  # get last cls token in the seq
+                final_pred_classes.append(pred_class)
+
+                if wd_as_line:
+                    # regular rooms
+                    if len(corners) >= 3 and Polygon(corners).area >= 100:
+                        room_polys.append(corners)
+                        room_types.append(pred_class)
+                    # window / door
+                    elif len(corners) == 2:
+                        window_doors.append(corners)
+                        if door_window_index is not None and pred_class not in door_window_index and dataset_name != "r2g":
+                            wd_prob = np_softmax(pred_logit[:, door_window_index].sum(0))
+                            pred_class = door_window_index[wd_prob.argmax()]
+                        window_doors_types.append(pred_class)
+                else:
+                    # regular rooms
+                    if door_window_index is not None and pred_class not in door_window_index:
+                        room_polys.append(corners)
+                        room_types.append(pred_class)
+                    else:
+                        window_doors.append(corners)
+                        window_doors_types.append(pred_class)
+
+        if not semantic_rich:
+            pred_room_label_per_scene = len(all_room_polys) * [-1]
+        else:
+            pred_room_label_per_scene = final_pred_classes
+
+    return {
+        "room_polys": room_polys,
+        "room_types": room_types if semantic_rich else None,
+        "window_doors": window_doors if semantic_rich else None,
+        "window_doors_types": window_doors_types if semantic_rich else None,
+        "pred_room_label_per_scene": pred_room_label_per_scene
+    }
 
 @torch.no_grad()
 def evaluate_floor(
@@ -573,301 +513,49 @@ def evaluate_floor(
     plot_gt=True,
     semantic_rich=False,
     save_pred=False,
-    iou_thres=0.5,
-):
-    model.eval()
-    if dataset_name == "stru3d":
-        door_window_index = [16, 17]
-    elif dataset_name == "cubicasa":
-        door_window_index = [10, 9]
-    elif dataset_name == "waffle":
-        door_window_index = []  # [1, 2]
-    else:
-        door_window_index = []
-
-    metric_category = ["room", "corner", "angles"]
-    if semantic_rich:
-        metric_category += ["room_sem", "window_door"]
-
-    quant_result_dict = None
-    scene_counter = 0
-
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
-
-    for batched_inputs, batched_extras in data_loader:
-        samples = [x["image"].to(device) for x in batched_inputs]
-        scene_ids = [x["image_id"] for x in batched_inputs]
-        gt_instances = [x["instances"].to(device) for x in batched_inputs]
-
-        image_size = samples[0].size(2)
-
-        # # draw GT map
-        # if plot_gt:
-        #     for i, gt_inst in enumerate(gt_instances):
-        #         if not semantic_rich:
-        #             # plot regular room floorplan
-        #             gt_polys = []
-        #             density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
-        #             density_map = np.repeat(density_map, 3, axis=2)
-
-        #             gt_corner_map = np.zeros([image_size, image_size, 3])
-        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
-        #                 corners = poly[0].reshape(-1, 2)
-        #                 gt_polys.append(corners)
-
-        #             gt_room_polys = [np.array(r) for r in gt_polys]
-        #             gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
-        #             cv2.imwrite(os.path.join(output_dir, '{}_gt.png'.format(scene_ids[i])), gt_floorplan_map)
-        #         else:
-        #             # plot semantically-rich floorplan
-        #             gt_sem_rich = []
-        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
-        #                 corners = poly[0].reshape(-1, 2).astype(np.int32)
-        #                 corners_flip_y = corners.copy()
-        #                 corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
-        #                 corners = corners_flip_y
-        #                 gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
-
-        #             gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
-        #             # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1)
-        #             plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False, door_window_index=door_window_index)
-
-        outputs = model(samples)
-        pred_logits = outputs["pred_logits"]
-        pred_corners = outputs["pred_coords"]
-        fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
-
-        if "pred_room_logits" in outputs:
-            prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
-            _, pred_room_label = prob[..., :-1].max(-1)
-
-        # process per scene
-        for i in range(pred_logits.shape[0]):
-            gt_polys, gt_polys_types = [], []
-            gt_window_doors = []
-            gt_window_doors_types = []
-            for gt_poly, gt_id in zip(
-                gt_instances[i].gt_masks.polygons, gt_instances[i].gt_classes.detach().cpu().tolist()
-            ):
-                gt_poly = gt_poly[0].reshape(-1, 2).astype(np.int32)
-                if gt_id in door_window_index:
-                    gt_window_doors.append(gt_poly)
-                    gt_window_doors_types.append(gt_id)
-                else:
-                    gt_polys.append(gt_poly)
-                    gt_polys_types.append(gt_id)
-
-            if dataset_name == "stru3d":
-                if int(scene_ids[i]) in wrong_s3d_annotations_list:
-                    continue
-                curr_opts = copy.deepcopy(opts)
-                curr_opts.scene_id = "scene_0" + str(scene_ids[i])
-                curr_data_rw = S3DRW(curr_opts, mode="test")  # TODO: "test"
-                evaluator = Evaluator(curr_data_rw, curr_opts)
-            elif dataset_name == "scenecad":
-                gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1, 2).astype(np.int32)]
-                evaluator = Evaluator_SceneCAD()
-            elif dataset_name == "rplan":
-                gt_polys = [x[0].reshape(-1, 2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
-                gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
-                evaluator = Evaluator_RPlan()
-            elif dataset_name in ["cubicasa", "waffle", "r2g"]:
-                evaluator = Evaluator_RPlan(iou_thres=iou_thres)
-
-            print("Running Evaluation for scene %s" % scene_ids[i])
-
-            fg_mask_per_scene = fg_mask[i]
-            pred_corners_per_scene = pred_corners[i]
-            room_polys = []
-
-            if semantic_rich:
-                room_types = []
-                window_doors = []
-                window_doors_types = []
-                pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
-
-            # process per room
-            for j in range(fg_mask_per_scene.shape[0]):
-                fg_mask_per_room = fg_mask_per_scene[j]
-                pred_corners_per_room = pred_corners_per_scene[j]
-                valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
-                if len(valid_corners_per_room) > 0:
-                    corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
-                    corners = np.around(corners).astype(np.int32)
-
-                    if not semantic_rich:
-                        # only regular rooms
-                        if len(corners) >= 4 and Polygon(corners).area >= 100:
-                            room_polys.append(corners)
-                    else:
-                        # regular rooms
-                        # if pred_room_label_per_scene[j] not in door_window_index:
-                        if len(corners) >= 3 and Polygon(corners).area >= 100:
-                            room_polys.append(corners)
-                            room_types.append(pred_room_label_per_scene[j])
-                        # window / door
-                        elif len(corners) == 2 and dataset_name != "r2g":
-                            window_doors.append(corners)
-                            window_doors_types.append(pred_room_label_per_scene[j])
-
-            if not semantic_rich:
-                pred_room_label_per_scene = len(room_polys) * [-1]
-
-            if dataset_name == "stru3d":
-                if not semantic_rich:
-                    quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys)
-                else:
-                    quant_result_dict_scene = evaluator.evaluate_scene(
-                        room_polys=room_polys,
-                        room_types=room_types,
-                        window_door_lines=window_doors,
-                        window_door_lines_types=window_doors_types,
-                    )
-
-            elif dataset_name == "scenecad":
-                quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
-            elif dataset_name in ["rplan", "cubicasa", "waffle", "r2g"]:
-                if not semantic_rich:
-                    quant_result_dict_scene = evaluator.evaluate_scene(
-                        room_polys=room_polys,
-                        gt_polys=gt_polys,
-                        room_types=None,
-                        gt_polys_types=gt_polys_types,
-                        img_size=(image_size, image_size),
-                    )
-                else:
-                    quant_result_dict_scene = evaluator.evaluate_scene(
-                        room_polys=room_polys,
-                        gt_polys=gt_polys,
-                        room_types=room_types,
-                        gt_polys_types=gt_polys_types,
-                        window_door_lines=window_doors,
-                        gt_window_doors_list=gt_window_doors,
-                        window_door_lines_types=window_doors_types,
-                        gt_window_doors_type_list=gt_window_doors_types,
-                        img_size=(image_size, image_size),
-                    )
-
-            if quant_result_dict is None:
-                quant_result_dict = quant_result_dict_scene
-            else:
-                for k in quant_result_dict.keys():
-                    quant_result_dict[k] += quant_result_dict_scene[k]
-
-            scene_counter += 1
-
-            # plot regular room floorplan
-            gt_room_polys = [np.array(poly) for poly in gt_polys]
-            room_polys = [np.array(poly) for poly in room_polys]
-
-            if "gt_polys_sorted_indcs" in quant_result_dict_scene:
-                gt_polys_sorted_indcs = quant_result_dict_scene["gt_polys_sorted_indcs"]
-                del quant_result_dict_scene["gt_polys_sorted_indcs"]
-                gt_room_polys = [gt_room_polys[ind] for ind in gt_polys_sorted_indcs]
-
-            if "pred2gt_indices" in quant_result_dict_scene:
-                pred2gt_indices = quant_result_dict_scene["pred2gt_indices"]
-                del quant_result_dict_scene["pred2gt_indices"]
-                room_polys, gt_room_polys, pred_mask, gt_mask = sort_polygons_by_matching(
-                    pred2gt_indices, room_polys, gt_room_polys
-                )
-            else:
-                pred_mask, gt_mask = None, None
-
-            prec, rec = quant_result_dict_scene["room_prec"], quant_result_dict_scene["room_rec"]
-            f1 = 2 * prec * rec / (prec + rec + 1e-5)
-            missing_rate = quant_result_dict_scene["room_missing_ratio"]
-            plot_statistics = {
-                "f1": f1,
-                "prec": prec,
-                "rec": rec,
-                "missing_rate": missing_rate,
-                "num_preds": len(room_polys),
-                "num_gt": len(gt_polys),
-                "num_matched_preds": sum([x != -1 for x in pred2gt_indices]),
-            }
-
-            if plot_pred:
-                gt_floorplan_map = plot_floorplan_with_regions(
-                    gt_room_polys, matching_labels=gt_mask, base_scale=image_size, scale=1024
-                )
-                floorplan_map = plot_floorplan_with_regions(
-                    room_polys, matching_labels=pred_mask, base_scale=image_size, scale=1024
-                )
-
-                concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
-                cv2.imwrite(os.path.join(output_dir, "{}_pred_floorplan.png".format(scene_ids[i])), concatenated_map)
-
-            if save_pred:
-                # Save room_polys as JSON
-                json_path = os.path.join(output_dir, "jsons", "{}.json".format(str(scene_ids[i]).zfill(5)))
-                os.makedirs(os.path.dirname(json_path), exist_ok=True)
-                polys_list = [poly.astype(float).tolist() for poly in room_polys]
-                if semantic_rich:
-                    polys_list += [window_door.astype(float).tolist() for window_door in window_doors]
-                    types_list = room_types + window_doors_types
-                else:
-                    types_list = [-1] * len(polys_list)
-
-                output_json = [
-                    {
-                        "image_id": str(scene_ids[i]).zfill(5),
-                        "segmentation": polys_list[instance_id],
-                        "category_id": int(types_list[instance_id]),
-                        "id": instance_id,
-                    }
-                    for instance_id in range(len(polys_list))
-                ]
-                with open(json_path, "w") as json_file:
-                    json.dump(output_json, json_file)
-
-                json_result_path = os.path.join(
-                    output_dir, "result_jsons", "{}.json".format(str(scene_ids[i]).zfill(5))
-                )
-                new_quant_result_dict_scene = compute_f1(copy.deepcopy(quant_result_dict_scene), metric_category)
-                os.makedirs(os.path.dirname(json_result_path), exist_ok=True)
-                with open(json_result_path, "w") as json_file:
-                    json.dump(new_quant_result_dict_scene, json_file)
-
-            if plot_density:
-                pred_room_map = plot_density_map(
-                    samples[i], image_size, room_polys, pred_room_label_per_scene, plot_text=False
-                )
-                gt_room_map = plot_density_map(samples[i], image_size, gt_polys, gt_polys_types, plot_text=False)
-
-                concatenated_map = concat_floorplan_maps(gt_room_map, pred_room_map, plot_statistics)
-                cv2.imwrite(os.path.join(output_dir, "{}_pred_room_map.png".format(scene_ids[i])), concatenated_map)
-
-    for k in quant_result_dict.keys():
-        quant_result_dict[k] /= float(scene_counter)
-    quant_result_dict = compute_f1(quant_result_dict, metric_category)
-
-    print("*************************************************")
-    print(quant_result_dict)
-    print("*************************************************")
-
-    with open(os.path.join(output_dir, "results.txt"), "w") as file:
-        file.write(json.dumps(quant_result_dict))
-
-
-@torch.no_grad()
-def evaluate_floor_v2(
-    model,
-    dataset_name,
-    data_loader,
-    device,
-    output_dir,
-    plot_pred=True,
-    plot_density=True,
-    plot_gt=True,
-    semantic_rich=False,
-    save_pred=False,
+    poly2seq: bool = False,
     add_cls_token=False,
     per_token_sem_loss=False,
     iou_thres=0.5,
     wd_as_line=True,
 ):
+    """
+    Evaluate the model on a given dataset at testing.
+    
+    This function supports two evaluation modes:
+    - Non-poly2seq mode (poly2seq=False): RoomFormer evaluation with fg_mask filtering
+    - Poly2seq mode (poly2seq=True): Raster2Seq evaluation with sequence-based predictions
+    
+    This function processes the dataset in batches, performs inference using the provided model,
+    and computes quantitative metrics such as precision, recall, and F1-score for rooms, corners,
+    and angles. It supports semantic-rich evaluation including room types and window/door detection
+    for specific datasets. Optionally, it can plot predicted floorplans, density maps, and save
+    predictions as JSON files.
+
+    Args:
+        model: The trained model to evaluate (e.g., a PyTorch model).
+        dataset_name (str): Name of the dataset (e.g., "stru3d", "cubicasa", "r2g", "waffle").
+        data_loader: PyTorch DataLoader providing batched inputs and extras.
+        device: Device to run the model on (e.g., torch.device('cuda') or 'cpu').
+        output_dir (str): Directory path to save output files (plots, JSONs, results).
+        plot_pred (bool, optional): If True, plot and save predicted floorplans. Default is True.
+        plot_density (bool, optional): If True, plot and save density maps. Default is True.
+        plot_gt (bool, optional): If True, save ground truth images. Default is True.
+        semantic_rich (bool, optional): If True, perform semantic evaluation including room types and window/door lines. Default is False.
+        save_pred (bool, optional): If True, save predicted polygons and metrics as JSON files. Default is False.
+        poly2seq (bool, optional): If True, uses sequence-based prediction mode with forward_inference.
+                                   If False, uses mask-based filtering with fg_mask. Defaults to False.
+        add_cls_token (bool, optional): If True, accounts for class tokens in sequence processing.
+                                        Only used when poly2seq=True. Defaults to False.
+        per_token_sem_loss (bool, optional): If True, computes semantic loss per token using voting.
+                                             Only used when poly2seq=True. Defaults to False.
+        iou_thres (float, optional): IoU threshold for matching predictions to ground truth. Default is 0.5.
+        wd_as_line (bool, optional): If True, treats windows/doors as lines based on corner count.
+                                     If False, uses semantic class. Only used when poly2seq=True. Defaults to True.
+
+    Returns:
+        None. The function prints the aggregated quantitative results to the console and saves them to 'results.txt' in output_dir.
+    """
     model.eval()
 
     if dataset_name == "stru3d":
@@ -885,7 +573,7 @@ def evaluate_floor_v2(
 
     quant_result_dict = None
     scene_counter = 0
-    merge = False
+    merge = False # Only used in poly2seq mode for merged plot output
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -896,48 +584,29 @@ def evaluate_floor_v2(
         gt_instances = [x["instances"].to(device) for x in batched_inputs]
 
         image_size = samples[0].size(2)
-        # # draw GT map
-        # if plot_gt:
-        #     for i, gt_inst in enumerate(gt_instances):
-        #         if not semantic_rich:
-        #             # plot regular room floorplan
-        #             gt_polys = []
-        #             density_map = np.transpose((samples[i] * (image_size - 1)).cpu().numpy(), [1, 2, 0])
-        #             density_map = np.repeat(density_map, 3, axis=2)
 
-        #             gt_corner_map = np.zeros([image_size, image_size, 3])
-        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
-        #                 corners = poly[0].reshape(-1, 2).astype(np.int32)
-        #                 gt_polys.append(corners)
-        #             gt_room_polys = gt_polys # [np.array(r) for r in gt_polys]
-        #             gt_floorplan_map = plot_floorplan_with_regions(gt_room_polys, scale=1000)
-        #             cv2.imwrite(os.path.join(output_dir, '{}_gt.png'.format(scene_ids[i])), gt_floorplan_map)
-        #         else:
-        #             # plot semantically-rich floorplan
-        #             gt_sem_rich = []
-        #             for j, poly in enumerate(gt_inst.gt_masks.polygons):
-        #                 corners = poly[0].reshape(-1, 2).astype(np.int32)
-        #                 corners_flip_y = corners.copy()
-        #                 corners_flip_y[:,1] = image_size - 1 - corners_flip_y[:,1]
-        #                 corners = corners_flip_y
-        #                 gt_sem_rich.append([corners, gt_inst.gt_classes.cpu().numpy()[j]])
+        # Get predictions based on mode
+        if poly2seq:
+            outputs = model.forward_inference(samples)
+            pred_corners = outputs["gen_out"]
+            np_softmax = lambda x: np.exp(x) / np.sum(np.exp(x), axis=-1, keepdims=True)
+            fg_mask = None
+        else:
+            outputs = model(samples)
+            pred_logits = outputs["pred_logits"]
+            pred_corners = outputs["pred_coords"]
+            fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
 
-        #             gt_sem_rich_path = os.path.join(output_dir, '{}_sem_rich_gt.png'.format(scene_ids[i]))
-        #             # plot_semantic_rich_flooplan(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1)
-        #             plot_semantic_rich_floorplan_tight(gt_sem_rich, gt_sem_rich_path, prec=1, rec=1, plot_text=True, is_bw=False, door_window_index=door_window_index)
-
-        outputs = model.forward_inference(samples)
-        pred_corners = outputs["gen_out"]
         bs = outputs["pred_logits"].shape[0]
-        np_softmax = lambda x: np.exp(x) / np.sum(np.exp(x), axis=-1, keepdims=True)
-
+            
         if "pred_room_logits" in outputs:
-            prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
-            _, pred_room_label = prob[..., :-1].max(-1)
             pred_room_logits = outputs["pred_room_logits"]
+            prob = torch.nn.functional.softmax(pred_room_logits, -1)
+            _, pred_room_label = prob[..., :-1].max(-1)
 
         # process per scene
         for i in range(bs):
+            # Prepare ground truth data
             gt_polys, gt_polys_types = [], []
             gt_window_doors = []
             gt_window_doors_types = []
@@ -952,119 +621,27 @@ def evaluate_floor_v2(
                     gt_polys.append(gt_poly)
                     gt_polys_types.append(gt_id)
 
+            # Create evaluator based on dataset
             if dataset_name == "stru3d":
                 if int(scene_ids[i]) in wrong_s3d_annotations_list:
                     continue
                 curr_opts = copy.deepcopy(opts)
                 curr_opts.scene_id = "scene_0" + str(scene_ids[i])
-                curr_data_rw = S3DRW(curr_opts, mode="test")  # TODO: return to "test"
-                evaluator = Evaluator(curr_data_rw, curr_opts, disable_overlapping_filter=True)
-            elif dataset_name == "scenecad":
-                gt_polys = [gt_instances[i].gt_masks.polygons[0][0].reshape(-1, 2).astype(np.int32)]
-                evaluator = Evaluator_SceneCAD(disable_overlapping_filter=True)
-            elif dataset_name == "rplan":
-                gt_polys = [x[0].reshape(-1, 2).astype(np.int32) for x in gt_instances[i].gt_masks.polygons]
-                gt_polys_types = gt_instances[i].gt_classes.detach().cpu().tolist()
-                evaluator = Evaluator_RPlan(disable_overlapping_filter=True)
+                curr_data_rw = S3DRW(curr_opts, mode="test")
+                evaluator = Evaluator(curr_data_rw, curr_opts, disable_overlapping_filter=poly2seq)
             elif dataset_name in ["cubicasa", "waffle", "r2g"]:
                 evaluator = Evaluator_RPlan(
-                    disable_overlapping_filter=True, iou_thres=iou_thres, wd_as_line=wd_as_line
+                    disable_overlapping_filter=poly2seq, iou_thres=iou_thres, wd_as_line=wd_as_line
                 )
 
             print("Running Evaluation for scene %s" % scene_ids[i])
 
-            # fg_mask_per_scene = fg_mask[i]
-            pred_corners_per_scene = pred_corners[i]
-            room_polys = []
-
-            if semantic_rich:
-                room_types = []
-                window_doors = []
-                window_doors_types = []
-                pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
-                pred_room_logit_per_scene = pred_room_logits[i].cpu().numpy()
-
-            all_room_polys = []
-            tmp = []
-            all_length_list = [0]
-            for j in range(len(pred_corners_per_scene)):
-                if isinstance(pred_corners_per_scene[j], int):
-                    if pred_corners_per_scene[j] == 2 and tmp:  # sep
-                        all_room_polys.append(tmp)
-                        all_length_list.append(len(tmp) + 1 + add_cls_token)
-                        tmp = []
-                    continue
-                tmp.append(pred_corners_per_scene[j])
-
-            if len(tmp):
-                all_room_polys.append(tmp)
-                all_length_list.append(len(tmp) + 1 + add_cls_token)
-            start_poly_indices = np.cumsum(all_length_list)
-
-            final_pred_classes = []
-            for j, poly in enumerate(all_room_polys):
-                if len(poly) < 2:
-                    continue
-                corners = np.array(poly, dtype=np.float32) * (image_size - 1)
-                corners = np.around(corners).astype(np.int32)
-                # print(len(corners))
-
-                if not semantic_rich:
-                    # only regular rooms
-                    if len(corners) >= 4 and Polygon(corners).area >= 100:
-                        room_polys.append(corners)
-                    # room_polys.append(corners)
-                else:
-                    if per_token_sem_loss:
-                        pred_classes, counts = np.unique(
-                            pred_room_label_per_scene[start_poly_indices[j] : start_poly_indices[j + 1]][:-1],
-                            return_counts=True,
-                        )
-                        pred_class = pred_classes[np.argmax(counts)]
-                        pred_logit = pred_room_logit_per_scene[start_poly_indices[j] : start_poly_indices[j + 1]][:-1]
-                    else:
-                        pred_class = pred_room_label_per_scene[
-                            start_poly_indices[j + 1] - 1
-                        ]  # get last cls token in the seq
-                    final_pred_classes.append(pred_class)
-
-                    # # regular rooms
-                    # if len(corners)>=4 and Polygon(corners).area >= 100:
-                    #     room_polys.append(corners)
-                    #     room_types.append(pred_class)
-                    # # window / door
-                    # elif len(corners)==2:
-                    #     window_doors.append(corners)
-                    #     window_doors_types.append(pred_class)
-
-                    if wd_as_line:
-                        # regular rooms
-                        if len(corners) >= 3 and Polygon(corners).area >= 100:
-                            room_polys.append(corners)
-                            room_types.append(pred_class)
-                        # window / door
-                        elif len(corners) == 2 and dataset_name != "r2g":
-                            window_doors.append(corners)
-                            if pred_class not in door_window_index:
-                                wd_prob = np_softmax(pred_logit[:, door_window_index].sum(0))
-                                pred_class = door_window_index[wd_prob.argmax()]
-                                # pred_class = np.random.choice(door_window_index, size=1, p=wd_prob)
-                                # pred_class = door_window_index[np.random.rand() > 0.5]
-
-                            window_doors_types.append(pred_class)
-                    else:
-                        # regular rooms
-                        if pred_class not in door_window_index:
-                            room_polys.append(corners)
-                            room_types.append(pred_class)
-                        else:
-                            window_doors.append(corners)
-                            window_doors_types.append(pred_class)
-
-            if not semantic_rich:
-                pred_room_label_per_scene = len(all_room_polys) * [-1]
-            else:
-                pred_room_label_per_scene = final_pred_classes
+            scene_outputs = _process_predictions(pred_corners, i, semantic_rich, poly2seq, fg_mask, image_size, pred_room_label if semantic_rich else None, pred_room_logits if semantic_rich else None, add_cls_token, per_token_sem_loss, wd_as_line, door_window_index, dataset_name)
+            room_polys = scene_outputs["room_polys"]
+            room_types = scene_outputs["room_types"]
+            window_doors = scene_outputs["window_doors"]
+            window_doors_types = scene_outputs["window_doors_types"]
+            pred_room_label_per_scene = scene_outputs["pred_room_label_per_scene"]
 
             if dataset_name == "stru3d":
                 if not semantic_rich:
@@ -1076,11 +653,7 @@ def evaluate_floor_v2(
                         window_door_lines=window_doors,
                         window_door_lines_types=window_doors_types,
                     )
-
-            elif dataset_name == "scenecad":
-                quant_result_dict_scene = evaluator.evaluate_scene(room_polys=room_polys, gt_polys=gt_polys)
-
-            elif dataset_name in ["rplan", "cubicasa", "waffle", "r2g"]:
+            elif dataset_name in ["cubicasa", "waffle", "r2g"]:
                 if not semantic_rich:
                     quant_result_dict_scene = evaluator.evaluate_scene(
                         room_polys=room_polys,
@@ -1148,14 +721,14 @@ def evaluate_floor_v2(
                 floorplan_map = plot_floorplan_with_regions(
                     room_polys, matching_labels=pred_mask, base_scale=image_size, scale=1024
                 )
-                if merge:
+                if not merge:
+                    cv2.imwrite(os.path.join(output_dir, "{}_pred_floorplan.png".format(scene_ids[i])), floorplan_map)
+                    cv2.imwrite(os.path.join(output_dir, "{}_gt_floorplan.png".format(scene_ids[i])), gt_floorplan_map)
+                else:
                     concatenated_map = concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics)
                     cv2.imwrite(
                         os.path.join(output_dir, "{}_pred_floorplan.png".format(scene_ids[i])), concatenated_map
                     )
-                else:
-                    cv2.imwrite(os.path.join(output_dir, "{}_pred_floorplan.png".format(scene_ids[i])), floorplan_map)
-                    cv2.imwrite(os.path.join(output_dir, "{}_gt_floorplan.png".format(scene_ids[i])), gt_floorplan_map)
 
                 if semantic_rich:
                     _, ID2CLASS_LABEL = get_dataset_class_labels(dataset_name)
@@ -1233,227 +806,98 @@ def evaluate_floor_v2(
         file.write(json.dumps(quant_result_dict))
 
 
-def generate(model, samples, semantic_rich=False, drop_wd=False):
-    model.eval()
-    outputs = model(samples)
-    pred_corners = outputs["pred_coords"]
-    pred_logits = outputs["pred_logits"]
-    fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
-
-    bs = outputs["pred_logits"].shape[0]
-    image_size = samples[0].size(2)
-
-    if "pred_room_logits" in outputs:
-        prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
-        _, pred_room_label = prob[..., :-1].max(-1)
-
-    outputs = []
-    output_classes = []
-
-    # process per scene
-    for i in range(bs):
-        fg_mask_per_scene = fg_mask[i]
-        pred_corners_per_scene = pred_corners[i]
-        room_polys = []
-
-        if semantic_rich:
-            room_types = []
-            window_doors = []
-            window_doors_types = []
-            pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
-        else:
-            window_doors = None
-            room_types = None
-
-        # process per room
-        for j in range(fg_mask_per_scene.shape[0]):
-            fg_mask_per_room = fg_mask_per_scene[j]
-            pred_corners_per_room = pred_corners_per_scene[j]
-            valid_corners_per_room = pred_corners_per_room[fg_mask_per_room]
-            if len(valid_corners_per_room) > 0:
-                corners = (valid_corners_per_room * (image_size - 1)).cpu().numpy()
-                corners = np.around(corners).astype(np.int32)
-
-                if not semantic_rich:
-                    # only regular rooms
-                    if len(corners) >= 4 and Polygon(corners).area >= 100:
-                        room_polys.append(corners)
-                else:
-                    # regular rooms
-                    if len(corners) >= 3 and Polygon(corners).area >= 100:
-                        room_polys.append(corners)
-                        room_types.append(pred_room_label_per_scene[j])
-                    # window / door
-                    elif len(corners) == 2:
-                        window_doors.append(corners)
-                        window_doors_types.append(pred_room_label_per_scene[j])
-
-        if not semantic_rich:
-            pred_room_label_per_scene = len(room_polys) * [-1]
-        else:
-            pred_room_label_per_scene = pred_room_label_per_scene.tolist()
-
-        if window_doors and not drop_wd:
-            outputs.append(room_polys + window_doors)
-            output_classes.append(room_types + window_doors_types)
-        else:
-            outputs.append(room_polys)
-            output_classes.append(room_types)
-
-    return {"room": outputs, "labels": output_classes}
-
-
-def generate_v2(
-    model, samples, semantic_rich=False, use_cache=True, per_token_sem_loss=False, drop_wd=False, return_anchors=False
+def generate(
+    model,
+    samples,
+    semantic_rich=False,
+    poly2seq: bool = False,
+    use_cache=True,
+    per_token_sem_loss=False,
+    drop_wd=False,
 ):
+    """
+    Generate room polygons and labels from model predictions.
+    
+    This function supports two generation modes:
+    - Non-poly2seq mode (poly2seq=False): RoomFormer generation with fg_mask filtering
+    - Poly2seq mode (poly2seq=True): Raster2Seq generation with sequence-based predictions
+    
+    Args:
+        model: The trained model to use for inference.
+        samples: Input image samples (list of tensors).
+        semantic_rich (bool, optional): If True, predict room types and window/door elements. Default is False.
+        poly2seq (bool, optional): If True, uses sequence-based prediction mode with forward_inference.
+                                   If False, uses mask-based filtering with fg_mask. Defaults to False.
+        use_cache (bool, optional): If True, use caching in forward_inference. Only used when poly2seq=True. Default is True.
+        per_token_sem_loss (bool, optional): If True, computes semantic class using voting across tokens.
+                                             Only used when poly2seq=True. Default is False.
+        drop_wd (bool, optional): If True, exclude window/door elements from output. Default is False.
+    
+    Returns:
+        dict: Dictionary containing:
+            - 'room': List of room polygons (and optionally window/door lines) per scene
+            - 'labels': List of class labels per scene
+    """
+
     model.eval()
-    outputs = model.forward_inference(samples, use_cache)
-    pred_corners = outputs["gen_out"]
+    image_size = samples[0].size(2)
+
+    # Get predictions based on mode
+    if poly2seq:
+        outputs = model.forward_inference(samples, use_cache)
+        pred_corners = outputs["gen_out"]
+        fg_mask = None
+    else:
+        outputs = model(samples)
+        pred_corners = outputs["pred_coords"]
+        pred_logits = outputs["pred_logits"]
+        fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
 
     bs = outputs["pred_logits"].shape[0]
-    image_size = samples[0].size(2)
-    anchors = outputs.get("anchors", None)
-    if anchors is not None:
-        anchors = (torch.sigmoid(anchors) * image_size).cpu().numpy().astype(np.int32)
-        anchors = anchors.tolist()
 
     if "pred_room_logits" in outputs:
-        prob = torch.nn.functional.softmax(outputs["pred_room_logits"], -1)
+        pred_room_logits = outputs["pred_room_logits"]
+        prob = torch.nn.functional.softmax(pred_room_logits, -1)
         _, pred_room_label = prob[..., :-1].max(-1)
 
     outputs = []
     output_classes = []
-    output_anchors = []
 
     # process per scene
     for i in range(bs):
-        pred_corners_per_scene = pred_corners[i]
         room_polys = []
 
         if semantic_rich:
             room_types = []
             window_doors = []
             window_doors_types = []
-            pred_room_label_per_scene = pred_room_label[i].cpu().numpy()
         else:
             window_doors = None
             room_types = None
-            pred_room_label_per_scene = [-1] * len(pred_corners_per_scene)
-
-        all_room_polys = []
-        tmp = []
-        anchor_tmp = []
-        all_length_list = [0]
-        all_anchor_list = []
-        for j in range(len(pred_corners_per_scene)):
-            if isinstance(pred_corners_per_scene[j], int):
-                if pred_corners_per_scene[j] == 2 and tmp:  # sep
-                    all_room_polys.append(tmp)
-                    all_length_list.append(len(tmp) + 1)
-                    all_anchor_list.append(anchor_tmp)
-                    tmp = []
-                    anchor_tmp = []
-                continue
-            tmp.append(pred_corners_per_scene[j])
-            anchor_tmp.append(anchors[j])
-
-        if len(tmp):
-            all_room_polys.append(tmp)
-            all_length_list.append(len(tmp) + 1)
-            all_anchor_list.append(anchor_tmp)
-        start_poly_indices = np.cumsum(all_length_list)
-
-        final_pred_classes = []
-        pred_room_anchors = []
-        pred_window_anchors = []
-        for j, poly in enumerate(all_room_polys):
-            if len(poly) < 2:
-                continue
-            corners = np.array(poly, dtype=np.float32) * (image_size - 1)
-            corners = np.around(corners).astype(np.int32)
-            # print(len(corners))
-
-            if not semantic_rich:
-                # only regular rooms
-                if len(corners) >= 4 and Polygon(corners).area >= 100:
-                    room_polys.append(corners)
-                    if all_anchor_list:
-                        pred_room_anchors.append(all_anchor_list[j])
-            else:
-                if per_token_sem_loss:
-                    pred_classes, counts = np.unique(
-                        pred_room_label_per_scene[start_poly_indices[j] : start_poly_indices[j + 1]][:-1],
-                        return_counts=True,
-                    )
-                    pred_class = pred_classes[np.argmax(counts)]
-                else:
-                    pred_class = pred_room_label_per_scene[
-                        start_poly_indices[j + 1] - 1
-                    ]  # get last cls token in the seq
-                final_pred_classes.append(pred_class)
-
-                # regular rooms
-                if len(corners) >= 3 and Polygon(corners).area >= 100:
-                    room_polys.append(corners)
-                    room_types.append(pred_class)
-                    if all_anchor_list:
-                        pred_room_anchors.append(all_anchor_list[j])
-                # window / door
-                elif len(corners) == 2:
-                    window_doors.append(corners)
-                    window_doors_types.append(pred_class)
-                    if all_anchor_list:
-                        pred_window_anchors.append(all_anchor_list[j])
-
-        if not semantic_rich:
-            pred_room_label_per_scene = len(all_room_polys) * [-1]
-        else:
-            pred_room_label_per_scene = final_pred_classes
+        
+        scene_outputs = _process_predictions(pred_corners, 
+                                             i, 
+                                             semantic_rich, 
+                                             poly2seq, 
+                                             fg_mask, 
+                                             image_size, 
+                                             pred_room_label if semantic_rich else None, 
+                                             pred_room_logits if semantic_rich else None, False, 
+                                             per_token_sem_loss, 
+                                             wd_as_line=True, 
+                                             door_window_index=None,
+                                             dataset_name=None)
+        room_polys = scene_outputs["room_polys"]
+        room_types = scene_outputs["room_types"]
+        window_doors = scene_outputs["window_doors"]
+        window_doors_types = scene_outputs["window_doors_types"]
 
         if not drop_wd and window_doors:
             outputs.append(room_polys + window_doors)
             output_classes.append(room_types + window_doors_types)
-            output_anchors.append(pred_room_anchors + pred_window_anchors)
         else:
             outputs.append(room_polys)
             output_classes.append(room_types)
-            output_anchors.append(pred_room_anchors)
 
     out_dict = {"room": outputs, "labels": output_classes}
-    if return_anchors:
-        out_dict.update({"anchors": output_anchors})
-
     return out_dict
-
-
-def concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics={}):
-    pad_color = (0, 0, 0) if gt_floorplan_map.shape[2] == 3 else (0, 0, 0, 0)
-    padding = np.full((gt_floorplan_map.shape[0], 10, gt_floorplan_map.shape[2]), pad_color, dtype=np.uint8)
-    # Concatenate pred_room_map, padding, and gt_room_map
-    concatenated_map = cv2.hconcat([gt_floorplan_map, padding, floorplan_map])
-    top_padding = np.full((100, concatenated_map.shape[1], concatenated_map.shape[2]), pad_color, dtype=np.uint8)
-
-    # Add text for f1 and missing_rate
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 1
-    font_color = (255, 255, 255) if gt_floorplan_map.shape[2] == 3 else (0, 0, 255, 255)  # White text
-    thickness = 2
-    line_type = cv2.LINE_AA
-
-    # Position for the text
-    text_f1 = (
-        f"F1: {plot_statistics['f1']:.2f}, Prec: {plot_statistics['prec']:.2f}, Rec: {plot_statistics['rec']:.2f}"
-    )
-    text_missing_rate = f"Missing Rate: {plot_statistics['missing_rate']:.2f}, {plot_statistics['num_preds']}/{plot_statistics['num_matched_preds']}/{plot_statistics['num_gt']}"
-    text_position_f1 = (10, 30)  # Position within the top padding
-    text_position_missing_rate = (10, 70)  # Adjusted position for the second line
-
-    # Overlay text on the top padding
-    cv2.putText(top_padding, text_f1, text_position_f1, font, font_scale, font_color, thickness, line_type)
-    cv2.putText(
-        top_padding, text_missing_rate, text_position_missing_rate, font, font_scale, font_color, thickness, line_type
-    )
-
-    # Concatenate the top padding with the concatenated_map
-    final_map = cv2.vconcat([top_padding, concatenated_map])
-    return final_map

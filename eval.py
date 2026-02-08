@@ -11,15 +11,14 @@ from torch.utils.data import DataLoader
 from tqdm import trange
 
 from datasets import build_dataset
-from engine import evaluate_floor, evaluate_floor_v2, generate, generate_v2
+from engine import evaluate_floor, generate
 from models import build_model
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser("RoomFormer", add_help=False)
+    parser = argparse.ArgumentParser("Raster2Seq evaluation script", add_help=False)
     parser.add_argument("--batch_size", default=10, type=int)
 
-    # new
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--input_channels", default=1, type=int)
     parser.add_argument("--image_norm", action="store_true")
@@ -38,11 +37,10 @@ def get_args_parser():
     parser.add_argument("--wd_only", action="store_true")
     parser.add_argument("--disable_image_transform", action="store_true")
     parser.add_argument("--num_subset_images", type=int, default=-1)
-    parser.add_argument("--model_version", type=str, default="v1")
     parser.add_argument("--converter_version", type=str, default="v1")
     parser.add_argument("--inject_cls_embed", action="store_true")
 
-    # poly2seq
+    # raster2seq
     parser.add_argument("--poly2seq", action="store_true")
     parser.add_argument("--seq_len", type=int, default=1024)
     parser.add_argument("--num_bins", type=int, default=64)
@@ -265,22 +263,15 @@ def main(args):
         with torch.no_grad():
             for rep in trange(repetitions):
                 starter.record()
-                if not args.poly2seq:
-                    _ = generate(
-                        model,
-                        images,
-                        semantic_rich=args.semantic_classes > 0,
-                        drop_wd=args.drop_wd,
-                    )
-                else:
-                    _ = generate_v2(
-                        model,
-                        images,
-                        semantic_rich=args.semantic_classes > 0,
-                        use_cache=True,
-                        per_token_sem_loss=args.per_token_sem_loss,
-                        drop_wd=args.drop_wd,
-                    )
+                _ = generate(
+                    model,
+                    images,
+                    semantic_rich=args.semantic_classes > 0,
+                    use_cache=True,
+                    per_token_sem_loss=args.per_token_sem_loss,
+                    drop_wd=args.drop_wd,
+                    poly2seq=args.poly2seq,
+                )
                 ender.record()
                 # WAIT FOR GPU SYNC
                 torch.cuda.synchronize()
@@ -295,39 +286,25 @@ def main(args):
     # save_dir = os.path.join(output_dir, os.path.dirname(args.checkpoint).split('/')[-1])
     save_dir = output_dir
     os.makedirs(save_dir, exist_ok=True)
-    if not args.poly2seq:
-        evaluate_floor(
-            model,
-            args.dataset_name,
-            data_loader_eval,
-            device,
-            save_dir,
-            plot_pred=args.plot_pred,
-            plot_density=args.plot_density,
-            plot_gt=args.plot_gt,
-            semantic_rich=(args.semantic_classes > 0 and not args.disable_sem_rich),
-            save_pred=args.save_pred,
-            iou_thres=args.iou_thres,
-        )
-    else:
-        evaluate_floor_v2(
-            model,
-            args.dataset_name,
-            data_loader_eval,
-            device,
-            save_dir,
-            plot_pred=args.plot_pred,
-            plot_density=args.plot_density,
-            plot_gt=args.plot_gt,
-            semantic_rich=(args.semantic_classes > 0 and not args.disable_sem_rich),
-            save_pred=args.save_pred,
-            per_token_sem_loss=args.per_token_sem_loss,
-            iou_thres=args.iou_thres,
-        )
+    evaluate_floor(
+        model,
+        args.dataset_name,
+        data_loader_eval,
+        device,
+        save_dir,
+        plot_pred=args.plot_pred,
+        plot_density=args.plot_density,
+        plot_gt=args.plot_gt,
+        semantic_rich=(args.semantic_classes > 0 and not args.disable_sem_rich),
+        save_pred=args.save_pred,
+        per_token_sem_loss=args.per_token_sem_loss,
+        iou_thres=args.iou_thres,
+        poly2seq=args.poly2seq,
+    )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("RoomFormer evaluation script", parents=[get_args_parser()])
+    parser = argparse.ArgumentParser("Raster2Seq evaluation script", parents=[get_args_parser()])
     args = parser.parse_args()
 
     if args.debug:

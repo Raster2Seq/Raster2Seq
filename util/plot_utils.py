@@ -1433,3 +1433,36 @@ def sort_polygons_by_matching(matching_pred2gt, pred_polygons, gt_polygons):
             gt_mask.append(0)
 
     return sorted_pred_polygons, sorted_gt_polygons, pred_mask, gt_mask
+
+
+def concat_floorplan_maps(gt_floorplan_map, floorplan_map, plot_statistics={}):
+    pad_color = (0, 0, 0) if gt_floorplan_map.shape[2] == 3 else (0, 0, 0, 0)
+    padding = np.full((gt_floorplan_map.shape[0], 10, gt_floorplan_map.shape[2]), pad_color, dtype=np.uint8)
+    # Concatenate pred_room_map, padding, and gt_room_map
+    concatenated_map = cv2.hconcat([gt_floorplan_map, padding, floorplan_map])
+    top_padding = np.full((100, concatenated_map.shape[1], concatenated_map.shape[2]), pad_color, dtype=np.uint8)
+
+    # Add text for f1 and missing_rate
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    font_color = (255, 255, 255) if gt_floorplan_map.shape[2] == 3 else (0, 0, 255, 255)  # White text
+    thickness = 2
+    line_type = cv2.LINE_AA
+
+    # Position for the text
+    text_f1 = (
+        f"F1: {plot_statistics['f1']:.2f}, Prec: {plot_statistics['prec']:.2f}, Rec: {plot_statistics['rec']:.2f}"
+    )
+    text_missing_rate = f"Missing Rate: {plot_statistics['missing_rate']:.2f}, {plot_statistics['num_preds']}/{plot_statistics['num_matched_preds']}/{plot_statistics['num_gt']}"
+    text_position_f1 = (10, 30)  # Position within the top padding
+    text_position_missing_rate = (10, 70)  # Adjusted position for the second line
+
+    # Overlay text on the top padding
+    cv2.putText(top_padding, text_f1, text_position_f1, font, font_scale, font_color, thickness, line_type)
+    cv2.putText(
+        top_padding, text_missing_rate, text_position_missing_rate, font, font_scale, font_color, thickness, line_type
+    )
+
+    # Concatenate the top padding with the concatenated_map
+    final_map = cv2.vconcat([top_padding, concatenated_map])
+    return final_map

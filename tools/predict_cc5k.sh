@@ -2,13 +2,13 @@
 
 DATA=data/coco_cubicasa5k_nowalls_v4-1_refined/
 FOLDER=test 
-CKPT=cc5k_sem_res256_ep0499.pth
+CKPT=checkpoints/cc5k_sem_res256_ep0499.pth
 
 python predict.py \
     --dataset_name=cubicasa \
     --dataset_root=${DATA}/${FOLDER} \
     --checkpoint=${CKPT} \
-    --output_dir=cc5k_${FOLDER}_preds \
+    --output_dir=pred_outputs/cc5k_${FOLDER}_preds \
     --semantic_classes=12 \
     --input_channels 3 \
     --poly2seq \

@@ -341,7 +341,7 @@ def loop_data(data_loader, eval_set, device, output_dir):
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser("RoomFormer", add_help=False)
+    parser = argparse.ArgumentParser("Raster2Seq plotting script", add_help=False)
     parser.add_argument("--batch_size", default=10, type=int)
 
     parser.add_argument("--debug", action="store_true")
@@ -606,7 +606,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser("RoomFormer evaluation script", parents=[get_args_parser()])
+    parser = argparse.ArgumentParser("Raster2Seq plotting script", parents=[get_args_parser()])
     args = parser.parse_args()
 
     main(args)

@@ -24,7 +24,7 @@ def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
-class RoomFormerV2(nn.Module):
+class Raster2Seq(nn.Module):
     """This is the RoomFormer module that performs floorplan reconstruction"""
 
     def __init__(
@@ -485,7 +485,6 @@ class RoomFormerV2(nn.Module):
 
         # hack implementation of room label prediction, not compatible with auxiliary loss
         if self.room_class_embed is not None:
-            # outputs_room_class = self.room_class_embed(hs[-1].view(bs, hs[-1].size[1], self.num_queries_per_poly, -1).mean(axis=2))
             hs = torch.cat(output_hs_list, dim=1)
             outputs_room_class = self.room_class_embed(hs)
             out = {
@@ -500,9 +499,6 @@ class RoomFormerV2(nn.Module):
 
     @torch.jit.unused
     def _set_aux_loss(self, outputs_class, outputs_coord):
-        # this is a workaround to make torchscript happy, as torchscript
-        # doesn't support dictionary with non-homogeneous values, such
-        # as a dict having both a Tensor and a list.
         return [{"pred_logits": a, "pred_coords": b} for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
 
     def _setup_caches(self, max_bs, max_src_len):
@@ -531,49 +527,6 @@ class SemHead(nn.Module):
         window_door_out = self.window_door_embed(x)
         out = torch.cat([room_out[:, :, :-1], window_door_out, room_out[:, :, -1:]], dim=-1)
         return out.contiguous()
-
-
-class Raster2Seq(RoomFormerV2):
-    """This is the RoomFormer module that performs floorplan reconstruction"""
-
-    def __init__(
-        self,
-        backbone,
-        transformer,
-        num_classes,
-        num_queries,
-        num_polys,
-        num_feature_levels,
-        aux_loss=True,
-        with_poly_refine=False,
-        masked_attn=False,
-        semantic_classes=-1,
-        seq_len=1024,
-        tokenizer=None,
-        use_anchor=False,
-    ):
-
-        super().__init__(
-            backbone,
-            transformer,
-            num_classes,
-            num_queries,
-            num_polys,
-            num_feature_levels,
-            aux_loss=aux_loss,
-            with_poly_refine=with_poly_refine,
-            masked_attn=masked_attn,
-            semantic_classes=semantic_classes,
-            seq_len=seq_len,
-            tokenizer=tokenizer,
-            use_anchor=use_anchor,
-        )
-
-        # Semantically-rich floorplan
-        hidden_dim = transformer.d_model
-        self.room_class_embed = None
-        if semantic_classes > 0:
-            self.room_class_embed = SemHead(hidden_dim, semantic_classes)
 
 
 class SetCriterion(nn.Module):
@@ -659,11 +612,6 @@ class SetCriterion(nn.Module):
         """Compute the cardinality error, ie the absolute error in the number of predicted non-empty corners
         This is not really a loss, it is intended for logging purposes only. It doesn't propagate gradients
         """
-        # pred_logits = outputs['pred_logits']
-        # tgt_lengths = targets['mask'].sum(dim=1).to(pred_logits.device)
-        # # Count the number of predictions that are NOT "no-object" (invalid corners)
-        # card_pred = (pred_logits.sigmoid() > 0.5).flatten(1, 2).sum(1)
-        # card_err = F.l1_loss(card_pred.float(), tgt_lengths.float())
         losses = {"cardinality_error": 0.0}
         return losses
 
@@ -807,41 +755,24 @@ def build(args, train=True, tokenizer=None):
 
     backbone = build_backbone(args)
     transformer = build_deforamble_transformer(args, pad_idx=pad_idx)
-    if getattr(args, "model_version", "v1") == "v1":
-        model = RoomFormerV2(
-            backbone,
-            transformer,
-            num_classes=num_classes,
-            num_queries=args.num_queries,
-            num_polys=args.num_polys,
-            num_feature_levels=args.num_feature_levels,
-            aux_loss=args.aux_loss,
-            with_poly_refine=args.with_poly_refine,
-            masked_attn=args.masked_attn,
-            semantic_classes=args.semantic_classes,
-            seq_len=args.seq_len,
-            tokenizer=tokenizer,
-            use_anchor=args.use_anchor,
-            patch_size=[1, 2][args.image_size == 512],  # 1 for 256x256, 2 for 512x512
-            freeze_anchor=getattr(args, "freeze_anchor", False),
-            inject_cls_embed=getattr(args, "inject_cls_embed", False),
-        )
-    else:
-        model = Raster2Seq(
-            backbone,
-            transformer,
-            num_classes=num_classes,
-            num_queries=args.num_queries,
-            num_polys=args.num_polys,
-            num_feature_levels=args.num_feature_levels,
-            aux_loss=args.aux_loss,
-            with_poly_refine=args.with_poly_refine,
-            masked_attn=args.masked_attn,
-            semantic_classes=args.semantic_classes,
-            seq_len=args.seq_len,
-            tokenizer=tokenizer,
-            use_anchor=args.use_anchor,
-        )
+    model = Raster2Seq(
+        backbone,
+        transformer,
+        num_classes=num_classes,
+        num_queries=args.num_queries,
+        num_polys=args.num_polys,
+        num_feature_levels=args.num_feature_levels,
+        aux_loss=args.aux_loss,
+        with_poly_refine=args.with_poly_refine,
+        masked_attn=args.masked_attn,
+        semantic_classes=args.semantic_classes,
+        seq_len=args.seq_len,
+        tokenizer=tokenizer,
+        use_anchor=args.use_anchor,
+        patch_size=[1, 2][args.image_size == 512],  # 1 for 256x256, 2 for 512x512
+        freeze_anchor=getattr(args, "freeze_anchor", False),
+        inject_cls_embed=getattr(args, "inject_cls_embed", False),
+    )
 
     if not train:
         return model
