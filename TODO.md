@@ -5,7 +5,7 @@
 [x] Add S3D density
 [x] Rerun prediction scripts
 [x] Rerun evaluations
-[] Rerun traing scripts
+[x] Rerun traing scripts
 [] Prepare annoymous github link
-[] Optional: Add scripts for 512 res training on CC5K and R2G
+[x] Optional: Add scripts for 512 res training on R2G
 

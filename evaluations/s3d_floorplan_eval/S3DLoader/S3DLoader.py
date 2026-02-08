@@ -1,12 +1,11 @@
 import json
 import os
 
-import numpy as np
 import cv2
+import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
-
 from s3d_floorplan_eval.S3DLoader.s3d_utils import generate_floorplan, parse_floor_plan_polys
+from torch.utils.data import DataLoader, Dataset
 
 
 class S3DLoader(object):

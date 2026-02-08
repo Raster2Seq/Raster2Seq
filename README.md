@@ -2,7 +2,7 @@
 <h1 align="center">Raster2Seq: Polygon Sequence Generation for Floorplan Reconstruction</h1>
 </div>
 
-<img src="./assets/teaser.png" width=100% height=80%>
+<img src="assets/teaser.png" width=100% height=80%>
 
 **TLDR:** We reformulate Raster2Vector conversion as a seq2seq polygon generation, handling to floorplans of arbitrary length.
 
@@ -42,7 +42,7 @@
 Reconstructing a structured vector-graphics representation from a rasterized floorplan image is typically an important prerequisite for computational tasks involving floorplans such as automated understanding or CAD workflows. However, existing techniques struggle in faithfully generating the structure and semantics conveyed by complex floorplans that depict large indoor spaces with many rooms and a varying numbers of polygon corners. To this end, we propose Raster2Seq, framing floorplan reconstruction as a sequence-to-sequence task, where each room is represented as a polygon sequence---labeled with the room's semantics. Our approach introduces an autoregressive decoder that learns to predict the next corner conditioned on image features and previously generated corners using guidance from learnable anchors. These anchors represent spatial coordinates in image space, hence allowing for effectively directing the attention mechanism to focus on informative image regions. By embracing the autoregressive mechanism, our method offers flexibility in the output format, enabling for efficiently handling complex floorplans with numerous rooms and diverse polygon structures. Our method achieves state-of-the-art performance on standard benchmarks such as Structure3D and CubiCasa5K, while also demonstrating strong generalization to more challenging datasets like WAFFLE, which contain diverse room structures and complex geometric variations.
 
 ## Method
- ![space-1.jpg](./assets/overview.png) 
+![space-1.jpg](assets/overview.png) 
 
 Given a rasterized floorplan image (left), our approach converts it into vectorized format, represented as a labeled polygon sequence, separated using special <SEP> tokens. The main architectural component of our framework is an anchor-based autoregressive decoder, which predicts the next token given image features ($f_{img}$), learnable anchors ($v_{anc}$) and the previously generated tokens. Above, we visualize the first two labeled polygons predicted (colored in orange and pink, respectively). 
 
@@ -143,6 +143,30 @@ Our model checkpoints can be found in table below:
 
 To download, use `gdown --fuzzy <url>` or our provided script [tools/download_checkpoints.sh](tools/download_checkpoints.sh).
 
+<details>
+  <summary>High-res models (512x512)</summary>
+
+  <table>
+  <thead>
+    <tr>
+      <th>Dataset</th>
+      <th>RoomF1</th>
+      <th>Checkpoints</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Raster2Graph</td>
+      <td>98.1</td>
+      <td>
+        <a href="">Semantic Model</a>
+      </td>
+    </tr>
+  </tbody>
+  </table>
+
+</details>
+
 
 ## Inference
 To run inference, we have provided these following bash scripts:
@@ -179,6 +203,15 @@ In finetuning stage, the models are trained to predict both structural and seman
 | Raster2Graph  | `tools/eval_r2g_finetune.sh`    |
 | Structured3D-DensityMap  | `tools/eval_s3d_density_finetune.sh`      |
 
+<details>
+  <summary>High-res models (512x512)</summary>
+
+  | Dataset       | Bash Script                  |
+  |---------------|----------------------------------|
+  | Raster2Graph  | `tools/eval_r2g_res512_finetune.sh`    |
+
+</details>
+
 
 **Cross-evaluation**: 
 We perform cross-evaluation on three datasets, CubiCasa5K, Raster2Graph, and WAFFLE. For CubiCasa5K & Raster2Graph, we use the geometric evaluation on Room, Corner, Angle while for WAFFLE, we report IoU segmentation results.
@@ -212,6 +245,16 @@ Raster2Seq involves two training stages:
 | CubiCasa5K    | `tools/finetune_cc5k.sh`   |
 | Raster2Graph  | `tools/finetune_r2g.sh`    |
 | Structured3D-DensityMap  | `tools/finetune_s3d_density.sh` |
+
+
+<details>
+  <summary>High-res models (512x512)</summary>
+
+  | Dataset       | Bash Script                  |
+  |---------------|----------------------------------|
+  | Raster2Graph  | `tools/finetune_r2g_res512.sh`    |
+
+</details>
 
 
 ## Acknowledgment

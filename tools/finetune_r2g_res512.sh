@@ -1,9 +1,9 @@
 #!/bin/bash
 
 export NCCL_P2P_LEVEL=NVL
- 
-MASTER_PORT=14156
-NUM_GPUS=1
+
+MASTER_PORT=25157
+NUM_GPUS=2
 
 CLS_COEFF=5
 COO_COEFF=20
@@ -12,25 +12,25 @@ SEQ_LEN=512
 NUM_BINS=32
 CONVERTER=v3
 
-DATA=data/coco_cubicasa5k_nowalls_v4-1_refined/
-JOB=cc5k_sem_res256
-PRETRAIN=checkpoints/cc5k_res256_ep0499.pth # or save_models/cc5k_res256/checkpoint0499.pth
+DATA=data/R2G_hr_dataset_processed_v1
+JOB=r2g_sem_res512
+PRETRAIN=checkpoints/r2g_res256_ep0849.pth # or saved_models/r2g_res256/checkpoint0849.pth
 OUTPUT_DIR=save_models
 
-WANDB_MODE=online torchrun --nproc_per_node=1 --master_port=$MASTER_PORT main_ddp.py --dataset_name=cubicasa \
+WANDB_MODE=online torchrun --nproc_per_node=${NUM_GPUS} --master_port=$MASTER_PORT main_ddp.py --dataset_name=r2g \
                --dataset_root=${DATA} \
-               --semantic_classes=12 \
+               --semantic_classes=13 \
                --job_name=${JOB} \
-               --batch_size 56 \
+               --batch_size 32 \
                --input_channels=3 \
                --output_dir ${OUTPUT_DIR} \
                --poly2seq \
-               --seq_len ${SEQ_LEN} \
+               --seq_len $SEQ_LEN \
                --num_bins ${NUM_BINS} \
                --ckpt_every_epoch=50 \
                --eval_every_epoch=50 \
                --label_smoothing 0.1 \
-               --epochs 500 \
+               --epochs 750 \
                --lr_drop '' \
                --cls_loss_coef ${CLS_COEFF} \
                --coords_loss_coef ${COO_COEFF} \
@@ -43,4 +43,5 @@ WANDB_MODE=online torchrun --nproc_per_node=1 --master_port=$MASTER_PORT main_dd
                --jointly_train \
                --converter_version ${CONVERTER} \
                --use_anchor \
-               --start_from_checkpoint ${PRETRAIN}
+               --start_from_checkpoint ${PRETRAIN} \
+               --image_size 512

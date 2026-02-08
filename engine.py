@@ -66,7 +66,7 @@ def train_one_epoch(
     Returns:
         dict: A dictionary containing the global averages of logged metrics (e.g., loss, lr, grad_norm).
     """
-    
+
     model.train()
     criterion.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -143,7 +143,7 @@ def evaluate(
     wd_as_line=True,
 ):
     """
-    Evaluates the model on a given dataset during training, computing losses and various metrics such as room IoU, 
+    Evaluates the model on a given dataset during training, computing losses and various metrics such as room IoU,
     precision, recall, corner precision/recall, angle precision/recall, and semantic metrics if applicable.
 
     This function supports two evaluation modes:
@@ -161,7 +161,7 @@ def evaluate(
         epoch (int, optional): Current epoch number, used in plot filenames. Defaults to None.
         poly2seq (bool, optional): If True, uses sequence-based prediction mode with forward_inference.
                                    If False, uses mask-based filtering with fg_mask. Defaults to False.
-        add_cls_token (bool, optional): If True, accounts for class tokens in sequence processing. 
+        add_cls_token (bool, optional): If True, accounts for class tokens in sequence processing.
                                         Only used when poly2seq=True. Defaults to False.
         per_token_sem_loss (bool, optional): If True, computes semantic loss per token using voting.
                                              Only used when poly2seq=True. Defaults to False.
@@ -172,7 +172,7 @@ def evaluate(
         dict: A dictionary containing averaged evaluation statistics, including losses and metrics like room_iou,
         room_prec, room_rec, corner_prec, corner_rec, angles_prec, angles_rec, and semantic metrics if applicable.
     """
-    
+
     model.eval()
     criterion.eval()
 
@@ -210,7 +210,6 @@ def evaluate(
         if poly2seq:
             outputs = model_obj.forward_inference(samples)
             pred_corners = outputs["gen_out"]
-            np_softmax = lambda x: np.exp(x) / np.sum(np.exp(x), axis=-1, keepdims=True)
             fg_mask = None
         else:
             pred_logits = outputs["pred_logits"]
@@ -262,8 +261,21 @@ def evaluate(
                 window_doors = []
                 window_doors_types = []
 
-
-            scene_outputs = _process_predictions(pred_corners, i, semantic_rich, poly2seq, fg_mask, image_size, pred_room_label if semantic_rich else None, pred_room_logits if semantic_rich else None, dataset_name, add_cls_token, per_token_sem_loss, wd_as_line, door_window_index, dataset_name)
+            scene_outputs = _process_predictions(
+                pred_corners,
+                i,
+                semantic_rich,
+                poly2seq,
+                fg_mask,
+                image_size,
+                pred_room_label if semantic_rich else None,
+                pred_room_logits if semantic_rich else None,
+                add_cls_token,
+                per_token_sem_loss,
+                wd_as_line,
+                door_window_index,
+                dataset_name,
+            )
             room_polys = scene_outputs["room_polys"]
             room_types = scene_outputs["room_types"]
             window_doors = scene_outputs["window_doors"]
@@ -336,17 +348,17 @@ def evaluate(
 
 
 def _process_predictions(
-    pred_corners, 
-    i, 
-    semantic_rich, 
-    poly2seq, 
-    fg_mask, 
-    image_size, 
+    pred_corners,
+    i,
+    semantic_rich,
+    poly2seq,
+    fg_mask,
+    image_size,
     pred_room_label,
-    pred_room_logits, 
-    add_cls_token, 
-    per_token_sem_loss, 
-    wd_as_line, 
+    pred_room_logits,
+    add_cls_token,
+    per_token_sem_loss,
+    wd_as_line,
     door_window_index,
     dataset_name,
 ):
@@ -475,7 +487,11 @@ def _process_predictions(
                     # window / door
                     elif len(corners) == 2:
                         window_doors.append(corners)
-                        if door_window_index is not None and pred_class not in door_window_index and dataset_name != "r2g":
+                        if (
+                            door_window_index is not None
+                            and pred_class not in door_window_index
+                            and dataset_name != "r2g"
+                        ):
                             wd_prob = np_softmax(pred_logit[:, door_window_index].sum(0))
                             pred_class = door_window_index[wd_prob.argmax()]
                         window_doors_types.append(pred_class)
@@ -498,8 +514,9 @@ def _process_predictions(
         "room_types": room_types if semantic_rich else None,
         "window_doors": window_doors if semantic_rich else None,
         "window_doors_types": window_doors_types if semantic_rich else None,
-        "pred_room_label_per_scene": pred_room_label_per_scene
+        "pred_room_label_per_scene": pred_room_label_per_scene,
     }
+
 
 @torch.no_grad()
 def evaluate_floor(
@@ -521,11 +538,11 @@ def evaluate_floor(
 ):
     """
     Evaluate the model on a given dataset at testing.
-    
+
     This function supports two evaluation modes:
     - Non-poly2seq mode (poly2seq=False): RoomFormer evaluation with fg_mask filtering
     - Poly2seq mode (poly2seq=True): Raster2Seq evaluation with sequence-based predictions
-    
+
     This function processes the dataset in batches, performs inference using the provided model,
     and computes quantitative metrics such as precision, recall, and F1-score for rooms, corners,
     and angles. It supports semantic-rich evaluation including room types and window/door detection
@@ -573,7 +590,7 @@ def evaluate_floor(
 
     quant_result_dict = None
     scene_counter = 0
-    merge = False # Only used in poly2seq mode for merged plot output
+    merge = False  # Only used in poly2seq mode for merged plot output
 
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -589,7 +606,6 @@ def evaluate_floor(
         if poly2seq:
             outputs = model.forward_inference(samples)
             pred_corners = outputs["gen_out"]
-            np_softmax = lambda x: np.exp(x) / np.sum(np.exp(x), axis=-1, keepdims=True)
             fg_mask = None
         else:
             outputs = model(samples)
@@ -598,7 +614,7 @@ def evaluate_floor(
             fg_mask = torch.sigmoid(pred_logits) > 0.5  # select valid corners
 
         bs = outputs["pred_logits"].shape[0]
-            
+
         if "pred_room_logits" in outputs:
             pred_room_logits = outputs["pred_room_logits"]
             prob = torch.nn.functional.softmax(pred_room_logits, -1)
@@ -636,7 +652,21 @@ def evaluate_floor(
 
             print("Running Evaluation for scene %s" % scene_ids[i])
 
-            scene_outputs = _process_predictions(pred_corners, i, semantic_rich, poly2seq, fg_mask, image_size, pred_room_label if semantic_rich else None, pred_room_logits if semantic_rich else None, add_cls_token, per_token_sem_loss, wd_as_line, door_window_index, dataset_name)
+            scene_outputs = _process_predictions(
+                pred_corners,
+                i,
+                semantic_rich,
+                poly2seq,
+                fg_mask,
+                image_size,
+                pred_room_label if semantic_rich else None,
+                pred_room_logits if semantic_rich else None,
+                add_cls_token,
+                per_token_sem_loss,
+                wd_as_line,
+                door_window_index,
+                dataset_name,
+            )
             room_polys = scene_outputs["room_polys"]
             room_types = scene_outputs["room_types"]
             window_doors = scene_outputs["window_doors"]
@@ -817,11 +847,11 @@ def generate(
 ):
     """
     Generate room polygons and labels from model predictions.
-    
+
     This function supports two generation modes:
     - Non-poly2seq mode (poly2seq=False): RoomFormer generation with fg_mask filtering
     - Poly2seq mode (poly2seq=True): Raster2Seq generation with sequence-based predictions
-    
+
     Args:
         model: The trained model to use for inference.
         samples: Input image samples (list of tensors).
@@ -832,7 +862,7 @@ def generate(
         per_token_sem_loss (bool, optional): If True, computes semantic class using voting across tokens.
                                              Only used when poly2seq=True. Default is False.
         drop_wd (bool, optional): If True, exclude window/door elements from output. Default is False.
-    
+
     Returns:
         dict: Dictionary containing:
             - 'room': List of room polygons (and optionally window/door lines) per scene
@@ -874,19 +904,22 @@ def generate(
         else:
             window_doors = None
             room_types = None
-        
-        scene_outputs = _process_predictions(pred_corners, 
-                                             i, 
-                                             semantic_rich, 
-                                             poly2seq, 
-                                             fg_mask, 
-                                             image_size, 
-                                             pred_room_label if semantic_rich else None, 
-                                             pred_room_logits if semantic_rich else None, False, 
-                                             per_token_sem_loss, 
-                                             wd_as_line=True, 
-                                             door_window_index=None,
-                                             dataset_name=None)
+
+        scene_outputs = _process_predictions(
+            pred_corners,
+            i,
+            semantic_rich,
+            poly2seq,
+            fg_mask,
+            image_size,
+            pred_room_label if semantic_rich else None,
+            pred_room_logits if semantic_rich else None,
+            False,
+            per_token_sem_loss,
+            wd_as_line=True,
+            door_window_index=None,
+            dataset_name=None,
+        )
         room_polys = scene_outputs["room_polys"]
         room_types = scene_outputs["room_types"]
         window_doors = scene_outputs["window_doors"]
