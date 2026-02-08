@@ -167,7 +167,7 @@ In pretraining stage, the models are trained to predict only structural outputs,
 | Structured3D  | `tools/eval_s3d_pretrain.sh`      |
 | CubiCasa5K    | `tools/eval_cc5k_pretrain.sh`   |
 | Raster2Graph  | `tools/eval_r2g_pretrain.sh`    |
-| Structured3D-DensityMap  | `tools/eval_s3d_rgb_pretrain.sh`      |
+| Structured3D-DensityMap  | `tools/eval_s3d_density_pretrain.sh`      |
 
 ### Semantic floorplan reconstruction
 In finetuning stage, the models are trained to predict both structural and semantic outputs. Here, we use checkpoints from semantic models.
@@ -198,7 +198,7 @@ Raster2Seq involves two training stages:
 
 | Dataset       | Bash Script                  |
 |---------------|----------------------------------|
-| Structured3D  | `tools/pretrain_s3d_rgb.sh`      |
+| Structured3D  | `tools/pretrain_s3d.sh`      |
 | CubiCasa5K    | `tools/pretrain_cc5k.sh`   |
 | Raster2Graph  | `tools/pretrain_r2g.sh`    |
 
@@ -207,7 +207,7 @@ Raster2Seq involves two training stages:
 
 | Dataset       | Bash Script                  |
 |---------------|----------------------------------|
-| Structured3D  | `tools/finetune_s3d_rgb.sh`      |
+| Structured3D  | `tools/finetune_s3d.sh`      |
 | CubiCasa5K    | `tools/finetune_cc5k.sh`   |
 | Raster2Graph  | `tools/finetune_r2g.sh`    |
 
