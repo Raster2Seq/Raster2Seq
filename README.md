@@ -74,7 +74,7 @@ Given a rasterized floorplan image (left), our approach converts it into vectori
 
 ## Data
 
-We use COCO-style formatting for all experiments. Data preprocessing are detailed in [data_preprocess](data_preprocess/README.md). Simply put, input data is RGB images and output is the 2D coordinate vectors of room regions which are represented as close-loop segmentation.
+We use the COCO-style format for all experiments. Data preprocessing are detailed in [data_preprocess](data_preprocess/README.md). Simply put, input data is RGB images and output is the 2D coordinate vectors of room regions which are represented as close-loop segmentation.
 
 The data tree structure of Structured3D, for instance, is as follows:
 ```
