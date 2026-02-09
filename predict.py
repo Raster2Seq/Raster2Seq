@@ -95,7 +95,6 @@ def get_args_parser():
     parser.add_argument("--learnable_dec_pe", action="store_true")
     parser.add_argument("--dec_qkv_proj", action="store_true")
     parser.add_argument("--dec_attn_concat_src", action="store_true")
-    parser.add_argument("--dec_layer_type", type=str, default="v1")
     parser.add_argument("--per_token_sem_loss", action="store_true")
     parser.add_argument("--add_cls_token", action="store_true")
 

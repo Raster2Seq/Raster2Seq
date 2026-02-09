@@ -22,41 +22,11 @@ class DiscreteTokenizer(object):
     def __len__(self):
         return self.vocab_size
 
-    def __call__(self, seq, add_bos, add_eos, dtype):
-        out = []
-        if add_bos:
-            out = [self.bos]
-        num_extra = 1 if not self.add_cls else 2  # cls and sep
-        for sub in seq:
-            cur_len = len(out)
-            # Append sub only if it doesn't exceed seq_len
-            if cur_len + len(sub) + num_extra <= self.seq_len:
-                out.extend(sub)
-            else:
-                break
-            # Append cls and sep tokens only if it doesn't exceed seq_len
-            if self.add_cls:
-                out.append(self.cls)  # cls token
-            out.append(self.sep)
-        # Remove last separator token if present
-        if out and out[-1] == self.sep:
-            out.pop(-1)  # remove last separator token
-
-        if self.seq_len > len(out):
-            out.extend([self.pad] * (self.seq_len - len(out)))
-
-        if add_eos:
-            out[-1] = self.eos
-
-        return torch.tensor(out, dtype=dtype)
-
     def _padding(self, seq, pad_value, dtype):
         if self.seq_len > len(seq):
             seq.extend([pad_value] * (self.seq_len - len(seq)))
         return torch.tensor(np.array(seq), dtype=dtype)
 
-
-class DiscreteTokenizerV2(DiscreteTokenizer):
     def __call__(self, seq, add_bos, add_eos, dtype, return_indices=False):
         out = []
         if add_bos:

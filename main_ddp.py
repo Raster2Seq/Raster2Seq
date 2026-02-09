@@ -67,7 +67,6 @@ def get_args_parser():
     parser.add_argument("--learnable_dec_pe", action="store_true")
     parser.add_argument("--dec_qkv_proj", action="store_true")
     parser.add_argument("--dec_attn_concat_src", action="store_true")
-    parser.add_argument("--dec_layer_type", type=str, default="v1")
     parser.add_argument("--per_token_sem_loss", action="store_true")
     parser.add_argument("--add_cls_token", action="store_true")
     parser.add_argument("--jointly_train", action="store_true")
@@ -206,7 +205,6 @@ def main(args):
     if rank == 0:
         utils.setup_wandb()
         wandb.init(project="Raster2Seq", resume="allow", id=args.run_name, dir="./wandb")
-        # wandb.run.name = args.run_name
 
     # build dataset and dataloader
     dataset_train = build_dataset(image_set="train", args=args)

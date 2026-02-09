@@ -37,11 +37,6 @@ class HungarianMatcher(nn.Module):
         cos_sim = ((vect1 * vect2).sum(1) + 1e-9) / (
             torch.norm(vect1, p=2, dim=1) * torch.norm(vect2, p=2, dim=1) + 1e-9
         )
-        # cos_sim = F.cosine_similarity(vect1, vect2)
-        # angles = torch.acos(torch.clamp(cos_sim, -1 + 1e-7 , 1 - 1e-7))
-        # if torch.isnan(angles).sum() >=1:
-        #     print('a')
-        # return angles
         return cos_sim
 
     def calculate_src_angles(self, polygon):

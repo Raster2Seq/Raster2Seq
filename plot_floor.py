@@ -495,13 +495,6 @@ def main(args):
     np.random.seed(seed)
     random.seed(seed)
 
-    # # build model
-    # model = build_model(args, train=False)
-    # model.to(device)
-
-    # n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    # print('number of params:', n_parameters)
-
     # build dataset and dataloader
     dataset_eval = build_dataset(image_set=args.eval_set, args=args)
     # for test
@@ -567,19 +560,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=True,
     )
-
-    # for n, p in model.named_parameters():
-    #     print(n)
-
     output_dir = Path(args.output_dir)
-
-    # checkpoint = torch.load(args.checkpoint, map_location='cpu')
-    # missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model'], strict=False)
-    # unexpected_keys = [k for k in unexpected_keys if not (k.endswith('total_params') or k.endswith('total_ops'))]
-    # if len(missing_keys) > 0:
-    #     print('Missing Keys: {}'.format(missing_keys))
-    # if len(unexpected_keys) > 0:
-    #     print('Unexpected Keys: {}'.format(unexpected_keys))
 
     save_dir = output_dir  # os.path.join(os.path.dirname(args.checkpoint), output_dir)
     os.makedirs(save_dir, exist_ok=True)

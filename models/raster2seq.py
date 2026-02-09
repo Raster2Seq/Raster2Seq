@@ -1,6 +1,3 @@
-# Modified from Deformable DETR
-# Yuanwen Yue
-
 import copy
 import math
 
@@ -14,7 +11,6 @@ from util.misc import NestedTensor, nested_tensor_from_tensor_list
 
 from .backbone import build_backbone
 
-# from .deformable_transformer import build_deforamble_transformer
 from .deformable_transformer_v2 import build_deforamble_transformer
 from .label_smoothing_loss import label_smoothed_nll_loss
 from .losses import MaskRasterizationLoss

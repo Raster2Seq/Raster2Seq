@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------------
-# Modified from Deformable DETR (https://github.com/fundamentalvision/Deformable-DETR)
+# Original RoomFormer implementation (https://github.com/ywyue/RoomFormer.git)
 # ------------------------------------------------------------------------------------
 
 import copy

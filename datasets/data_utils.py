@@ -14,19 +14,6 @@ def get_top_left(polygon):
     return min(polygon, key=lambda p: (p[1], p[0]))  # y ascending, x ascending
 
 
-# def sort_polygons(polygons):
-#     """Sort polygons from top-to-bottom, then left-to-right."""
-#     # Step 1: compute centroids
-#     # indexed_polygons = [(i, compute_centroid(poly), poly) for i, poly in enumerate(polygons)]
-#     indexed_polygons = [(i, get_top_left_corner(poly), poly) for i, poly in enumerate(polygons)]
-
-#     # Step 2: sort by y (top to bottom), then x (left to right)
-#     indexed_polygons.sort(key=lambda x: (x[1][1], x[1][0])) # y first, then x
-
-#     # Step 3: return sorted polygons
-#     return [poly for _, _, poly in indexed_polygons]
-
-
 def sort_polygons(polygons, tolerance=20, reverse=False):
     # Step 1: Get top-left corner and original index
     indexed = [(i, get_top_left(p), p) for i, p in enumerate(polygons)]
@@ -71,4 +58,3 @@ def plot_polygons(polygons, save_path):
     # plt.legend()
     plt.gca().set_aspect("equal", adjustable="box")
     plt.savefig(save_path)
-    # plt.show()

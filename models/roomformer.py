@@ -1,5 +1,6 @@
-# Modified from Deformable DETR
-# Yuanwen Yue
+# ------------------------------------------------------------------------------------
+# Original RoomFormer implementation (https://github.com/ywyue/RoomFormer.git)
+# ------------------------------------------------------------------------------------
 
 import copy
 import math

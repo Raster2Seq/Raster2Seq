@@ -12,7 +12,7 @@ from pycocotools.coco import COCO
 from torch.utils.data import Dataset
 
 from datasets.data_utils import sort_polygons
-from datasets.discrete_tokenizer import DiscreteTokenizer, DiscreteTokenizerV2
+from datasets.discrete_tokenizer import DiscreteTokenizer
 from datasets.transforms import ResizeAndPad
 from detectron2.data import transforms as T
 from detectron2.data.detection_utils import annotations_to_instances, transform_instance_annotations
@@ -385,7 +385,7 @@ class ConvertToCocoDictWithOrder_plus(ConvertToCocoDict):
         self.dataset_name = dataset_name
         self.order_type = order_type  # l2r, r2l
         self.random_drop_rate = random_drop_rate
-        self.tokenizer = DiscreteTokenizerV2(add_cls=add_cls_token, **kwargs)
+        self.tokenizer = DiscreteTokenizer(add_cls=add_cls_token, **kwargs)
 
     def _get_bilinear_interpolation_coeffs(self, polygons, polygons_label, add_cls_token=False, per_token_class=False):
         num_bins = self.tokenizer.num_bins
