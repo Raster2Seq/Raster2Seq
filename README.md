@@ -4,7 +4,7 @@
 
 <img src="assets/teaser.png" width=100% height=80%>
 
-**TLDR:** We reformulate Raster2Vector conversion as a seq2seq polygon generation, handling to floorplans of arbitrary length.
+**TLDR:** We reformulate Raster2Vector conversion as a seq2seq polygon generation, handling floorplans of arbitrary length.
 
 <details open="open" style='padding: 10px; border-radius:5px 30px 30px 5px; border-style: solid; border-width: 1px;'>
   <summary>Table of Contents</summary>
